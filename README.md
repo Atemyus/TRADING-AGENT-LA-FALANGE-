@@ -11,13 +11,7 @@ Trading Agent è un progetto open source ispirato a [Alpha Arena](https://nof1.a
 
 ## Video di presentazione
 
-Guarda la presentazione del progetto su YouTube:  
-[https://www.youtube.com/watch?v=Vrl2Ar_SvSo&t=45s](https://www.youtube.com/watch?v=Vrl2Ar_SvSo&t=45s)
 
 ## Licenza
 
 Questo progetto è distribuito sotto licenza MIT.
-
----
-
-> Progetto sviluppato da Rizzo AI Academy.
