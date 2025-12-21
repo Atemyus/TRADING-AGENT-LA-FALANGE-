@@ -8,6 +8,8 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
+from src.services.trading_service import get_trading_service
+
 router = APIRouter()
 
 
@@ -16,15 +18,15 @@ class PositionResponse(BaseModel):
     position_id: str
     symbol: str
     side: str  # "long" or "short"
-    size: Decimal
-    entry_price: Decimal
-    current_price: Decimal
-    unrealized_pnl: Decimal
-    unrealized_pnl_percent: Decimal
-    margin_used: Decimal
+    size: str
+    entry_price: str
+    current_price: str
+    unrealized_pnl: str
+    unrealized_pnl_percent: str
+    margin_used: str
     leverage: int
-    stop_loss: Optional[Decimal]
-    take_profit: Optional[Decimal]
+    stop_loss: Optional[str] = None
+    take_profit: Optional[str] = None
     opened_at: str
 
 
@@ -37,29 +39,42 @@ class PositionModify(BaseModel):
 class PositionsListResponse(BaseModel):
     """List of positions."""
     positions: List[PositionResponse]
-    total_unrealized_pnl: Decimal
-    total_margin_used: Decimal
+    total_unrealized_pnl: str
+    total_margin_used: str
 
 
 @router.get("", response_model=PositionsListResponse)
 async def get_positions():
-    """Get all open positions."""
-    # TODO: Implement with broker
+    """Get all open positions with current prices."""
+    service = await get_trading_service()
+    positions = await service.get_positions_with_prices()
+
+    total_pnl = sum(Decimal(p["unrealized_pnl"]) for p in positions)
+    total_margin = sum(Decimal(p["margin_used"]) for p in positions)
+
     return PositionsListResponse(
-        positions=[],
-        total_unrealized_pnl=Decimal("0"),
-        total_margin_used=Decimal("0"),
+        positions=[PositionResponse(**p) for p in positions],
+        total_unrealized_pnl=str(total_pnl),
+        total_margin_used=str(total_margin),
     )
 
 
 @router.get("/{symbol}", response_model=PositionResponse)
 async def get_position(symbol: str):
     """Get position for specific symbol."""
-    # TODO: Implement with broker
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"No position found for {symbol}"
-    )
+    service = await get_trading_service()
+    positions = await service.get_positions_with_prices()
+
+    # Find position for symbol
+    position = next((p for p in positions if p["symbol"] == symbol), None)
+
+    if not position:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No position found for {symbol}"
+        )
+
+    return PositionResponse(**position)
 
 
 @router.patch("/{symbol}")
@@ -67,11 +82,25 @@ async def modify_position(symbol: str, modification: PositionModify):
     """
     Modify stop loss / take profit for a position.
     """
-    # TODO: Implement position modification
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Position modification not yet implemented"
+    service = await get_trading_service()
+
+    success = await service.modify_position(
+        symbol=symbol,
+        stop_loss=modification.stop_loss,
+        take_profit=modification.take_profit,
     )
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to modify position for {symbol}"
+        )
+
+    return {
+        "success": True,
+        "symbol": symbol,
+        "message": "Position modified successfully",
+    }
 
 
 @router.delete("/{symbol}")
@@ -83,8 +112,19 @@ async def close_position(symbol: str, size: Optional[Decimal] = None):
         symbol: Symbol to close
         size: Size to close (None = close all)
     """
-    # TODO: Implement position closing
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Position closing not yet implemented"
-    )
+    service = await get_trading_service()
+    result = await service.close_position(symbol, size)
+
+    if not result.success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result.message
+        )
+
+    return {
+        "success": True,
+        "symbol": symbol,
+        "closed_size": str(result.order_result.filled_size) if result.order_result else None,
+        "close_price": str(result.order_result.average_fill_price) if result.order_result else None,
+        "message": result.message,
+    }
