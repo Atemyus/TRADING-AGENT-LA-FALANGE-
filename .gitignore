@@ -205,3 +205,69 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# ============================================
+# Node.js / Frontend (Next.js)
+# ============================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Next.js
+.next/
+out/
+.vercel
+
+# Frontend build
+apps/frontend/.next/
+apps/frontend/out/
+apps/frontend/node_modules/
+
+# Testing
+coverage/
+.nyc_output
+
+# ============================================
+# Docker
+# ============================================
+docker/data/
+
+# ============================================
+# IDE Settings
+# ============================================
+.idea/
+.vscode/
+*.sublime-workspace
+*.sublime-project
+
+# ============================================
+# OS Files
+# ============================================
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+
+# ============================================
+# Temporary & Backup
+# ============================================
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+
+# ============================================
+# Secrets & Local Config
+# ============================================
+.env.local
+.env.*.local
+*.pem
+*.key
+secrets/
