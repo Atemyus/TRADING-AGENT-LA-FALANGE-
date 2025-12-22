@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.api.v1.routes import auth, trading, positions, analytics, websocket
+from src.api.v1.routes import ai, auth, trading, positions, analytics, websocket
 from src.core.config import settings
 from src.core.database import init_db
 
@@ -43,6 +43,7 @@ app.add_middleware(
 )
 
 # Include routers
+app.include_router(ai.router, prefix="/api/v1/ai", tags=["AI Analysis"])
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(trading.router, prefix="/api/v1/trading", tags=["Trading"])
 app.include_router(positions.router, prefix="/api/v1/positions", tags=["Positions"])

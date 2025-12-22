@@ -50,10 +50,34 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = Field(default="redis://localhost:6379/0")
 
+    # AI Providers
     # OpenAI
     OPENAI_API_KEY: Optional[str] = None
     OPENAI_MODEL: str = "gpt-4o"
     OPENAI_MODEL_FAST: str = "gpt-4o-mini"
+
+    # Anthropic (Claude)
+    ANTHROPIC_API_KEY: Optional[str] = None
+    ANTHROPIC_MODEL: str = "claude-3-5-sonnet-20241022"
+
+    # Google (Gemini)
+    GOOGLE_API_KEY: Optional[str] = None
+    GOOGLE_MODEL: str = "gemini-1.5-flash"
+
+    # Groq (Ultra-fast inference)
+    GROQ_API_KEY: Optional[str] = None
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+
+    # Mistral
+    MISTRAL_API_KEY: Optional[str] = None
+    MISTRAL_MODEL: str = "mistral-large-latest"
+
+    # Ollama (Local inference)
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_MODEL: str = "llama3.1:8b"
+
+    # Alpha Vantage (Market Data)
+    ALPHA_VANTAGE_API_KEY: Optional[str] = None
 
     # Broker Configuration
     BROKER_TYPE: str = Field(default="oanda", description="oanda|ig|interactive_brokers|alpaca")
