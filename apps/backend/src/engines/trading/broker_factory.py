@@ -2,7 +2,7 @@
 Broker Factory
 
 Factory for creating broker instances based on configuration.
-Supports multiple brokers: OANDA, IG, Interactive Brokers, Alpaca.
+Supports multiple brokers: OANDA, MetaTrader, IG, Interactive Brokers, Alpaca.
 """
 
 from typing import Optional
@@ -10,6 +10,7 @@ from typing import Optional
 from src.core.config import settings
 from src.engines.trading.base_broker import BaseBroker
 from src.engines.trading.oanda_broker import OANDABroker
+from src.engines.trading.metatrader_broker import MetaTraderBroker
 
 
 class BrokerFactory:
@@ -33,7 +34,7 @@ class BrokerFactory:
         Create a broker instance.
 
         Args:
-            broker_type: Type of broker (oanda, ig, ib, alpaca)
+            broker_type: Type of broker (oanda, metatrader, ig, ib, alpaca)
                         If not specified, uses BROKER_TYPE from settings
             **kwargs: Additional arguments passed to broker constructor
 
@@ -50,6 +51,12 @@ class BrokerFactory:
                 api_key=kwargs.get("api_key", settings.OANDA_API_KEY),
                 account_id=kwargs.get("account_id", settings.OANDA_ACCOUNT_ID),
                 environment=kwargs.get("environment", settings.OANDA_ENVIRONMENT),
+            )
+
+        elif broker_type in ("metatrader", "mt4", "mt5"):
+            return MetaTraderBroker(
+                access_token=kwargs.get("access_token", getattr(settings, 'METAAPI_ACCESS_TOKEN', None)),
+                account_id=kwargs.get("account_id", getattr(settings, 'METAAPI_ACCOUNT_ID', None)),
             )
 
         elif broker_type == "ig":

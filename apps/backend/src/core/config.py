@@ -80,12 +80,16 @@ class Settings(BaseSettings):
     ALPHA_VANTAGE_API_KEY: Optional[str] = None
 
     # Broker Configuration
-    BROKER_TYPE: str = Field(default="oanda", description="oanda|ig|interactive_brokers|alpaca")
+    BROKER_TYPE: str = Field(default="oanda", description="oanda|metatrader|ig|interactive_brokers|alpaca")
 
     # OANDA
     OANDA_API_KEY: Optional[str] = None
     OANDA_ACCOUNT_ID: Optional[str] = None
     OANDA_ENVIRONMENT: str = Field(default="practice", description="practice|live")
+
+    # MetaTrader (via MetaApi.cloud)
+    METAAPI_ACCESS_TOKEN: Optional[str] = None
+    METAAPI_ACCOUNT_ID: Optional[str] = None
 
     # IG Markets
     IG_API_KEY: Optional[str] = None

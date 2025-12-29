@@ -1,0 +1,780 @@
+'use client'
+
+import { motion, AnimatePresence } from 'framer-motion'
+import { useState } from 'react'
+import {
+  Settings,
+  Server,
+  Brain,
+  Shield,
+  Bell,
+  ChevronRight,
+  Check,
+  X,
+  Eye,
+  EyeOff,
+  TestTube,
+  Loader2,
+  AlertCircle,
+  CheckCircle,
+  Info,
+} from 'lucide-react'
+
+// Broker configurations
+const BROKERS = [
+  {
+    id: 'oanda',
+    name: 'OANDA',
+    logo: '🏦',
+    description: 'Forex & CFD trading via REST API',
+    fields: [
+      { key: 'api_key', label: 'API Key', type: 'password', placeholder: 'Your OANDA API key' },
+      { key: 'account_id', label: 'Account ID', type: 'text', placeholder: '101-001-12345678-001' },
+      { key: 'environment', label: 'Environment', type: 'select', options: ['practice', 'live'] },
+    ],
+  },
+  {
+    id: 'metatrader',
+    name: 'MetaTrader 4/5',
+    logo: '📊',
+    description: 'MT4/MT5 via MetaApi.cloud',
+    fields: [
+      { key: 'meta_api_token', label: 'MetaApi Token', type: 'password', placeholder: 'Your MetaApi token' },
+      { key: 'account_id', label: 'MT Account ID', type: 'text', placeholder: 'Your MetaApi account ID' },
+      { key: 'platform', label: 'Platform', type: 'select', options: ['mt4', 'mt5'] },
+    ],
+    helpLink: 'https://metaapi.cloud',
+  },
+  {
+    id: 'ig',
+    name: 'IG Markets',
+    logo: '🔴',
+    description: 'Global CFD & Spread Betting',
+    fields: [
+      { key: 'api_key', label: 'API Key', type: 'password', placeholder: 'Your IG API key' },
+      { key: 'username', label: 'Username', type: 'text', placeholder: 'Your IG username' },
+      { key: 'password', label: 'Password', type: 'password', placeholder: 'Your IG password' },
+      { key: 'account_id', label: 'Account ID', type: 'text', placeholder: 'Your account ID' },
+      { key: 'environment', label: 'Environment', type: 'select', options: ['demo', 'live'] },
+    ],
+  },
+  {
+    id: 'interactive_brokers',
+    name: 'Interactive Brokers',
+    logo: '🟣',
+    description: 'Stocks, Futures, Options & more',
+    fields: [
+      { key: 'host', label: 'TWS Host', type: 'text', placeholder: '127.0.0.1' },
+      { key: 'port', label: 'TWS Port', type: 'text', placeholder: '7497 (paper) or 7496 (live)' },
+      { key: 'client_id', label: 'Client ID', type: 'text', placeholder: '1' },
+    ],
+  },
+  {
+    id: 'alpaca',
+    name: 'Alpaca',
+    logo: '🦙',
+    description: 'Commission-free US stocks',
+    fields: [
+      { key: 'api_key', label: 'API Key', type: 'password', placeholder: 'Your Alpaca API key' },
+      { key: 'secret_key', label: 'Secret Key', type: 'password', placeholder: 'Your Alpaca secret key' },
+      { key: 'paper', label: 'Paper Trading', type: 'select', options: ['true', 'false'] },
+    ],
+  },
+]
+
+// AI Provider configurations
+const AI_PROVIDERS = [
+  {
+    id: 'openai',
+    name: 'OpenAI',
+    icon: '🤖',
+    models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'],
+    field: { key: 'OPENAI_API_KEY', label: 'API Key', placeholder: 'sk-...' },
+  },
+  {
+    id: 'anthropic',
+    name: 'Anthropic',
+    icon: '🧠',
+    models: ['claude-3-5-sonnet', 'claude-3-haiku'],
+    field: { key: 'ANTHROPIC_API_KEY', label: 'API Key', placeholder: 'sk-ant-...' },
+  },
+  {
+    id: 'google',
+    name: 'Google AI',
+    icon: '💎',
+    models: ['gemini-1.5-flash', 'gemini-1.5-pro'],
+    field: { key: 'GOOGLE_API_KEY', label: 'API Key', placeholder: 'AI...' },
+  },
+  {
+    id: 'groq',
+    name: 'Groq',
+    icon: '⚡',
+    models: ['llama-3.3-70b', 'llama-3.1-8b', 'mixtral-8x7b'],
+    field: { key: 'GROQ_API_KEY', label: 'API Key', placeholder: 'gsk_...' },
+    badge: 'Ultra Fast',
+  },
+  {
+    id: 'mistral',
+    name: 'Mistral',
+    icon: '🌪️',
+    models: ['mistral-large', 'mistral-small'],
+    field: { key: 'MISTRAL_API_KEY', label: 'API Key', placeholder: 'Your Mistral key' },
+  },
+  {
+    id: 'ollama',
+    name: 'Ollama',
+    icon: '🦙',
+    models: ['llama3.1:8b', 'qwen2.5:14b', 'mistral:7b'],
+    field: { key: 'OLLAMA_BASE_URL', label: 'Base URL', placeholder: 'http://localhost:11434' },
+    badge: 'Free & Local',
+  },
+]
+
+type SettingsSection = 'broker' | 'ai' | 'risk' | 'notifications'
+
+export default function SettingsPage() {
+  const [activeSection, setActiveSection] = useState<SettingsSection>('broker')
+  const [selectedBroker, setSelectedBroker] = useState<string>('oanda')
+  const [brokerCredentials, setBrokerCredentials] = useState<Record<string, string>>({})
+  const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({})
+  const [testingConnection, setTestingConnection] = useState(false)
+  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle')
+  const [aiProviders, setAiProviders] = useState<Record<string, { enabled: boolean; key: string }>>({})
+  const [saving, setSaving] = useState(false)
+
+  const handleTestConnection = async () => {
+    setTestingConnection(true)
+    setConnectionStatus('idle')
+
+    // Simulate API test
+    await new Promise(resolve => setTimeout(resolve, 2000))
+
+    // Random success/failure for demo
+    setConnectionStatus(Math.random() > 0.3 ? 'success' : 'error')
+    setTestingConnection(false)
+  }
+
+  const handleSave = async () => {
+    setSaving(true)
+    await new Promise(resolve => setTimeout(resolve, 1500))
+    setSaving(false)
+  }
+
+  const sections = [
+    { id: 'broker', label: 'Broker', icon: Server },
+    { id: 'ai', label: 'AI Providers', icon: Brain },
+    { id: 'risk', label: 'Risk Management', icon: Shield },
+    { id: 'notifications', label: 'Notifications', icon: Bell },
+  ] as const
+
+  return (
+    <div className="max-w-6xl mx-auto">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mb-8"
+      >
+        <h1 className="text-3xl font-bold mb-2">Settings</h1>
+        <p className="text-dark-400">Configure your trading platform</p>
+      </motion.div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {/* Sidebar */}
+        <motion.div
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="lg:col-span-1"
+        >
+          <nav className="card p-2 space-y-1">
+            {sections.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                onClick={() => setActiveSection(id)}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
+                  activeSection === id
+                    ? 'bg-primary-500/20 text-primary-400'
+                    : 'text-dark-400 hover:bg-dark-800 hover:text-dark-200'
+                }`}
+              >
+                <Icon size={20} />
+                <span className="font-medium">{label}</span>
+                <ChevronRight size={16} className="ml-auto" />
+              </button>
+            ))}
+          </nav>
+        </motion.div>
+
+        {/* Content */}
+        <motion.div
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="lg:col-span-3"
+        >
+          <AnimatePresence mode="wait">
+            {activeSection === 'broker' && (
+              <BrokerSettings
+                key="broker"
+                brokers={BROKERS}
+                selectedBroker={selectedBroker}
+                setSelectedBroker={setSelectedBroker}
+                credentials={brokerCredentials}
+                setCredentials={setBrokerCredentials}
+                showPasswords={showPasswords}
+                setShowPasswords={setShowPasswords}
+                testingConnection={testingConnection}
+                connectionStatus={connectionStatus}
+                onTestConnection={handleTestConnection}
+                onSave={handleSave}
+                saving={saving}
+              />
+            )}
+
+            {activeSection === 'ai' && (
+              <AIProvidersSettings
+                key="ai"
+                providers={AI_PROVIDERS}
+                providerSettings={aiProviders}
+                setProviderSettings={setAiProviders}
+                onSave={handleSave}
+                saving={saving}
+              />
+            )}
+
+            {activeSection === 'risk' && (
+              <RiskSettings key="risk" onSave={handleSave} saving={saving} />
+            )}
+
+            {activeSection === 'notifications' && (
+              <NotificationSettings key="notifications" onSave={handleSave} saving={saving} />
+            )}
+          </AnimatePresence>
+        </motion.div>
+      </div>
+    </div>
+  )
+}
+
+// Broker Settings Component
+function BrokerSettings({
+  brokers,
+  selectedBroker,
+  setSelectedBroker,
+  credentials,
+  setCredentials,
+  showPasswords,
+  setShowPasswords,
+  testingConnection,
+  connectionStatus,
+  onTestConnection,
+  onSave,
+  saving,
+}: {
+  brokers: typeof BROKERS
+  selectedBroker: string
+  setSelectedBroker: (id: string) => void
+  credentials: Record<string, string>
+  setCredentials: (creds: Record<string, string>) => void
+  showPasswords: Record<string, boolean>
+  setShowPasswords: (show: Record<string, boolean>) => void
+  testingConnection: boolean
+  connectionStatus: 'idle' | 'success' | 'error'
+  onTestConnection: () => void
+  onSave: () => void
+  saving: boolean
+}) {
+  const broker = brokers.find(b => b.id === selectedBroker)
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className="space-y-6"
+    >
+      {/* Broker Selection */}
+      <div className="card p-6">
+        <h2 className="text-xl font-semibold mb-4">Select Broker</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {brokers.map((b) => (
+            <button
+              key={b.id}
+              onClick={() => setSelectedBroker(b.id)}
+              className={`p-4 rounded-xl border-2 transition-all text-left ${
+                selectedBroker === b.id
+                  ? 'border-primary-500 bg-primary-500/10'
+                  : 'border-dark-700 hover:border-dark-600 bg-dark-800/50'
+              }`}
+            >
+              <div className="flex items-center gap-3 mb-2">
+                <span className="text-2xl">{b.logo}</span>
+                <span className="font-semibold">{b.name}</span>
+                {selectedBroker === b.id && (
+                  <Check size={16} className="ml-auto text-primary-500" />
+                )}
+              </div>
+              <p className="text-sm text-dark-400">{b.description}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Broker Configuration */}
+      {broker && (
+        <div className="card p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">{broker.logo}</span>
+              <div>
+                <h2 className="text-xl font-semibold">{broker.name} Configuration</h2>
+                <p className="text-sm text-dark-400">{broker.description}</p>
+              </div>
+            </div>
+            {broker.helpLink && (
+              <a
+                href={broker.helpLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-primary-400 hover:text-primary-300 flex items-center gap-1"
+              >
+                <Info size={14} />
+                Get API Key
+              </a>
+            )}
+          </div>
+
+          <div className="space-y-4">
+            {broker.fields.map((field) => (
+              <div key={field.key}>
+                <label className="block text-sm font-medium mb-2">{field.label}</label>
+                {field.type === 'select' ? (
+                  <select
+                    value={credentials[field.key] || field.options?.[0] || ''}
+                    onChange={(e) => setCredentials({ ...credentials, [field.key]: e.target.value })}
+                    className="input"
+                  >
+                    {field.options?.map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="relative">
+                    <input
+                      type={field.type === 'password' && !showPasswords[field.key] ? 'password' : 'text'}
+                      value={credentials[field.key] || ''}
+                      onChange={(e) => setCredentials({ ...credentials, [field.key]: e.target.value })}
+                      placeholder={field.placeholder}
+                      className="input pr-10"
+                    />
+                    {field.type === 'password' && (
+                      <button
+                        type="button"
+                        onClick={() => setShowPasswords({ ...showPasswords, [field.key]: !showPasswords[field.key] })}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-400 hover:text-dark-200"
+                      >
+                        {showPasswords[field.key] ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Connection Status */}
+          <AnimatePresence>
+            {connectionStatus !== 'idle' && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className={`mt-4 p-4 rounded-lg flex items-center gap-3 ${
+                  connectionStatus === 'success'
+                    ? 'bg-neon-green/20 text-neon-green'
+                    : 'bg-neon-red/20 text-neon-red'
+                }`}
+              >
+                {connectionStatus === 'success' ? (
+                  <>
+                    <CheckCircle size={20} />
+                    <span>Connection successful! Broker is ready.</span>
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle size={20} />
+                    <span>Connection failed. Please check your credentials.</span>
+                  </>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Actions */}
+          <div className="flex gap-3 mt-6">
+            <button
+              onClick={onTestConnection}
+              disabled={testingConnection}
+              className="btn-secondary flex items-center gap-2"
+            >
+              {testingConnection ? (
+                <Loader2 size={18} className="animate-spin" />
+              ) : (
+                <TestTube size={18} />
+              )}
+              Test Connection
+            </button>
+            <button
+              onClick={onSave}
+              disabled={saving}
+              className="btn-primary flex items-center gap-2"
+            >
+              {saving ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
+              Save Settings
+            </button>
+          </div>
+        </div>
+      )}
+    </motion.div>
+  )
+}
+
+// AI Providers Settings Component
+function AIProvidersSettings({
+  providers,
+  providerSettings,
+  setProviderSettings,
+  onSave,
+  saving,
+}: {
+  providers: typeof AI_PROVIDERS
+  providerSettings: Record<string, { enabled: boolean; key: string }>
+  setProviderSettings: (settings: Record<string, { enabled: boolean; key: string }>) => void
+  onSave: () => void
+  saving: boolean
+}) {
+  const [showKeys, setShowKeys] = useState<Record<string, boolean>>({})
+
+  const toggleProvider = (id: string) => {
+    setProviderSettings({
+      ...providerSettings,
+      [id]: {
+        ...providerSettings[id],
+        enabled: !providerSettings[id]?.enabled,
+      },
+    })
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className="space-y-6"
+    >
+      <div className="card p-6">
+        <h2 className="text-xl font-semibold mb-2">AI Providers</h2>
+        <p className="text-dark-400 mb-6">
+          Configure which AI models to use for market analysis. Enable at least one provider.
+        </p>
+
+        <div className="space-y-4">
+          {providers.map((provider) => (
+            <div
+              key={provider.id}
+              className={`p-4 rounded-xl border transition-all ${
+                providerSettings[provider.id]?.enabled
+                  ? 'border-primary-500/50 bg-primary-500/5'
+                  : 'border-dark-700 bg-dark-800/50'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">{provider.icon}</span>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold">{provider.name}</span>
+                      {provider.badge && (
+                        <span className="text-xs px-2 py-0.5 bg-neon-green/20 text-neon-green rounded-full">
+                          {provider.badge}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-dark-400">
+                      Models: {provider.models.join(', ')}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => toggleProvider(provider.id)}
+                  className={`relative w-12 h-6 rounded-full transition-colors ${
+                    providerSettings[provider.id]?.enabled ? 'bg-primary-500' : 'bg-dark-600'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
+                      providerSettings[provider.id]?.enabled ? 'translate-x-7' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {providerSettings[provider.id]?.enabled && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  className="mt-3"
+                >
+                  <label className="block text-sm font-medium mb-2">{provider.field.label}</label>
+                  <div className="relative">
+                    <input
+                      type={showKeys[provider.id] ? 'text' : 'password'}
+                      value={providerSettings[provider.id]?.key || ''}
+                      onChange={(e) =>
+                        setProviderSettings({
+                          ...providerSettings,
+                          [provider.id]: {
+                            ...providerSettings[provider.id],
+                            key: e.target.value,
+                          },
+                        })
+                      }
+                      placeholder={provider.field.placeholder}
+                      className="input pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowKeys({ ...showKeys, [provider.id]: !showKeys[provider.id] })}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-400 hover:text-dark-200"
+                    >
+                      {showKeys[provider.id] ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-6">
+          <button
+            onClick={onSave}
+            disabled={saving}
+            className="btn-primary flex items-center gap-2"
+          >
+            {saving ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
+            Save AI Settings
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+// Risk Settings Component
+function RiskSettings({ onSave, saving }: { onSave: () => void; saving: boolean }) {
+  const [settings, setSettings] = useState({
+    maxPositions: 5,
+    maxDailyTrades: 50,
+    maxDailyLossPercent: 5,
+    riskPerTrade: 1,
+    defaultLeverage: 10,
+    enableTrading: false,
+  })
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className="card p-6"
+    >
+      <h2 className="text-xl font-semibold mb-6">Risk Management</h2>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <label className="block text-sm font-medium mb-2">Max Open Positions</label>
+          <input
+            type="number"
+            value={settings.maxPositions}
+            onChange={(e) => setSettings({ ...settings, maxPositions: parseInt(e.target.value) })}
+            className="input"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-2">Max Daily Trades</label>
+          <input
+            type="number"
+            value={settings.maxDailyTrades}
+            onChange={(e) => setSettings({ ...settings, maxDailyTrades: parseInt(e.target.value) })}
+            className="input"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-2">Max Daily Loss (%)</label>
+          <input
+            type="number"
+            value={settings.maxDailyLossPercent}
+            onChange={(e) => setSettings({ ...settings, maxDailyLossPercent: parseFloat(e.target.value) })}
+            className="input"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-2">Risk Per Trade (%)</label>
+          <input
+            type="number"
+            value={settings.riskPerTrade}
+            onChange={(e) => setSettings({ ...settings, riskPerTrade: parseFloat(e.target.value) })}
+            className="input"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-2">Default Leverage</label>
+          <input
+            type="number"
+            value={settings.defaultLeverage}
+            onChange={(e) => setSettings({ ...settings, defaultLeverage: parseInt(e.target.value) })}
+            className="input"
+          />
+        </div>
+        <div className="flex items-center gap-3 self-end">
+          <button
+            onClick={() => setSettings({ ...settings, enableTrading: !settings.enableTrading })}
+            className={`relative w-12 h-6 rounded-full transition-colors ${
+              settings.enableTrading ? 'bg-neon-green' : 'bg-dark-600'
+            }`}
+          >
+            <span
+              className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
+                settings.enableTrading ? 'translate-x-7' : 'translate-x-1'
+              }`}
+            />
+          </button>
+          <label className="text-sm font-medium">Enable Live Trading</label>
+        </div>
+      </div>
+
+      <div className="mt-6">
+        <button onClick={onSave} disabled={saving} className="btn-primary flex items-center gap-2">
+          {saving ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
+          Save Risk Settings
+        </button>
+      </div>
+    </motion.div>
+  )
+}
+
+// Notification Settings Component
+function NotificationSettings({ onSave, saving }: { onSave: () => void; saving: boolean }) {
+  const [settings, setSettings] = useState({
+    telegramEnabled: false,
+    telegramBotToken: '',
+    telegramChatId: '',
+    discordEnabled: false,
+    discordWebhook: '',
+    emailEnabled: false,
+    email: '',
+  })
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className="space-y-6"
+    >
+      {/* Telegram */}
+      <div className="card p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">📱</span>
+            <div>
+              <h3 className="font-semibold">Telegram</h3>
+              <p className="text-sm text-dark-400">Get notifications via Telegram bot</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setSettings({ ...settings, telegramEnabled: !settings.telegramEnabled })}
+            className={`relative w-12 h-6 rounded-full transition-colors ${
+              settings.telegramEnabled ? 'bg-primary-500' : 'bg-dark-600'
+            }`}
+          >
+            <span
+              className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
+                settings.telegramEnabled ? 'translate-x-7' : 'translate-x-1'
+              }`}
+            />
+          </button>
+        </div>
+        {settings.telegramEnabled && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            className="space-y-4"
+          >
+            <div>
+              <label className="block text-sm font-medium mb-2">Bot Token</label>
+              <input
+                type="password"
+                value={settings.telegramBotToken}
+                onChange={(e) => setSettings({ ...settings, telegramBotToken: e.target.value })}
+                placeholder="123456789:ABC..."
+                className="input"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">Chat ID</label>
+              <input
+                type="text"
+                value={settings.telegramChatId}
+                onChange={(e) => setSettings({ ...settings, telegramChatId: e.target.value })}
+                placeholder="Your chat ID"
+                className="input"
+              />
+            </div>
+          </motion.div>
+        )}
+      </div>
+
+      {/* Discord */}
+      <div className="card p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">💬</span>
+            <div>
+              <h3 className="font-semibold">Discord</h3>
+              <p className="text-sm text-dark-400">Get notifications via Discord webhook</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setSettings({ ...settings, discordEnabled: !settings.discordEnabled })}
+            className={`relative w-12 h-6 rounded-full transition-colors ${
+              settings.discordEnabled ? 'bg-primary-500' : 'bg-dark-600'
+            }`}
+          >
+            <span
+              className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
+                settings.discordEnabled ? 'translate-x-7' : 'translate-x-1'
+              }`}
+            />
+          </button>
+        </div>
+        {settings.discordEnabled && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
+            <label className="block text-sm font-medium mb-2">Webhook URL</label>
+            <input
+              type="text"
+              value={settings.discordWebhook}
+              onChange={(e) => setSettings({ ...settings, discordWebhook: e.target.value })}
+              placeholder="https://discord.com/api/webhooks/..."
+              className="input"
+            />
+          </motion.div>
+        )}
+      </div>
+
+      <button onClick={onSave} disabled={saving} className="btn-primary flex items-center gap-2">
+        {saving ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
+        Save Notification Settings
+      </button>
+    </motion.div>
+  )
+}
