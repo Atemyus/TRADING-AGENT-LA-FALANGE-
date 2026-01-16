@@ -2,6 +2,7 @@
 
 import { motion } from 'framer-motion'
 import { useState } from 'react'
+import dynamic from 'next/dynamic'
 import {
   TrendingUp,
   TrendingDown,
@@ -19,6 +20,12 @@ import { PriceTicker } from '@/components/trading/PriceTicker'
 import { PositionsTable } from '@/components/trading/PositionsTable'
 import { OrderHistory } from '@/components/trading/OrderHistory'
 import { StatCard } from '@/components/common/StatCard'
+
+// Dynamic import for TradingView chart to avoid SSR issues
+const TradingViewChart = dynamic(
+  () => import('@/components/charts/TradingViewChart'),
+  { ssr: false, loading: () => <div className="h-[400px] bg-slate-900 rounded-xl animate-pulse" /> }
+)
 
 // Animation variants
 const containerVariants = {
@@ -89,6 +96,17 @@ export default function DashboardPage() {
           value="68%"
           subtext="Last 50 trades"
           icon={Target}
+        />
+      </motion.div>
+
+      {/* TradingView Candlestick Chart - Full Width */}
+      <motion.div variants={itemVariants}>
+        <TradingViewChart
+          symbol={selectedSymbol}
+          timeframe="60"
+          height={450}
+          showVolume={true}
+          showToolbar={true}
         />
       </motion.div>
 
