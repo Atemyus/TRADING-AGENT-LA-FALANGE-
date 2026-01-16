@@ -28,6 +28,10 @@ websockets>=12.0
 pandas>=2.1.0
 numpy>=1.26.0
 
+# Chart Generation (for AI Vision)
+mplfinance>=0.12.10b0
+matplotlib>=3.8.0
+
 # Technical Analysis
 ta>=0.11.0
 pandas-ta>=0.3.14b
