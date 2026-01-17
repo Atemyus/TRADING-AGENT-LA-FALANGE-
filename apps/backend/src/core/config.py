@@ -37,7 +37,18 @@ class Settings(BaseSettings):
     @classmethod
     def parse_cors_origins(cls, v):
         if isinstance(v, str):
-            return [origin.strip() for origin in v.split(",")]
+            # Handle JSON array format
+            if v.startswith("["):
+                import json
+                try:
+                    return json.loads(v)
+                except json.JSONDecodeError:
+                    pass
+            # Handle "*" wildcard
+            if v.strip() == "*":
+                return ["*"]
+            # Handle comma-separated list
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
         return v
 
     # Database
