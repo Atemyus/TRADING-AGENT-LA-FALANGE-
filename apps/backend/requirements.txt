@@ -14,7 +14,6 @@ psycopg2-binary>=2.9.9
 
 # Redis & Caching
 redis>=5.0.0
-aioredis>=2.0.0
 
 # Task Queue
 celery>=5.3.0
@@ -28,24 +27,11 @@ websockets>=12.0
 pandas>=2.1.0
 numpy>=1.26.0
 
-# Chart Generation (for AI Vision)
-mplfinance>=0.12.10b0
-matplotlib>=3.8.0
-
 # Technical Analysis
 ta>=0.11.0
-pandas-ta>=0.3.14b
 
-# Machine Learning
-prophet>=1.1.5
-scikit-learn>=1.4.0
-
-# AI/LLM Providers
+# AI/LLM Providers (only httpx needed for AIML API)
 openai>=1.10.0
-anthropic>=0.18.0
-google-generativeai>=0.4.0
-groq>=0.4.0
-mistralai>=0.1.0
 
 # Authentication
 python-jose[cryptography]>=3.3.0
@@ -56,22 +42,5 @@ python-multipart>=0.0.6
 email-validator>=2.1.0
 python-dotenv>=1.0.0
 
-# Broker SDKs
-oandapyV20>=0.6.3  # OANDA
-# ib_insync>=0.9.86  # Interactive Brokers (optional)
-# alpaca-py>=0.13.0  # Alpaca (optional)
-
 # Monitoring
-sentry-sdk[fastapi]>=1.39.0
 prometheus-client>=0.19.0
-
-# Testing
-pytest>=8.0.0
-pytest-asyncio>=0.23.0
-pytest-cov>=4.1.0
-httpx>=0.26.0
-
-# Code Quality
-black>=24.1.0
-ruff>=0.1.14
-mypy>=1.8.0
