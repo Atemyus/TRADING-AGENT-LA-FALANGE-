@@ -22,7 +22,8 @@
     "tailwind-merge": "^2.2.0",
     "lucide-react": "^0.312.0",
     "date-fns": "^3.3.0",
-    "recharts": "^2.10.0"
+    "recharts": "^2.10.0",
+    "html2canvas": "^1.4.1"
   },
   "devDependencies": {
     "typescript": "^5.3.0",
