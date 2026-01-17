@@ -3,10 +3,11 @@ Application configuration using Pydantic Settings.
 All configuration is loaded from environment variables.
 """
 
+import json
 from functools import lru_cache
-from typing import List, Optional
+from typing import List, Optional, Union
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -30,26 +31,27 @@ class Settings(BaseSettings):
     SECRET_KEY: str = Field(default="change-me-in-production")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
 
-    # CORS
-    CORS_ORIGINS: List[str] = Field(default=["http://localhost:3000", "http://127.0.0.1:3000"])
+    # CORS - stored as string, parsed to list via property
+    CORS_ORIGINS: str = Field(default="http://localhost:3000,http://127.0.0.1:3000")
 
-    @field_validator("CORS_ORIGINS", mode="before")
-    @classmethod
-    def parse_cors_origins(cls, v):
-        if isinstance(v, str):
-            # Handle JSON array format
-            if v.startswith("["):
-                import json
-                try:
-                    return json.loads(v)
-                except json.JSONDecodeError:
-                    pass
-            # Handle "*" wildcard
-            if v.strip() == "*":
-                return ["*"]
-            # Handle comma-separated list
-            return [origin.strip() for origin in v.split(",") if origin.strip()]
-        return v
+    @computed_field
+    @property
+    def cors_origins_list(self) -> List[str]:
+        """Parse CORS_ORIGINS string into a list."""
+        v = self.CORS_ORIGINS
+        if not v:
+            return ["*"]
+        # Handle JSON array format
+        if v.startswith("["):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                pass
+        # Handle "*" wildcard
+        if v.strip() == "*":
+            return ["*"]
+        # Handle comma-separated list
+        return [origin.strip() for origin in v.split(",") if origin.strip()]
 
     # Database
     DATABASE_URL: str = Field(
