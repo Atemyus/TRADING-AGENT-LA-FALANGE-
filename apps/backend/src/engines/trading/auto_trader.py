@@ -69,9 +69,9 @@ class BotConfig:
     analysis_interval_seconds: int = 300  # 5 minutes
 
     # Entry requirements
-    min_confidence: float = 75.0  # Minimum consensus confidence to enter
-    min_models_agree: int = 6     # Minimum models agreeing on direction
-    min_confluence: float = 70.0  # Minimum timeframe confluence score
+    min_confidence: float = 70.0  # Minimum consensus confidence to enter
+    min_models_agree: int = 4     # Minimum models agreeing on direction (4 out of 6)
+    min_confluence: float = 65.0  # Minimum timeframe confluence score
 
     # Risk management
     risk_per_trade_percent: float = 1.0  # Risk 1% of account per trade

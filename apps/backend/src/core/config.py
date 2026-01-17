@@ -76,6 +76,10 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "llama3.1:8b"
 
+    # AIML API (Multi-model gateway)
+    AIML_API_KEY: Optional[str] = None
+    AIML_BASE_URL: str = "https://api.aimlapi.com/v1"
+
     # Alpha Vantage (Market Data)
     ALPHA_VANTAGE_API_KEY: Optional[str] = None
 
