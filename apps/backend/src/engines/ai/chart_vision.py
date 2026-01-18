@@ -11,13 +11,19 @@ from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 import asyncio
 
+# Optional imports for chart generation
+HAS_MPLFINANCE = False
+pd = None
+np = None
+mpf = None
+
 try:
     import mplfinance as mpf
     import pandas as pd
     import numpy as np
     HAS_MPLFINANCE = True
 except ImportError:
-    HAS_MPLFINANCE = False
+    pass
 
 from src.core.config import settings
 
@@ -77,7 +83,7 @@ class ChartVisionService:
         self,
         symbol: str,
         timeframe: str,
-        ohlcv_data: Optional[pd.DataFrame] = None,
+        ohlcv_data: Optional[Any] = None,  # pd.DataFrame when available
         include_indicators: bool = True,
         width: int = 1200,
         height: int = 800,
@@ -133,7 +139,7 @@ class ChartVisionService:
         self,
         symbol: str,
         timeframes: List[str] = ["15m", "1H", "4H"],
-        ohlcv_data_map: Optional[Dict[str, pd.DataFrame]] = None,
+        ohlcv_data_map: Optional[Dict[str, Any]] = None,  # Dict[str, pd.DataFrame]
     ) -> Dict[str, str]:
         """
         Generate charts for multiple timeframes.
@@ -158,7 +164,7 @@ class ChartVisionService:
 
         return charts
 
-    def _generate_demo_data(self, symbol: str, timeframe: str) -> pd.DataFrame:
+    def _generate_demo_data(self, symbol: str, timeframe: str) -> Any:  # pd.DataFrame
         """Generate realistic demo OHLCV data for testing."""
         config = self.TIMEFRAMES.get(timeframe, {"minutes": 60, "candles": 100})
         num_candles = config["candles"]
@@ -215,7 +221,7 @@ class ChartVisionService:
 
         return df
 
-    def _calculate_indicators(self, df: pd.DataFrame) -> List:
+    def _calculate_indicators(self, df: Any) -> List:  # df: pd.DataFrame
         """Calculate technical indicators for chart overlay."""
         addplots = []
 
