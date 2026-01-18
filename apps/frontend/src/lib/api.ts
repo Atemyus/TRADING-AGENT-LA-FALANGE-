@@ -8,40 +8,59 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 export interface AIVote {
   provider: string
   model: string
-  direction: 'LONG' | 'SHORT' | 'HOLD'
+  direction: 'BUY' | 'SELL' | 'HOLD' | 'LONG' | 'SHORT'
   confidence: number
   reasoning?: string
-  stopLoss?: number
-  takeProfit?: number
-  latencyMs?: number
+  is_valid?: boolean
   error?: string
 }
 
 export interface ConsensusResult {
-  direction: 'LONG' | 'SHORT' | 'HOLD'
+  direction: 'BUY' | 'SELL' | 'HOLD' | 'LONG' | 'SHORT'
   confidence: number
-  modelsAgree: number
-  totalModels: number
-  agreementRatio: number
-  isStrongSignal: boolean
+  should_trade?: boolean
+  total_votes?: number
+  valid_votes?: number
+  votes_buy?: number
+  votes_sell?: number
+  votes_hold?: number
+  modelsAgree?: number
+  totalModels?: number
+  agreementRatio?: number
+  agreement_level?: string
+  agreement_percentage?: number
+  isStrongSignal?: boolean
+  suggested_entry?: string | number
+  suggested_stop_loss?: string | number
+  suggested_take_profit?: string | number
   avgStopLoss?: number
   avgTakeProfit?: number
   avgBreakEvenTrigger?: number
+  risk_reward_ratio?: number
   trailingStopConsensus?: {
     enabled: boolean
     distancePips: number
   }
-  votingBreakdown: {
+  votingBreakdown?: {
     LONG: number
     SHORT: number
     HOLD: number
   }
-  modelVotes: Record<string, {
+  modelVotes?: Record<string, {
     direction: string
     confidence: number
     latencyMs?: number
   }>
-  individualResults: AIVote[]
+  key_factors?: string[]
+  risks?: string[]
+  reasoning_summary?: string
+  votes?: AIVote[]
+  individualResults?: AIVote[]
+  total_cost_usd?: number
+  total_tokens?: number
+  processing_time_ms?: number
+  providers_used?: string[]
+  failed_providers?: string[]
 }
 
 export interface AnalysisRequest {
