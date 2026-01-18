@@ -16,7 +16,7 @@ from enum import Enum
 
 from src.engines.ai.chart_vision import get_chart_vision_service, ChartVisionService
 from src.engines.ai.vision_analyzer import get_vision_analyzer, VisionAnalyzer, VisionAnalysisResult
-from src.engines.ai.consensus_engine import ConsensusEngine, VotingMethod
+from src.engines.ai.consensus_engine import ConsensusEngine
 from src.services.ai_service import AIService
 from src.core.config import settings
 
