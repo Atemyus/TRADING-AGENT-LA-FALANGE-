@@ -68,7 +68,7 @@ export default function DashboardPage() {
       setError(null)
     } catch (err) {
       console.error('Failed to fetch account data:', err)
-      setError('Could not connect to backend. Using demo mode.')
+      setError('Could not connect to backend. Configure broker in Settings.')
     }
   }, [])
 
@@ -79,8 +79,7 @@ export default function DashboardPage() {
       setCurrentPrice(parseFloat(priceData.mid))
     } catch (err) {
       console.error('Failed to fetch price:', err)
-      // Use a fallback price for demo
-      setCurrentPrice(1.0850)
+      // Don't set fake price - leave as 0
     }
   }, [selectedSymbol])
 
@@ -114,7 +113,9 @@ export default function DashboardPage() {
           price = parseFloat(priceData.mid)
           setCurrentPrice(price)
         } catch {
-          price = 1.0850 // Fallback
+          setError('Cannot analyze without price data. Configure broker first.')
+          setIsAnalyzing(false)
+          return
         }
       }
 

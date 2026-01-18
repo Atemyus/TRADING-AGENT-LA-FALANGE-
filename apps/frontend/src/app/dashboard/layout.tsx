@@ -11,8 +11,10 @@ import {
   Menu,
   Bot,
   Brain,
+  AlertCircle,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { analyticsApi } from '@/lib/api'
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -28,6 +30,31 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname()
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [accountData, setAccountData] = useState<{ balance: number; todayPnl: number } | null>(null)
+  const [isConnected, setIsConnected] = useState(false)
+  const [connectionError, setConnectionError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const fetchAccountData = async () => {
+      try {
+        const data = await analyticsApi.getAccountOverview()
+        setAccountData({
+          balance: data.balance || 0,
+          todayPnl: data.daily_pnl || 0,
+        })
+        setIsConnected(true)
+        setConnectionError(null)
+      } catch {
+        setIsConnected(false)
+        setConnectionError('Unable to connect to backend')
+        setAccountData(null)
+      }
+    }
+
+    fetchAccountData()
+    const interval = setInterval(fetchAccountData, 30000) // Update every 30s
+    return () => clearInterval(interval)
+  }, [])
 
   return (
     <div className="min-h-screen flex">
@@ -81,10 +108,10 @@ export default function DashboardLayout({
         {/* Status indicator */}
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-dark-700/50">
           <div className="flex items-center gap-3 px-4 py-3 bg-dark-800/50 rounded-lg">
-            <div className="w-2 h-2 rounded-full bg-neon-green animate-pulse" />
+            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-neon-green animate-pulse' : 'bg-neon-red'}`} />
             <div className="flex-1">
-              <p className="text-sm font-medium">System Online</p>
-              <p className="text-xs text-dark-400">Connected to broker</p>
+              <p className="text-sm font-medium">{isConnected ? 'System Online' : 'Disconnected'}</p>
+              <p className="text-xs text-dark-400">{isConnected ? 'Connected to broker' : 'Configure broker in Settings'}</p>
             </div>
           </div>
         </div>
@@ -113,22 +140,36 @@ export default function DashboardLayout({
               <div className="flex items-center gap-6 mr-4">
                 <div>
                   <p className="text-xs text-dark-400">Balance</p>
-                  <p className="font-mono font-bold">$10,000.00</p>
+                  <p className="font-mono font-bold">
+                    {accountData ? `$${accountData.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs text-dark-400">Today P&L</p>
-                  <p className="font-mono font-bold pnl-positive">+$125.50</p>
+                  <p className={`font-mono font-bold ${accountData && accountData.todayPnl >= 0 ? 'pnl-positive' : 'pnl-negative'}`}>
+                    {accountData ? `${accountData.todayPnl >= 0 ? '+' : ''}$${accountData.todayPnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+                  </p>
                 </div>
               </div>
 
               {/* Notifications */}
               <button className="relative p-2 hover:bg-dark-800 rounded-lg transition-colors">
                 <Bell size={20} />
-                <span className="absolute top-1 right-1 w-2 h-2 bg-neon-red rounded-full" />
+                {connectionError && <span className="absolute top-1 right-1 w-2 h-2 bg-neon-red rounded-full" />}
               </button>
             </div>
           </div>
         </header>
+
+        {/* Connection error banner */}
+        {connectionError && (
+          <div className="mx-6 mt-4 p-4 bg-dark-800/80 border border-amber-500/30 rounded-lg flex items-center gap-3">
+            <AlertCircle size={20} className="text-amber-500" />
+            <div className="flex-1">
+              <p className="text-sm text-amber-400">{connectionError}. Configure broker in Settings.</p>
+            </div>
+          </div>
+        )}
 
         {/* Page content */}
         <main className="p-6">
