@@ -1,16 +1,14 @@
 'use client'
 
 import { motion, AnimatePresence } from 'framer-motion'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
-  Settings,
   Server,
   Brain,
   Shield,
   Bell,
   ChevronRight,
   Check,
-  X,
   Eye,
   EyeOff,
   TestTube,
@@ -19,6 +17,7 @@ import {
   CheckCircle,
   Info,
 } from 'lucide-react'
+import { settingsApi, type BrokerSettingsData } from '@/lib/api'
 
 // Broker configurations
 const BROKERS = [
@@ -134,30 +133,133 @@ type SettingsSection = 'broker' | 'ai' | 'risk' | 'notifications'
 
 export default function SettingsPage() {
   const [activeSection, setActiveSection] = useState<SettingsSection>('broker')
-  const [selectedBroker, setSelectedBroker] = useState<string>('oanda')
+  const [selectedBroker, setSelectedBroker] = useState<string>('metatrader')
   const [brokerCredentials, setBrokerCredentials] = useState<Record<string, string>>({})
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({})
   const [testingConnection, setTestingConnection] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle')
+  const [connectionMessage, setConnectionMessage] = useState<string>('')
   const [aiProviders, setAiProviders] = useState<Record<string, { enabled: boolean; key: string }>>({})
   const [saving, setSaving] = useState(false)
+  const [saveMessage, setSaveMessage] = useState<string>('')
+  const [isLoading, setIsLoading] = useState(true)
+
+  // Load settings on mount
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const settings = await settingsApi.getAll()
+
+        // Set broker type
+        setSelectedBroker(settings.broker.broker_type || 'metatrader')
+
+        // Map broker settings to credentials
+        const creds: Record<string, string> = {}
+        if (settings.broker.broker_type === 'metatrader') {
+          creds.meta_api_token = settings.broker.metaapi_token || ''
+          creds.account_id = settings.broker.metaapi_account_id || ''
+          creds.platform = settings.broker.metaapi_platform || 'mt5'
+        } else if (settings.broker.broker_type === 'oanda') {
+          creds.api_key = settings.broker.oanda_api_key || ''
+          creds.account_id = settings.broker.oanda_account_id || ''
+          creds.environment = settings.broker.oanda_environment || 'practice'
+        } else if (settings.broker.broker_type === 'ig') {
+          creds.api_key = settings.broker.ig_api_key || ''
+          creds.username = settings.broker.ig_username || ''
+          creds.password = settings.broker.ig_password || ''
+          creds.account_id = settings.broker.ig_account_id || ''
+          creds.environment = settings.broker.ig_environment || 'demo'
+        } else if (settings.broker.broker_type === 'alpaca') {
+          creds.api_key = settings.broker.alpaca_api_key || ''
+          creds.secret_key = settings.broker.alpaca_secret_key || ''
+          creds.paper = settings.broker.alpaca_paper ? 'true' : 'false'
+        }
+        setBrokerCredentials(creds)
+
+        // Set AI providers
+        const aiSettings: Record<string, { enabled: boolean; key: string }> = {}
+        if (settings.ai.aiml_api_key) {
+          aiSettings.aiml = { enabled: true, key: settings.ai.aiml_api_key }
+        }
+        if (settings.ai.openai_api_key) {
+          aiSettings.openai = { enabled: true, key: settings.ai.openai_api_key }
+        }
+        if (settings.ai.anthropic_api_key) {
+          aiSettings.anthropic = { enabled: true, key: settings.ai.anthropic_api_key }
+        }
+        setAiProviders(aiSettings)
+
+      } catch (error) {
+        console.error('Failed to load settings:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    loadSettings()
+  }, [])
 
   const handleTestConnection = async () => {
     setTestingConnection(true)
     setConnectionStatus('idle')
+    setConnectionMessage('')
 
-    // Simulate API test
-    await new Promise(resolve => setTimeout(resolve, 2000))
+    try {
+      // First save the current settings
+      await handleSaveBroker()
 
-    // Random success/failure for demo
-    setConnectionStatus(Math.random() > 0.3 ? 'success' : 'error')
-    setTestingConnection(false)
+      // Then test the connection
+      const result = await settingsApi.testBroker()
+      setConnectionStatus('success')
+      setConnectionMessage(result.message + (result.account_name ? ` (${result.account_name})` : ''))
+    } catch (error) {
+      setConnectionStatus('error')
+      setConnectionMessage(error instanceof Error ? error.message : 'Connection failed')
+    } finally {
+      setTestingConnection(false)
+    }
+  }
+
+  const handleSaveBroker = async () => {
+    setSaving(true)
+    setSaveMessage('')
+
+    try {
+      // Build broker settings based on selected broker
+      const brokerData: BrokerSettingsData = {
+        broker_type: selectedBroker,
+      }
+
+      if (selectedBroker === 'metatrader') {
+        brokerData.metaapi_token = brokerCredentials.meta_api_token
+        brokerData.metaapi_account_id = brokerCredentials.account_id
+        brokerData.metaapi_platform = brokerCredentials.platform || 'mt5'
+      } else if (selectedBroker === 'oanda') {
+        brokerData.oanda_api_key = brokerCredentials.api_key
+        brokerData.oanda_account_id = brokerCredentials.account_id
+        brokerData.oanda_environment = brokerCredentials.environment || 'practice'
+      } else if (selectedBroker === 'ig') {
+        brokerData.ig_api_key = brokerCredentials.api_key
+        brokerData.ig_username = brokerCredentials.username
+        brokerData.ig_password = brokerCredentials.password
+        brokerData.ig_account_id = brokerCredentials.account_id
+        brokerData.ig_environment = brokerCredentials.environment || 'demo'
+      } else if (selectedBroker === 'alpaca') {
+        brokerData.alpaca_api_key = brokerCredentials.api_key
+        brokerData.alpaca_secret_key = brokerCredentials.secret_key
+        brokerData.alpaca_paper = brokerCredentials.paper === 'true'
+      }
+
+      const result = await settingsApi.updateBroker(brokerData)
+      setSaveMessage(result.message)
+    } catch (error) {
+      setSaveMessage(error instanceof Error ? error.message : 'Failed to save')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleSave = async () => {
-    setSaving(true)
-    await new Promise(resolve => setTimeout(resolve, 1500))
-    setSaving(false)
+    await handleSaveBroker()
   }
 
   const sections = [
@@ -223,9 +325,11 @@ export default function SettingsPage() {
                 setShowPasswords={setShowPasswords}
                 testingConnection={testingConnection}
                 connectionStatus={connectionStatus}
+                connectionMessage={connectionMessage}
                 onTestConnection={handleTestConnection}
                 onSave={handleSave}
                 saving={saving}
+                saveMessage={saveMessage}
               />
             )}
 
@@ -265,9 +369,11 @@ function BrokerSettings({
   setShowPasswords,
   testingConnection,
   connectionStatus,
+  connectionMessage,
   onTestConnection,
   onSave,
   saving,
+  saveMessage,
 }: {
   brokers: typeof BROKERS
   selectedBroker: string
@@ -278,9 +384,11 @@ function BrokerSettings({
   setShowPasswords: (show: Record<string, boolean>) => void
   testingConnection: boolean
   connectionStatus: 'idle' | 'success' | 'error'
+  connectionMessage: string
   onTestConnection: () => void
   onSave: () => void
   saving: boolean
+  saveMessage: string
 }) {
   const broker = brokers.find(b => b.id === selectedBroker)
 
@@ -396,17 +504,28 @@ function BrokerSettings({
                 {connectionStatus === 'success' ? (
                   <>
                     <CheckCircle size={20} />
-                    <span>Connection successful! Broker is ready.</span>
+                    <span>{connectionMessage || 'Connection successful! Broker is ready.'}</span>
                   </>
                 ) : (
                   <>
                     <AlertCircle size={20} />
-                    <span>Connection failed. Please check your credentials.</span>
+                    <span>{connectionMessage || 'Connection failed. Please check your credentials.'}</span>
                   </>
                 )}
               </motion.div>
             )}
           </AnimatePresence>
+
+          {/* Save Status */}
+          {saveMessage && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="mt-2 text-sm text-neon-green"
+            >
+              {saveMessage}
+            </motion.div>
+          )}
 
           {/* Actions */}
           <div className="flex gap-3 mt-6">

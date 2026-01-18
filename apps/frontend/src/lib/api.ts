@@ -366,6 +366,127 @@ export const botApi = {
   },
 }
 
+// ============ Settings API ============
+
+export interface BrokerSettingsData {
+  broker_type: string
+  oanda_api_key?: string
+  oanda_account_id?: string
+  oanda_environment?: string
+  metaapi_token?: string
+  metaapi_account_id?: string
+  metaapi_platform?: string
+  ig_api_key?: string
+  ig_username?: string
+  ig_password?: string
+  ig_account_id?: string
+  ig_environment?: string
+  alpaca_api_key?: string
+  alpaca_secret_key?: string
+  alpaca_paper?: boolean
+}
+
+export interface AISettingsData {
+  aiml_api_key?: string
+  openai_api_key?: string
+  anthropic_api_key?: string
+  google_api_key?: string
+  groq_api_key?: string
+  mistral_api_key?: string
+}
+
+export interface RiskSettingsData {
+  max_positions: number
+  max_daily_trades: number
+  max_daily_loss_percent: number
+  risk_per_trade: number
+  default_leverage: number
+  trading_enabled: boolean
+}
+
+export interface NotificationSettingsData {
+  telegram_enabled: boolean
+  telegram_bot_token?: string
+  telegram_chat_id?: string
+  discord_enabled: boolean
+  discord_webhook?: string
+}
+
+export interface AllSettingsData {
+  broker: BrokerSettingsData
+  ai: AISettingsData
+  risk: RiskSettingsData
+  notifications: NotificationSettingsData
+}
+
+export const settingsApi = {
+  /**
+   * Get all settings
+   */
+  getAll: async (): Promise<AllSettingsData> => {
+    return fetchApi('/api/v1/settings')
+  },
+
+  /**
+   * Update all settings
+   */
+  updateAll: async (settings: AllSettingsData): Promise<{ status: string; message: string }> => {
+    return fetchApi('/api/v1/settings', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    })
+  },
+
+  /**
+   * Update broker settings
+   */
+  updateBroker: async (broker: BrokerSettingsData): Promise<{ status: string; message: string }> => {
+    return fetchApi('/api/v1/settings/broker', {
+      method: 'PUT',
+      body: JSON.stringify(broker),
+    })
+  },
+
+  /**
+   * Update AI settings
+   */
+  updateAI: async (ai: AISettingsData): Promise<{ status: string; message: string }> => {
+    return fetchApi('/api/v1/settings/ai', {
+      method: 'PUT',
+      body: JSON.stringify(ai),
+    })
+  },
+
+  /**
+   * Update risk settings
+   */
+  updateRisk: async (risk: RiskSettingsData): Promise<{ status: string; message: string }> => {
+    return fetchApi('/api/v1/settings/risk', {
+      method: 'PUT',
+      body: JSON.stringify(risk),
+    })
+  },
+
+  /**
+   * Update notification settings
+   */
+  updateNotifications: async (notifications: NotificationSettingsData): Promise<{ status: string; message: string }> => {
+    return fetchApi('/api/v1/settings/notifications', {
+      method: 'PUT',
+      body: JSON.stringify(notifications),
+    })
+  },
+
+  /**
+   * Test broker connection
+   */
+  testBroker: async (): Promise<{ status: string; message: string; account_name?: string }> => {
+    return fetchApi('/api/v1/settings/test-broker', {
+      method: 'POST',
+    })
+  },
+}
+
 // ============ Health Check ============
 
 export const healthCheck = async (): Promise<{ status: string; version: string }> => {
@@ -379,5 +500,6 @@ export default {
   analytics: analyticsApi,
   trading: tradingApi,
   bot: botApi,
+  settings: settingsApi,
   healthCheck,
 }
