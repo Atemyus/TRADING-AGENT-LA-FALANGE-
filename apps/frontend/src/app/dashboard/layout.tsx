@@ -5,8 +5,6 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard,
-  LineChart,
-  Wallet,
   Settings,
   Activity,
   Bell,
@@ -17,12 +15,10 @@ import {
 import { useState } from 'react'
 
 const navItems = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/bot', label: 'Auto Bot', icon: Bot },
-  { href: '/ai-analysis', label: 'AI Analysis', icon: Brain },
-  { href: '/positions', label: 'Positions', icon: Wallet },
-  { href: '/analytics', label: 'Analytics', icon: LineChart },
-  { href: '/settings', label: 'Settings', icon: Settings },
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/dashboard/bot', label: 'Auto Bot', icon: Bot },
+  { href: '/dashboard/ai-analysis', label: 'AI Analysis', icon: Brain },
+  { href: '/dashboard/settings', label: 'Settings', icon: Settings },
 ]
 
 export default function DashboardLayout({
