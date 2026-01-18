@@ -1,10 +1,12 @@
 /**
  * API Client for La Falange Trading Platform
+ * Connects to real backend endpoints for live data
  */
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
-// Types
+// ============ Types ============
+
 export interface AIVote {
   provider: string
   model: string
@@ -39,57 +41,97 @@ export interface ConsensusResult {
   processing_time_ms: number
   providers_used: string[]
   failed_providers: string[]
-  // Optional fields for alternative API response formats
-  modelsAgree?: number
-  totalModels?: number
-  agreementRatio?: number
-  isStrongSignal?: boolean
-  avgStopLoss?: number
-  avgTakeProfit?: number
-  avgBreakEvenTrigger?: number
-  trailingStopConsensus?: {
-    enabled: boolean
-    distancePips: number
-  }
-  votingBreakdown?: {
-    LONG: number
-    SHORT: number
-    HOLD: number
-  }
-  modelVotes?: Record<string, {
-    direction: string
-    confidence: number
-    latencyMs?: number
-  }>
-  individualResults?: AIVote[]
 }
 
-export interface AnalysisRequest {
+export interface AccountSummary {
+  account_id: string
+  balance: string
+  equity: string
+  margin_used: string
+  margin_available: string
+  unrealized_pnl: string
+  realized_pnl_today: string
+  currency: string
+  leverage: number
+  margin_level: string | null
+  open_positions: number
+  pending_orders: number
+}
+
+export interface Position {
+  position_id: string
   symbol: string
-  timeframes?: string[]
-  chartImage?: string
+  side: string
+  size: string
+  entry_price: string
+  current_price: string
+  unrealized_pnl: string
+  unrealized_pnl_percent: string
+  margin_used: string
+  leverage: number
+  stop_loss: string | null
+  take_profit: string | null
+  opened_at: string
 }
 
-export interface AnalysisResponse {
-  direction: string
-  confidence: number
-  entryPrice?: number
-  stopLoss?: number
-  takeProfit?: number[]
-  breakEvenTrigger?: number
-  trailingStop?: {
-    enabled: boolean
-    activationPrice: number
-    trailDistance: number
-  }
-  riskRewardRatio?: number
-  reasoning: string
-  patternsDetected: string[]
-  modelsUsed: string[]
-  consensusVotes: Record<string, string>
+export interface PositionsResponse {
+  positions: Position[]
+  total_unrealized_pnl: string
+  total_margin_used: string
 }
 
-// API Client
+export interface PriceData {
+  symbol: string
+  bid: string
+  ask: string
+  mid: string
+  spread: string
+  timestamp: string
+}
+
+export interface PerformanceMetrics {
+  total_trades: number
+  winning_trades: number
+  losing_trades: number
+  win_rate: string
+  profit_factor: string
+  total_pnl: string
+  average_win: string
+  average_loss: string
+  largest_win: string
+  largest_loss: string
+  max_drawdown: string
+  max_drawdown_percent: string
+  expectancy: string
+  average_hold_time: string
+}
+
+export interface AIServiceStatus {
+  total_providers: number
+  active_providers: number
+  disabled_providers: number
+  consensus_method: string
+  min_confidence: number
+  min_agreement: number
+  providers: Array<{
+    name: string
+    healthy: boolean
+    model: string
+  }>
+}
+
+export interface BotStatus {
+  is_running: boolean
+  mode: string
+  current_symbol: string | null
+  last_analysis: string | null
+  trades_today: number
+  pnl_today: string
+  uptime_seconds: number
+}
+
+// ============ API Client ============
+
 async function fetchApi<T>(
   endpoint: string,
   options: RequestInit = {}
@@ -112,89 +154,184 @@ async function fetchApi<T>(
   return response.json()
 }
 
-// AI Analysis API
+// ============ AI Analysis API ============
+
 export const aiApi = {
-  // Analyze a single chart
-  analyzeChart: async (request: AnalysisRequest): Promise<AnalysisResponse> => {
-    return fetchApi('/api/v1/ai/analyze-chart', {
-      method: 'POST',
-      body: JSON.stringify({
-        symbol: request.symbol,
-        timeframes: request.timeframes || ['1H'],
-        chart_image: request.chartImage,
-        request_sl_tp_be_ts: true,
-      }),
-    })
-  },
-
-  // Analyze multiple timeframes
-  analyzeMultiTimeframe: async (
+  /**
+   * Run AI market analysis with multi-model consensus
+   * This calls the 6 AIML models and returns aggregated results
+   */
+  analyze: async (
     symbol: string,
-    chartImages: Record<string, string>
-  ): Promise<AnalysisResponse> => {
-    return fetchApi('/api/v1/ai/analyze-multi-timeframe', {
+    currentPrice: number,
+    timeframe: string = '5m',
+    mode: 'quick' | 'standard' | 'premium' = 'standard'
+  ): Promise<ConsensusResult> => {
+    return fetchApi('/api/v1/ai/analyze', {
       method: 'POST',
       body: JSON.stringify({
-        symbol,
-        chart_images: chartImages,
-        request_sl_tp_be_ts: true,
+        symbol: symbol.replace('/', '_'),
+        timeframe,
+        current_price: currentPrice,
+        mode,
+        indicators: {},
       }),
     })
   },
 
-  // Get consensus from AI models
-  getConsensus: async (symbol: string, timeframe: string = '1H'): Promise<ConsensusResult> => {
-    return fetchApi(`/api/v1/ai/consensus?symbol=${encodeURIComponent(symbol)}&timeframe=${timeframe}`)
+  /**
+   * Get AI service status and active providers
+   */
+  getStatus: async (): Promise<AIServiceStatus> => {
+    return fetchApi('/api/v1/ai/status')
   },
 
-  // Quick analysis (text-based, no chart)
-  quickAnalysis: async (symbol: string): Promise<ConsensusResult> => {
-    return fetchApi(`/api/v1/ai/quick-analysis?symbol=${encodeURIComponent(symbol)}`)
+  /**
+   * Get available AI providers
+   */
+  getProviders: async () => {
+    return fetchApi('/api/v1/ai/providers')
+  },
+
+  /**
+   * Health check for AI providers
+   */
+  healthCheck: async () => {
+    return fetchApi('/api/v1/ai/health')
   },
 }
 
-// Trading API
-export const tradingApi = {
-  // Get account info
-  getAccount: async () => {
-    return fetchApi('/api/v1/trading/account')
+// ============ Analytics API ============
+
+export const analyticsApi = {
+  /**
+   * Get account summary with balance, equity, margin
+   */
+  getAccount: async (): Promise<AccountSummary> => {
+    return fetchApi('/api/v1/analytics/account')
   },
 
-  // Get open positions
-  getPositions: async () => {
+  /**
+   * Get performance metrics (win rate, P&L, etc.)
+   */
+  getPerformance: async (): Promise<PerformanceMetrics> => {
+    return fetchApi('/api/v1/analytics/performance')
+  },
+
+  /**
+   * Get technical indicators for a symbol
+   */
+  getIndicators: async (symbol: string, timeframe: string = 'M15') => {
+    return fetchApi(`/api/v1/analytics/indicators/${symbol.replace('/', '_')}?timeframe=${timeframe}`)
+  },
+
+  /**
+   * Get full technical analysis
+   */
+  getAnalysis: async (symbol: string, timeframe: string = 'M15') => {
+    return fetchApi(`/api/v1/analytics/analysis/${symbol.replace('/', '_')}?timeframe=${timeframe}`)
+  },
+}
+
+// ============ Trading API ============
+
+export const tradingApi = {
+  /**
+   * Get current price for a symbol
+   */
+  getPrice: async (symbol: string): Promise<PriceData> => {
+    return fetchApi(`/api/v1/trading/price/${symbol.replace('/', '_')}`)
+  },
+
+  /**
+   * Get prices for multiple symbols
+   */
+  getPrices: async (symbols: string[]): Promise<{ prices: PriceData[] }> => {
+    const symbolsStr = symbols.map(s => s.replace('/', '_')).join(',')
+    return fetchApi(`/api/v1/trading/prices?symbols=${symbolsStr}`)
+  },
+
+  /**
+   * Get all open positions
+   */
+  getPositions: async (): Promise<PositionsResponse> => {
     return fetchApi('/api/v1/positions')
   },
 
-  // Place order
+  /**
+   * Place a new order
+   */
   placeOrder: async (order: {
     symbol: string
-    side: 'BUY' | 'SELL'
-    units: number
-    stopLoss?: number
-    takeProfit?: number
+    side: 'buy' | 'sell'
+    order_type?: 'market' | 'limit' | 'stop'
+    size: number
+    price?: number
+    stop_loss?: number
+    take_profit?: number
+    leverage?: number
   }) => {
     return fetchApi('/api/v1/trading/orders', {
       method: 'POST',
-      body: JSON.stringify(order),
+      body: JSON.stringify({
+        ...order,
+        symbol: order.symbol.replace('/', '_'),
+      }),
     })
   },
 
-  // Close position
-  closePosition: async (positionId: string) => {
-    return fetchApi(`/api/v1/positions/${positionId}/close`, {
-      method: 'POST',
+  /**
+   * Close a position
+   */
+  closePosition: async (symbol: string) => {
+    return fetchApi(`/api/v1/positions/${symbol.replace('/', '_')}`, {
+      method: 'DELETE',
+    })
+  },
+
+  /**
+   * Modify position SL/TP
+   */
+  modifyPosition: async (symbol: string, stopLoss?: number, takeProfit?: number) => {
+    return fetchApi(`/api/v1/positions/${symbol.replace('/', '_')}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        stop_loss: stopLoss,
+        take_profit: takeProfit,
+      }),
+    })
+  },
+
+  /**
+   * Get pending orders
+   */
+  getOrders: async () => {
+    return fetchApi('/api/v1/trading/orders')
+  },
+
+  /**
+   * Cancel an order
+   */
+  cancelOrder: async (orderId: string) => {
+    return fetchApi(`/api/v1/trading/orders/${orderId}`, {
+      method: 'DELETE',
     })
   },
 }
 
-// Bot Control API
+// ============ Bot Control API ============
+
 export const botApi = {
-  // Get bot status
-  getStatus: async () => {
+  /**
+   * Get bot status
+   */
+  getStatus: async (): Promise<BotStatus> => {
     return fetchApi('/api/v1/bot/status')
   },
 
-  // Start bot
+  /**
+   * Start the trading bot
+   */
   start: async (config?: Record<string, unknown>) => {
     return fetchApi('/api/v1/bot/start', {
       method: 'POST',
@@ -202,29 +339,44 @@ export const botApi = {
     })
   },
 
-  // Stop bot
+  /**
+   * Stop the trading bot
+   */
   stop: async () => {
     return fetchApi('/api/v1/bot/stop', {
       method: 'POST',
     })
   },
 
-  // Update config
+  /**
+   * Update bot configuration
+   */
   updateConfig: async (config: Record<string, unknown>) => {
     return fetchApi('/api/v1/bot/config', {
       method: 'PUT',
       body: JSON.stringify(config),
     })
   },
+
+  /**
+   * Get bot configuration
+   */
+  getConfig: async () => {
+    return fetchApi('/api/v1/bot/config')
+  },
 }
 
-// Health check
+// ============ Health Check ============
+
 export const healthCheck = async (): Promise<{ status: string; version: string }> => {
   return fetchApi('/health')
 }
 
+// ============ Default Export ============
+
 export default {
   ai: aiApi,
+  analytics: analyticsApi,
   trading: tradingApi,
   bot: botApi,
   healthCheck,

@@ -1,7 +1,7 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import {
   TrendingUp,
@@ -9,9 +9,10 @@ import {
   Activity,
   Target,
   DollarSign,
-  Percent,
   Zap,
   BarChart3,
+  RefreshCw,
+  AlertCircle,
 } from 'lucide-react'
 
 import { PerformanceChart } from '@/components/charts/PerformanceChart'
@@ -20,6 +21,8 @@ import { PriceTicker } from '@/components/trading/PriceTicker'
 import { PositionsTable } from '@/components/trading/PositionsTable'
 import { OrderHistory } from '@/components/trading/OrderHistory'
 import { StatCard } from '@/components/common/StatCard'
+import { aiApi, analyticsApi, tradingApi } from '@/lib/api'
+import type { AccountSummary, ConsensusResult, PerformanceMetrics } from '@/lib/api'
 
 // Dynamic import for TradingView chart to avoid SSR issues
 const TradingViewChart = dynamic(
@@ -46,12 +49,107 @@ const itemVariants = {
 export default function DashboardPage() {
   const [selectedSymbol, setSelectedSymbol] = useState('EUR/USD')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [consensusResult, setConsensusResult] = useState<ConsensusResult | null>(null)
+  const [account, setAccount] = useState<AccountSummary | null>(null)
+  const [performance, setPerformance] = useState<PerformanceMetrics | null>(null)
+  const [currentPrice, setCurrentPrice] = useState<number>(0)
+  const [error, setError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
+  // Fetch account data
+  const fetchAccountData = useCallback(async () => {
+    try {
+      const [accountData, performanceData] = await Promise.all([
+        analyticsApi.getAccount(),
+        analyticsApi.getPerformance(),
+      ])
+      setAccount(accountData)
+      setPerformance(performanceData)
+      setError(null)
+    } catch (err) {
+      console.error('Failed to fetch account data:', err)
+      setError('Could not connect to backend. Using demo mode.')
+    }
+  }, [])
+
+  // Fetch current price
+  const fetchPrice = useCallback(async () => {
+    try {
+      const priceData = await tradingApi.getPrice(selectedSymbol)
+      setCurrentPrice(parseFloat(priceData.mid))
+    } catch (err) {
+      console.error('Failed to fetch price:', err)
+      // Use a fallback price for demo
+      setCurrentPrice(1.0850)
+    }
+  }, [selectedSymbol])
+
+  // Initial data load
+  useEffect(() => {
+    const loadData = async () => {
+      setIsLoading(true)
+      await Promise.all([fetchAccountData(), fetchPrice()])
+      setIsLoading(false)
+    }
+    loadData()
+  }, [fetchAccountData, fetchPrice])
+
+  // Refresh price every 5 seconds
+  useEffect(() => {
+    const interval = setInterval(fetchPrice, 5000)
+    return () => clearInterval(interval)
+  }, [fetchPrice])
+
+  // Run AI analysis - calls real backend
   const handleAnalyze = async () => {
     setIsAnalyzing(true)
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 3000))
-    setIsAnalyzing(false)
+    setError(null)
+
+    try {
+      // Ensure we have a current price
+      let price = currentPrice
+      if (!price || price === 0) {
+        try {
+          const priceData = await tradingApi.getPrice(selectedSymbol)
+          price = parseFloat(priceData.mid)
+          setCurrentPrice(price)
+        } catch {
+          price = 1.0850 // Fallback
+        }
+      }
+
+      // Call the real AI analysis endpoint
+      const result = await aiApi.analyze(
+        selectedSymbol,
+        price,
+        '5m',
+        'standard'
+      )
+
+      setConsensusResult(result)
+    } catch (err) {
+      console.error('AI Analysis failed:', err)
+      setError(`Analysis failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    } finally {
+      setIsAnalyzing(false)
+    }
+  }
+
+  // Format currency
+  const formatCurrency = (value: string | number | undefined) => {
+    if (!value) return '$0.00'
+    const num = typeof value === 'string' ? parseFloat(value) : value
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+    }).format(num)
+  }
+
+  // Format percentage
+  const formatPercent = (value: string | number | undefined) => {
+    if (!value) return '0%'
+    const num = typeof value === 'string' ? parseFloat(value) : value
+    return `${num.toFixed(1)}%`
   }
 
   return (
@@ -61,40 +159,58 @@ export default function DashboardPage() {
       animate="visible"
       className="space-y-6"
     >
+      {/* Error Banner */}
+      {error && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-neon-yellow/10 border border-neon-yellow/30 rounded-lg p-4 flex items-center gap-3"
+        >
+          <AlertCircle className="text-neon-yellow" size={20} />
+          <span className="text-sm">{error}</span>
+          <button
+            onClick={fetchAccountData}
+            className="ml-auto p-2 hover:bg-dark-700 rounded-lg transition-colors"
+          >
+            <RefreshCw size={16} />
+          </button>
+        </motion.div>
+      )}
+
       {/* Price Ticker Row */}
       <motion.div variants={itemVariants}>
         <PriceTicker selectedSymbol={selectedSymbol} onSelect={setSelectedSymbol} />
       </motion.div>
 
-      {/* Stats Row */}
+      {/* Stats Row - Real Data */}
       <motion.div
         variants={itemVariants}
         className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
       >
         <StatCard
           label="Account Balance"
-          value="$10,245.50"
-          change="+$245.50 today"
-          isPositive
+          value={account ? formatCurrency(account.balance) : isLoading ? 'Loading...' : '$0.00'}
+          change={account ? `${formatCurrency(account.realized_pnl_today)} today` : ''}
+          isPositive={account ? parseFloat(account.realized_pnl_today) >= 0 : true}
           icon={DollarSign}
         />
         <StatCard
-          label="Today's P&L"
-          value="+$125.50"
-          change="+1.26%"
-          isPositive
-          icon={TrendingUp}
+          label="Unrealized P&L"
+          value={account ? formatCurrency(account.unrealized_pnl) : isLoading ? 'Loading...' : '$0.00'}
+          change={account ? `${account.open_positions} positions` : ''}
+          isPositive={account ? parseFloat(account.unrealized_pnl) >= 0 : true}
+          icon={account && parseFloat(account.unrealized_pnl) >= 0 ? TrendingUp : TrendingDown}
         />
         <StatCard
           label="Open Positions"
-          value="3"
-          subtext="$4,629 margin used"
+          value={account ? String(account.open_positions) : isLoading ? '...' : '0'}
+          subtext={account ? `${formatCurrency(account.margin_used)} margin` : ''}
           icon={Activity}
         />
         <StatCard
           label="Win Rate"
-          value="68%"
-          subtext="Last 50 trades"
+          value={performance ? formatPercent(performance.win_rate) : isLoading ? '...' : '0%'}
+          subtext={performance ? `${performance.total_trades} trades` : ''}
           icon={Target}
         />
       </motion.div>
@@ -117,9 +233,13 @@ export default function DashboardPage() {
           <PerformanceChart height={350} />
         </motion.div>
 
-        {/* AI Consensus Panel */}
+        {/* AI Consensus Panel - Now with real data */}
         <motion.div variants={itemVariants}>
-          <AIConsensusPanel isLoading={isAnalyzing} onAnalyze={handleAnalyze} />
+          <AIConsensusPanel
+            result={consensusResult}
+            isLoading={isAnalyzing}
+            onAnalyze={handleAnalyze}
+          />
         </motion.div>
       </div>
 
@@ -128,7 +248,11 @@ export default function DashboardPage() {
         {/* Positions Table */}
         <motion.div variants={itemVariants}>
           <PositionsTable
-            onClose={(id) => console.log('Close position:', id)}
+            onClose={(id) => {
+              tradingApi.closePosition(id).then(() => {
+                fetchAccountData()
+              }).catch(console.error)
+            }}
             onModify={(id) => console.log('Modify position:', id)}
           />
         </motion.div>
@@ -139,7 +263,7 @@ export default function DashboardPage() {
         </motion.div>
       </div>
 
-      {/* Quick Stats Footer */}
+      {/* Quick Stats Footer - Real Data */}
       <motion.div
         variants={itemVariants}
         className="grid grid-cols-2 md:grid-cols-4 gap-4"
@@ -149,8 +273,8 @@ export default function DashboardPage() {
             <Zap size={20} className="text-neon-purple" />
           </div>
           <div>
-            <p className="text-xs text-dark-400">AI Analyses</p>
-            <p className="font-mono font-bold">127</p>
+            <p className="text-xs text-dark-400">Symbol</p>
+            <p className="font-mono font-bold">{selectedSymbol}</p>
           </div>
         </div>
         <div className="card p-4 flex items-center gap-3">
@@ -159,7 +283,7 @@ export default function DashboardPage() {
           </div>
           <div>
             <p className="text-xs text-dark-400">Total Trades</p>
-            <p className="font-mono font-bold">89</p>
+            <p className="font-mono font-bold">{performance?.total_trades ?? 0}</p>
           </div>
         </div>
         <div className="card p-4 flex items-center gap-3">
@@ -168,7 +292,9 @@ export default function DashboardPage() {
           </div>
           <div>
             <p className="text-xs text-dark-400">Best Trade</p>
-            <p className="font-mono font-bold text-neon-green">+$342.00</p>
+            <p className="font-mono font-bold text-neon-green">
+              {performance ? formatCurrency(performance.largest_win) : '$0.00'}
+            </p>
           </div>
         </div>
         <div className="card p-4 flex items-center gap-3">
@@ -177,7 +303,9 @@ export default function DashboardPage() {
           </div>
           <div>
             <p className="text-xs text-dark-400">Worst Trade</p>
-            <p className="font-mono font-bold text-neon-red">-$128.50</p>
+            <p className="font-mono font-bold text-neon-red">
+              {performance ? formatCurrency(performance.largest_loss) : '$0.00'}
+            </p>
           </div>
         </div>
       </motion.div>

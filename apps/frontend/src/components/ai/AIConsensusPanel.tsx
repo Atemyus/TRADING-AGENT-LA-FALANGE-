@@ -24,58 +24,20 @@ interface AIConsensusPanelProps {
   onAnalyze?: () => void
 }
 
-// Provider icons/colors mapping
+// Provider icons/colors mapping for AIML models
 const providerStyles: Record<string, { color: string; icon: string }> = {
+  // AIML API Models (the 6 models we use)
+  aiml: { color: '#6366f1', icon: '🤖' },
+  chatgpt: { color: '#10a37f', icon: '💬' },
+  gemini: { color: '#4285f4', icon: '💎' },
+  deepseek: { color: '#0ea5e9', icon: '🔍' },
+  glm: { color: '#8b5cf6', icon: '🧪' },
+  grok: { color: '#ef4444', icon: '⚡' },
+  qwen: { color: '#f97316', icon: '🌟' },
+  // Fallbacks
   openai: { color: '#10a37f', icon: '🤖' },
   anthropic: { color: '#d4a27f', icon: '🧠' },
   google: { color: '#4285f4', icon: '💎' },
-  groq: { color: '#f55036', icon: '⚡' },
-  mistral: { color: '#ff7000', icon: '🌪️' },
-  ollama: { color: '#ffffff', icon: '🦙' },
-}
-
-// Demo consensus result
-const demoResult: ConsensusResult = {
-  direction: 'BUY',
-  confidence: 78.5,
-  should_trade: true,
-  total_votes: 8,
-  valid_votes: 7,
-  votes_buy: 5,
-  votes_sell: 1,
-  votes_hold: 1,
-  agreement_level: 'strong',
-  agreement_percentage: 71.4,
-  suggested_entry: '1.0892',
-  suggested_stop_loss: '1.0850',
-  suggested_take_profit: '1.0950',
-  risk_reward_ratio: 1.38,
-  key_factors: [
-    'RSI showing bullish divergence',
-    'Price above 200 EMA',
-    'London session momentum',
-    'Support at 1.0850 holding',
-  ],
-  risks: [
-    'USD strength on rate expectations',
-    'Low volume pre-market',
-  ],
-  reasoning_summary: 'Strong bullish consensus with 5/7 models recommending BUY based on technical momentum and support levels.',
-  votes: [
-    { provider: 'openai', model: 'gpt-4o', direction: 'BUY', confidence: 82, reasoning: 'Bullish divergence on RSI...', is_valid: true },
-    { provider: 'openai', model: 'gpt-4o-mini', direction: 'BUY', confidence: 75, reasoning: 'Trend continuation...', is_valid: true },
-    { provider: 'anthropic', model: 'claude-sonnet', direction: 'BUY', confidence: 85, reasoning: 'Strong support level...', is_valid: true },
-    { provider: 'anthropic', model: 'claude-haiku', direction: 'HOLD', confidence: 60, reasoning: 'Mixed signals...', is_valid: true },
-    { provider: 'google', model: 'gemini-flash', direction: 'BUY', confidence: 78, reasoning: 'Momentum building...', is_valid: true },
-    { provider: 'groq', model: 'llama3-70b', direction: 'BUY', confidence: 80, reasoning: 'Technical setup favorable...', is_valid: true },
-    { provider: 'mistral', model: 'mistral-large', direction: 'SELL', confidence: 65, reasoning: 'Resistance ahead...', is_valid: true },
-    { provider: 'ollama', model: 'llama3.1:8b', direction: 'BUY', confidence: 0, reasoning: 'Error: Connection refused', is_valid: false, error: 'Connection refused' },
-  ],
-  total_cost_usd: 0.0234,
-  total_tokens: 12500,
-  processing_time_ms: 3250,
-  providers_used: ['openai', 'anthropic', 'google', 'groq', 'mistral'],
-  failed_providers: ['ollama'],
 }
 
 function DirectionBadge({ direction }: { direction: string }) {
@@ -160,7 +122,7 @@ function VoteCard({ vote, index }: { vote: AIVote; index: number }) {
 }
 
 export function AIConsensusPanel({
-  result = demoResult,
+  result,
   isLoading = false,
   onAnalyze,
 }: AIConsensusPanelProps) {
