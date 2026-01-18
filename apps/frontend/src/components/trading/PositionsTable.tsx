@@ -34,55 +34,6 @@ interface PositionsTableProps {
   isLoading?: boolean
 }
 
-// Demo positions
-const demoPositions: Position[] = [
-  {
-    id: '1',
-    symbol: 'EUR/USD',
-    side: 'long',
-    size: '10,000',
-    entryPrice: '1.0875',
-    currentPrice: '1.0892',
-    pnl: 17.00,
-    pnlPercent: 0.16,
-    stopLoss: '1.0850',
-    takeProfit: '1.0950',
-    leverage: 30,
-    marginUsed: '$333.33',
-    openedAt: '2h ago',
-  },
-  {
-    id: '2',
-    symbol: 'GBP/JPY',
-    side: 'short',
-    size: '5,000',
-    entryPrice: '188.45',
-    currentPrice: '188.20',
-    pnl: 8.50,
-    pnlPercent: 0.13,
-    stopLoss: '189.00',
-    takeProfit: '187.50',
-    leverage: 20,
-    marginUsed: '$471.25',
-    openedAt: '45m ago',
-  },
-  {
-    id: '3',
-    symbol: 'US30',
-    side: 'long',
-    size: '1',
-    entryPrice: '38,250',
-    currentPrice: '38,150',
-    pnl: -100.00,
-    pnlPercent: -0.26,
-    stopLoss: '38,000',
-    takeProfit: '38,500',
-    leverage: 10,
-    marginUsed: '$3,825.00',
-    openedAt: '1d ago',
-  },
-]
-
 function PositionRow({ position, onClose, onModify }: { position: Position; onClose?: () => void; onModify?: () => void }) {
   const [showActions, setShowActions] = useState(false)
   const isPositive = position.pnl >= 0
@@ -178,7 +129,7 @@ function PositionRow({ position, onClose, onModify }: { position: Position; onCl
 }
 
 export function PositionsTable({
-  positions = demoPositions,
+  positions = [],
   onClose,
   onModify,
   isLoading = false,

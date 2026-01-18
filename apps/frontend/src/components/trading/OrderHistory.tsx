@@ -30,78 +30,6 @@ interface OrderHistoryProps {
   isLoading?: boolean
 }
 
-// Demo orders
-const demoOrders: Order[] = [
-  {
-    id: '1',
-    symbol: 'EUR/USD',
-    side: 'buy',
-    type: 'market',
-    size: '10,000',
-    price: '1.0875',
-    status: 'filled',
-    pnl: 45.50,
-    closedAt: '10:30 AM',
-    createdAt: 'Today',
-  },
-  {
-    id: '2',
-    symbol: 'GBP/USD',
-    side: 'sell',
-    type: 'limit',
-    size: '5,000',
-    price: '1.2680',
-    status: 'filled',
-    pnl: -22.30,
-    closedAt: '09:15 AM',
-    createdAt: 'Today',
-  },
-  {
-    id: '3',
-    symbol: 'USD/JPY',
-    side: 'buy',
-    type: 'market',
-    size: '20,000',
-    price: '149.50',
-    status: 'filled',
-    pnl: 78.00,
-    closedAt: 'Yesterday',
-    createdAt: 'Yesterday',
-  },
-  {
-    id: '4',
-    symbol: 'XAU/USD',
-    side: 'buy',
-    type: 'stop',
-    size: '1',
-    price: '2050.00',
-    status: 'cancelled',
-    createdAt: 'Yesterday',
-  },
-  {
-    id: '5',
-    symbol: 'US30',
-    side: 'sell',
-    type: 'market',
-    size: '2',
-    price: '38,200',
-    status: 'filled',
-    pnl: 150.00,
-    closedAt: '2 days ago',
-    createdAt: '2 days ago',
-  },
-  {
-    id: '6',
-    symbol: 'NAS100',
-    side: 'buy',
-    type: 'limit',
-    size: '1',
-    price: '17,400',
-    status: 'pending',
-    createdAt: '2 days ago',
-  },
-]
-
 const statusConfig = {
   filled: { icon: CheckCircle, color: 'text-neon-green', bg: 'bg-neon-green/20' },
   cancelled: { icon: XCircle, color: 'text-dark-400', bg: 'bg-dark-700' },
@@ -109,7 +37,7 @@ const statusConfig = {
   rejected: { icon: XCircle, color: 'text-neon-red', bg: 'bg-neon-red/20' },
 }
 
-export function OrderHistory({ orders = demoOrders, isLoading = false }: OrderHistoryProps) {
+export function OrderHistory({ orders = [], isLoading = false }: OrderHistoryProps) {
   const [filter, setFilter] = useState<'all' | 'filled' | 'pending' | 'cancelled'>('all')
 
   const filteredOrders = filter === 'all' ? orders : orders.filter((o) => o.status === filter)

@@ -25,35 +25,37 @@ interface PerformanceChartProps {
   height?: number
 }
 
-// Demo data for visualization
-const generateDemoData = (): PerformanceData[] => {
-  const data: PerformanceData[] = []
-  let balance = 10000
-  const now = new Date()
-
-  for (let i = 30; i >= 0; i--) {
-    const date = new Date(now)
-    date.setDate(date.getDate() - i)
-
-    // Simulate random P&L
-    const dailyPnl = (Math.random() - 0.45) * 200 // Slight positive bias
-    balance += dailyPnl
-
-    data.push({
-      date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      pnl: Math.round(dailyPnl * 100) / 100,
-      balance: Math.round(balance * 100) / 100,
-    })
-  }
-
-  return data
-}
-
 export function PerformanceChart({
-  data = generateDemoData(),
+  data = [],
   title = 'Performance',
   height = 300,
 }: PerformanceChartProps) {
+  // Show empty state if no data
+  if (data.length === 0) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="card p-6"
+      >
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2 rounded-lg bg-dark-700">
+            <TrendingUp className="w-5 h-5 text-dark-400" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold">{title}</h3>
+            <p className="text-sm text-dark-400">No data available</p>
+          </div>
+        </div>
+        <div className="flex items-center justify-center h-[200px] border border-dashed border-dark-700 rounded-lg">
+          <div className="text-center">
+            <Calendar className="w-12 h-12 mx-auto text-dark-500 mb-3" />
+            <p className="text-dark-400">Connect your broker to see performance data</p>
+          </div>
+        </div>
+      </motion.div>
+    )
+  }
   const totalPnL = data.reduce((sum, d) => sum + d.pnl, 0)
   const isPositive = totalPnL >= 0
   const startBalance = data[0]?.balance || 0
