@@ -20,7 +20,7 @@ interface PerformanceData {
 }
 
 interface PerformanceChartProps {
-  data: PerformanceData[]
+  data?: PerformanceData[]
   title?: string
   height?: number
 }
