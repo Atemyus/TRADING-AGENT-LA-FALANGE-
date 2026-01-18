@@ -11,32 +11,42 @@ export interface AIVote {
   direction: 'BUY' | 'SELL' | 'HOLD' | 'LONG' | 'SHORT'
   confidence: number
   reasoning?: string
-  is_valid?: boolean
+  is_valid: boolean
   error?: string
 }
 
 export interface ConsensusResult {
   direction: 'BUY' | 'SELL' | 'HOLD' | 'LONG' | 'SHORT'
   confidence: number
-  should_trade?: boolean
-  total_votes?: number
-  valid_votes?: number
-  votes_buy?: number
-  votes_sell?: number
-  votes_hold?: number
+  should_trade: boolean
+  total_votes: number
+  valid_votes: number
+  votes_buy: number
+  votes_sell: number
+  votes_hold: number
+  agreement_level: string
+  agreement_percentage: number
+  suggested_entry: string | number | null
+  suggested_stop_loss: string | number | null
+  suggested_take_profit: string | number | null
+  risk_reward_ratio: number | null
+  key_factors: string[]
+  risks: string[]
+  reasoning_summary: string
+  votes: AIVote[]
+  total_cost_usd: number
+  total_tokens: number
+  processing_time_ms: number
+  providers_used: string[]
+  failed_providers: string[]
+  // Optional fields for alternative API response formats
   modelsAgree?: number
   totalModels?: number
   agreementRatio?: number
-  agreement_level?: string
-  agreement_percentage?: number
   isStrongSignal?: boolean
-  suggested_entry?: string | number
-  suggested_stop_loss?: string | number
-  suggested_take_profit?: string | number
   avgStopLoss?: number
   avgTakeProfit?: number
   avgBreakEvenTrigger?: number
-  risk_reward_ratio?: number
   trailingStopConsensus?: {
     enabled: boolean
     distancePips: number
@@ -51,16 +61,7 @@ export interface ConsensusResult {
     confidence: number
     latencyMs?: number
   }>
-  key_factors?: string[]
-  risks?: string[]
-  reasoning_summary?: string
-  votes?: AIVote[]
   individualResults?: AIVote[]
-  total_cost_usd?: number
-  total_tokens?: number
-  processing_time_ms?: number
-  providers_used?: string[]
-  failed_providers?: string[]
 }
 
 export interface AnalysisRequest {
