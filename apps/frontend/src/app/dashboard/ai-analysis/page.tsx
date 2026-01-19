@@ -23,60 +23,26 @@ import {
 } from 'lucide-react'
 import { aiApi, type ConsensusResult, type AIVote } from '@/lib/api'
 
-// Provider styling
+// Provider styling for AIML API models
 const providerStyles: Record<string, { color: string; icon: string; bg: string }> = {
-  openai: { color: 'text-green-400', icon: '🤖', bg: 'bg-green-500/20' },
-  anthropic: { color: 'text-orange-400', icon: '🧠', bg: 'bg-orange-500/20' },
-  google: { color: 'text-blue-400', icon: '💎', bg: 'bg-blue-500/20' },
-  groq: { color: 'text-red-400', icon: '⚡', bg: 'bg-red-500/20' },
-  mistral: { color: 'text-orange-500', icon: '🌪️', bg: 'bg-orange-500/20' },
-  ollama: { color: 'text-gray-400', icon: '🦙', bg: 'bg-gray-500/20' },
+  // The 6 AIML models (matching backend provider names)
+  'OpenAI': { color: 'text-green-400', icon: '💬', bg: 'bg-green-500/20' },       // ChatGPT 5.2
+  'Google': { color: 'text-blue-400', icon: '💎', bg: 'bg-blue-500/20' },         // Gemini 3 Pro
+  'DeepSeek': { color: 'text-cyan-400', icon: '🔍', bg: 'bg-cyan-500/20' },       // DeepSeek V3.2
+  'xAI': { color: 'text-red-400', icon: '⚡', bg: 'bg-red-500/20' },              // Grok 4.1 Fast
+  'Alibaba': { color: 'text-orange-400', icon: '🌟', bg: 'bg-orange-500/20' },    // Qwen Max
+  'Zhipu': { color: 'text-purple-400', icon: '🧪', bg: 'bg-purple-500/20' },      // GLM 4.7
 }
 
-// Demo result for visualization
-const demoResult: ConsensusResult = {
-  direction: 'BUY',
-  confidence: 78.5,
-  should_trade: true,
-  total_votes: 8,
-  valid_votes: 7,
-  votes_buy: 5,
-  votes_sell: 1,
-  votes_hold: 1,
-  agreement_level: 'strong',
-  agreement_percentage: 71.4,
-  suggested_entry: '1.0892',
-  suggested_stop_loss: '1.0850',
-  suggested_take_profit: '1.0950',
-  risk_reward_ratio: 1.38,
-  key_factors: [
-    'RSI showing bullish divergence at 42, recovering from oversold',
-    'Price holding above 200 EMA support at 1.0865',
-    'London session showing strong buying momentum',
-    'MACD histogram turning positive after bearish cross',
-  ],
-  risks: [
-    'USD strength on hawkish Fed expectations',
-    'Key resistance at 1.0920 may cap upside',
-    'Low liquidity expected during Asian session',
-  ],
-  reasoning_summary: 'Strong bullish consensus with 5/7 models recommending BUY. Technical setup shows RSI divergence combined with EMA support. Risk/reward ratio of 1.38 meets minimum threshold.',
-  votes: [
-    { provider: 'openai', model: 'gpt-4o', direction: 'BUY', confidence: 82, reasoning: 'Bullish divergence on RSI combined with price holding above 200 EMA suggests continuation of uptrend. Entry at current levels with tight stop below recent swing low.', is_valid: true },
-    { provider: 'openai', model: 'gpt-4o-mini', direction: 'BUY', confidence: 75, reasoning: 'Trend continuation likely based on momentum indicators. Recommend scaling in at current price.', is_valid: true },
-    { provider: 'anthropic', model: 'claude-sonnet', direction: 'BUY', confidence: 85, reasoning: 'Strong technical setup with multiple confluences: EMA support, RSI divergence, and session momentum. High probability long entry.', is_valid: true },
-    { provider: 'anthropic', model: 'claude-haiku', direction: 'HOLD', confidence: 60, reasoning: 'Mixed signals present. While trend is bullish, approaching resistance zone suggests waiting for breakout confirmation.', is_valid: true },
-    { provider: 'google', model: 'gemini-flash', direction: 'BUY', confidence: 78, reasoning: 'Momentum building with MACD crossover imminent. Favor long positions with defined risk.', is_valid: true },
-    { provider: 'groq', model: 'llama3-70b', direction: 'BUY', confidence: 80, reasoning: 'Technical analysis indicates bullish bias. Multiple timeframe alignment supports long entry.', is_valid: true },
-    { provider: 'mistral', model: 'mistral-large', direction: 'SELL', confidence: 65, reasoning: 'Resistance ahead at 1.0920. Prefer to fade the rally with tight stops above resistance.', is_valid: true },
-    { provider: 'ollama', model: 'llama3.1:8b', direction: 'BUY', confidence: 0, reasoning: 'Error: Connection refused', is_valid: false, error: 'Connection refused' },
-  ],
-  total_cost_usd: 0.0234,
-  total_tokens: 12500,
-  processing_time_ms: 3250,
-  providers_used: ['openai', 'anthropic', 'google', 'groq', 'mistral'],
-  failed_providers: ['ollama'],
-}
+// The 6 AI models we use via AIML API
+const AI_MODELS = [
+  { provider: 'OpenAI', model: 'ChatGPT 5.2', icon: '💬' },
+  { provider: 'Google', model: 'Gemini 3 Pro', icon: '💎' },
+  { provider: 'DeepSeek', model: 'DeepSeek V3.2', icon: '🔍' },
+  { provider: 'xAI', model: 'Grok 4.1 Fast', icon: '⚡' },
+  { provider: 'Alibaba', model: 'Qwen Max', icon: '🌟' },
+  { provider: 'Zhipu', model: 'GLM 4.7', icon: '🧪' },
+]
 
 const SYMBOLS = [
   { value: 'EUR_USD', label: 'EUR/USD', price: '1.0892' },
@@ -100,30 +66,46 @@ export default function AIAnalysisPage() {
   const [timeframe, setTimeframe] = useState('5m')
   const [mode, setMode] = useState<'quick' | 'standard' | 'premium'>('standard')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [result, setResult] = useState<ConsensusResult | null>(demoResult)
+  const [result, setResult] = useState<ConsensusResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [expandedVote, setExpandedVote] = useState<string | null>(null)
+  const [currentPrice, setCurrentPrice] = useState<number>(0)
 
   const selectedSymbol = SYMBOLS.find(s => s.value === symbol)
+
+  // Fetch real price when symbol changes
+  useEffect(() => {
+    const fetchPrice = async () => {
+      try {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/v1/trading/price/${symbol}`)
+        if (response.ok) {
+          const data = await response.json()
+          setCurrentPrice(parseFloat(data.mid || data.price || '0'))
+        }
+      } catch {
+        // Keep showing static price if API fails
+      }
+    }
+    fetchPrice()
+  }, [symbol])
 
   const runAnalysis = async () => {
     setIsAnalyzing(true)
     setError(null)
 
     try {
-      // In production, this would call the real API
-      // const response = await aiApi.analyze({
-      //   symbol,
-      //   timeframe,
-      //   current_price: parseFloat(selectedSymbol?.price || '0'),
-      //   mode,
-      // })
-
-      // Simulate API call for demo
-      await new Promise(resolve => setTimeout(resolve, 3000))
-      setResult(demoResult)
+      // Call the real AI analysis API
+      const response = await aiApi.analyze(
+        symbol,
+        currentPrice || parseFloat(selectedSymbol?.price || '0'),
+        timeframe,
+        mode
+      )
+      setResult(response)
     } catch (err) {
-      setError('Failed to run analysis. Please check your API configuration.')
+      console.error('Analysis failed:', err)
+      setError('Failed to run analysis. Please check your AIML API key in Settings.')
+      setResult(null)
     } finally {
       setIsAnalyzing(false)
     }
@@ -142,8 +124,8 @@ export default function AIAnalysisPage() {
           <p className="text-dark-400">Multi-model consensus trading signals</p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-sm text-dark-400">Providers Active:</span>
-          <span className="font-mono font-bold text-neon-green">7/8</span>
+          <span className="text-sm text-dark-400">AI Models (AIML):</span>
+          <span className="font-mono font-bold text-neon-green">6</span>
         </div>
       </motion.div>
 
@@ -245,12 +227,14 @@ export default function AIAnalysisPage() {
             <div className="h-10 w-px bg-dark-700" />
             <div>
               <p className="text-sm text-dark-400">Current Price</p>
-              <p className="text-xl font-mono font-bold">{selectedSymbol?.price}</p>
+              <p className="text-xl font-mono font-bold">
+                {currentPrice > 0 ? currentPrice.toFixed(symbol.includes('JPY') ? 3 : 5) : selectedSymbol?.price || '—'}
+              </p>
             </div>
           </div>
           <div className="text-sm text-dark-400">
             <Clock size={14} className="inline mr-1" />
-            Last updated: Just now
+            {currentPrice > 0 ? 'Live' : 'Configure broker for live prices'}
           </div>
         </div>
       </motion.div>
@@ -286,17 +270,18 @@ export default function AIAnalysisPage() {
                 className="w-16 h-16 mx-auto mb-6 rounded-full border-4 border-primary-500 border-t-transparent"
               />
               <h3 className="text-xl font-semibold mb-2">Analyzing Market...</h3>
-              <p className="text-dark-400 mb-6">Running analysis across multiple AI models</p>
+              <p className="text-dark-400 mb-6">Running analysis with 6 AI models via AIML API</p>
               <div className="flex justify-center gap-2">
-                {['openai', 'anthropic', 'google', 'groq', 'mistral'].map((provider, i) => (
+                {AI_MODELS.map((model, i) => (
                   <motion.div
-                    key={provider}
+                    key={model.provider}
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
-                    transition={{ delay: i * 0.2 }}
-                    className={`w-10 h-10 rounded-lg ${providerStyles[provider]?.bg} flex items-center justify-center`}
+                    transition={{ delay: i * 0.15 }}
+                    className={`w-10 h-10 rounded-lg ${providerStyles[model.provider]?.bg || 'bg-dark-700'} flex items-center justify-center`}
+                    title={`${model.model} (${model.provider})`}
                   >
-                    <span>{providerStyles[provider]?.icon}</span>
+                    <span>{model.icon}</span>
                   </motion.div>
                 ))}
               </div>

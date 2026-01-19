@@ -20,6 +20,7 @@ from src.engines.ai.consensus_engine import (
     create_consensus_engine,
 )
 from src.engines.ai.providers import (
+    AIMLProvider,
     AnthropicProvider,
     GoogleProvider,
     GroqProvider,
@@ -60,68 +61,44 @@ class AIServiceConfig:
     providers: List[ProviderConfig] = field(default_factory=list)
 
 
-# Default provider configurations
+# Default provider configurations - AIML API with 6 models
+# All models accessed via api.aimlapi.com with single API key
 DEFAULT_PROVIDERS = [
-    # OpenAI - GPT-4o (high quality)
+    # ChatGPT 5.2 (OpenAI via AIML)
     ProviderConfig(
-        provider_class=OpenAIProvider,
-        model_name="gpt-4o",
+        provider_class=AIMLProvider,
+        model_name="chatgpt-5.2",
         weight=1.0,
     ),
-    # OpenAI - GPT-4o-mini (fast, cost-effective)
+    # Gemini 3 Pro (Google via AIML)
     ProviderConfig(
-        provider_class=OpenAIProvider,
-        model_name="gpt-4o-mini",
-        weight=0.9,
-    ),
-    # Anthropic - Claude Sonnet
-    ProviderConfig(
-        provider_class=AnthropicProvider,
-        model_name="claude-sonnet",
+        provider_class=AIMLProvider,
+        model_name="gemini-3-pro",
         weight=1.0,
     ),
-    # Anthropic - Claude Haiku (fast)
+    # DeepSeek V3.2 (DeepSeek via AIML)
     ProviderConfig(
-        provider_class=AnthropicProvider,
-        model_name="claude-haiku",
-        weight=0.85,
+        provider_class=AIMLProvider,
+        model_name="deepseek-v3.2",
+        weight=1.0,
     ),
-    # Google - Gemini Flash (fast)
+    # Grok 4.1 Fast (xAI via AIML)
     ProviderConfig(
-        provider_class=GoogleProvider,
-        model_name="gemini-flash",
-        weight=0.9,
+        provider_class=AIMLProvider,
+        model_name="grok-4.1-fast",
+        weight=1.0,
     ),
-    # Groq - Llama 3.3 (ultra-fast!)
+    # Qwen Max (Alibaba via AIML)
     ProviderConfig(
-        provider_class=GroqProvider,
-        model_name="llama3-70b",
-        weight=0.95,
+        provider_class=AIMLProvider,
+        model_name="qwen-max",
+        weight=1.0,
     ),
-    # Groq - Llama 8B (fastest)
+    # GLM 4.7 (Zhipu via AIML)
     ProviderConfig(
-        provider_class=GroqProvider,
-        model_name="llama3-8b",
-        weight=0.8,
-    ),
-    # Mistral - Large
-    ProviderConfig(
-        provider_class=MistralProvider,
-        model_name="mistral-large",
-        weight=0.9,
-    ),
-    # Mistral - Small (fast)
-    ProviderConfig(
-        provider_class=MistralProvider,
-        model_name="mistral-small",
-        weight=0.8,
-    ),
-    # Ollama - Local (free!)
-    ProviderConfig(
-        provider_class=OllamaProvider,
-        model_name="llama3.1:8b",
-        weight=0.75,
-        enabled=False,  # Disabled by default (requires local setup)
+        provider_class=AIMLProvider,
+        model_name="glm-4.7",
+        weight=1.0,
     ),
 ]
 
@@ -370,22 +347,21 @@ class AIService:
         context: MarketContext,
     ) -> ConsensusResult:
         """
-        Quick analysis using only the fastest providers.
+        Quick analysis using fastest AIML models.
 
-        Uses Groq (ultra-fast) and GPT-4o-mini for rapid decisions.
+        Uses Grok 4.1 Fast and DeepSeek for rapid decisions.
         Good for real-time scalping scenarios.
         """
         fast_providers = [
-            "groq_llama3-70b",
-            "groq_llama3-8b",
-            "openai_gpt-4o-mini",
-            "anthropic_claude-haiku",
+            "aiml_xai_grok-4.1-fast",
+            "aiml_deepseek_deepseek-v3.2",
+            "aiml_alibaba_qwen-max",
         ]
 
         available = [p for p in fast_providers if p in self._providers]
 
         if not available:
-            # Fall back to first available
+            # Fall back to first 3 available
             available = list(self._providers.keys())[:3]
 
         return await self.analyze(context, providers=available)
@@ -395,25 +371,13 @@ class AIService:
         context: MarketContext,
     ) -> ConsensusResult:
         """
-        Premium analysis using highest quality providers.
+        Premium analysis using all 6 AIML models.
 
-        Uses GPT-4o, Claude Sonnet, Gemini Pro for best accuracy.
-        Better for swing trading and important decisions.
+        Uses ChatGPT 5.2, Gemini 3 Pro, DeepSeek, Grok, Qwen, GLM.
+        Best accuracy with full consensus from all models.
         """
-        premium_providers = [
-            "openai_gpt-4o",
-            "anthropic_claude-sonnet",
-            "google_gemini-flash",
-            "mistral_mistral-large",
-            "groq_llama3-70b",
-        ]
-
-        available = [p for p in premium_providers if p in self._providers]
-
-        if not available:
-            available = list(self._providers.keys())
-
-        return await self.analyze(context, providers=available)
+        # Use all 6 models for premium analysis
+        return await self.analyze(context)
 
     def enable_provider(self, provider_key: str) -> bool:
         """Enable a disabled provider."""

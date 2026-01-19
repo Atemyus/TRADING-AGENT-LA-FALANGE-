@@ -24,20 +24,23 @@ interface AIConsensusPanelProps {
   onAnalyze?: () => void
 }
 
-// Provider icons/colors mapping for AIML models
+// Provider icons/colors mapping for AIML API models
+// These match the provider names returned by the backend
 const providerStyles: Record<string, { color: string; icon: string }> = {
-  // AIML API Models (the 6 models we use)
-  aiml: { color: '#6366f1', icon: '🤖' },
-  chatgpt: { color: '#10a37f', icon: '💬' },
-  gemini: { color: '#4285f4', icon: '💎' },
-  deepseek: { color: '#0ea5e9', icon: '🔍' },
-  glm: { color: '#8b5cf6', icon: '🧪' },
-  grok: { color: '#ef4444', icon: '⚡' },
-  qwen: { color: '#f97316', icon: '🌟' },
-  // Fallbacks
-  openai: { color: '#10a37f', icon: '🤖' },
-  anthropic: { color: '#d4a27f', icon: '🧠' },
+  // The 6 AIML models we use
+  'OpenAI': { color: '#10a37f', icon: '💬' },      // ChatGPT 5.2
+  'Google': { color: '#4285f4', icon: '💎' },      // Gemini 3 Pro
+  'DeepSeek': { color: '#0ea5e9', icon: '🔍' },    // DeepSeek V3.2
+  'xAI': { color: '#ef4444', icon: '⚡' },          // Grok 4.1 Fast
+  'Alibaba': { color: '#f97316', icon: '🌟' },     // Qwen Max
+  'Zhipu': { color: '#8b5cf6', icon: '🧪' },       // GLM 4.7
+  // Lowercase fallbacks
+  openai: { color: '#10a37f', icon: '💬' },
   google: { color: '#4285f4', icon: '💎' },
+  deepseek: { color: '#0ea5e9', icon: '🔍' },
+  xai: { color: '#ef4444', icon: '⚡' },
+  alibaba: { color: '#f97316', icon: '🌟' },
+  zhipu: { color: '#8b5cf6', icon: '🧪' },
 }
 
 function DirectionBadge({ direction }: { direction: string }) {
