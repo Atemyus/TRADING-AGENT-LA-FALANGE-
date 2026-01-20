@@ -147,3 +147,9 @@ class BrokerFactory:
         for broker in cls._instances.values():
             await broker.disconnect()
         cls._instances.clear()
+
+
+# Convenience function
+async def get_broker(broker_type: Optional[str] = None) -> BaseBroker:
+    """Get the default broker instance."""
+    return await BrokerFactory.get_instance(broker_type)
