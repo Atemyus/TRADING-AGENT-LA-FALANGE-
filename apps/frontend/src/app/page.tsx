@@ -44,7 +44,7 @@ export default function LandingPage() {
         </div>
         <div className="stat-card text-center">
           <span className="stat-label">Powered By</span>
-          <span className="stat-value text-neon-green">GPT-4o AI</span>
+          <span className="stat-value text-neon-green">10+ AI Models</span>
         </div>
       </motion.div>
 
@@ -84,8 +84,8 @@ export default function LandingPage() {
       >
         <FeatureCard
           icon="🤖"
-          title="AI Decision Making"
-          description="Advanced GPT-4o powered trading signals with transparent reasoning"
+          title="Multi-AI Consensus"
+          description="10+ AI models vote on trades - GPT-4o, Claude, Gemini, Llama & more"
         />
         <FeatureCard
           icon="📊"

@@ -7,7 +7,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.api.v1.routes import ai, auth, trading, positions, analytics, websocket
+from src.api.v1.routes import ai, auth, trading, positions, analytics, websocket, bot, chart_analysis
+from src.api.v1.routes import settings as settings_routes
 from src.core.config import settings
 from src.core.database import init_db
 
@@ -36,7 +37,7 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -49,6 +50,9 @@ app.include_router(trading.router, prefix="/api/v1/trading", tags=["Trading"])
 app.include_router(positions.router, prefix="/api/v1/positions", tags=["Positions"])
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["Analytics"])
 app.include_router(websocket.router, prefix="/api/v1/ws", tags=["WebSocket"])
+app.include_router(bot.router, prefix="/api/v1", tags=["Bot Control"])
+app.include_router(chart_analysis.router, prefix="/api/v1", tags=["Chart Analysis"])
+app.include_router(settings_routes.router, prefix="/api/v1/settings", tags=["Settings"])
 
 
 @app.get("/health")

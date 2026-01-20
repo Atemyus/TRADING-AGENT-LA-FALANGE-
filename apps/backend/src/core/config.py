@@ -3,10 +3,11 @@ Application configuration using Pydantic Settings.
 All configuration is loaded from environment variables.
 """
 
+import json
 from functools import lru_cache
-from typing import List, Optional
+from typing import List, Optional, Union
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -30,15 +31,27 @@ class Settings(BaseSettings):
     SECRET_KEY: str = Field(default="change-me-in-production")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
 
-    # CORS
-    CORS_ORIGINS: List[str] = Field(default=["http://localhost:3000", "http://127.0.0.1:3000"])
+    # CORS - stored as string, parsed to list via property
+    CORS_ORIGINS: str = Field(default="http://localhost:3000,http://127.0.0.1:3000")
 
-    @field_validator("CORS_ORIGINS", mode="before")
-    @classmethod
-    def parse_cors_origins(cls, v):
-        if isinstance(v, str):
-            return [origin.strip() for origin in v.split(",")]
-        return v
+    @computed_field
+    @property
+    def cors_origins_list(self) -> List[str]:
+        """Parse CORS_ORIGINS string into a list."""
+        v = self.CORS_ORIGINS
+        if not v:
+            return ["*"]
+        # Handle JSON array format
+        if v.startswith("["):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                pass
+        # Handle "*" wildcard
+        if v.strip() == "*":
+            return ["*"]
+        # Handle comma-separated list
+        return [origin.strip() for origin in v.split(",") if origin.strip()]
 
     # Database
     DATABASE_URL: str = Field(
@@ -76,16 +89,24 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "llama3.1:8b"
 
+    # AIML API (Multi-model gateway)
+    AIML_API_KEY: Optional[str] = None
+    AIML_BASE_URL: str = "https://api.aimlapi.com/v1"
+
     # Alpha Vantage (Market Data)
     ALPHA_VANTAGE_API_KEY: Optional[str] = None
 
     # Broker Configuration
-    BROKER_TYPE: str = Field(default="oanda", description="oanda|ig|interactive_brokers|alpaca")
+    BROKER_TYPE: str = Field(default="none", description="none|oanda|metatrader|ig|interactive_brokers|alpaca")
 
     # OANDA
     OANDA_API_KEY: Optional[str] = None
     OANDA_ACCOUNT_ID: Optional[str] = None
     OANDA_ENVIRONMENT: str = Field(default="practice", description="practice|live")
+
+    # MetaTrader (via MetaApi.cloud)
+    METAAPI_ACCESS_TOKEN: Optional[str] = None
+    METAAPI_ACCOUNT_ID: Optional[str] = None
 
     # IG Markets
     IG_API_KEY: Optional[str] = None

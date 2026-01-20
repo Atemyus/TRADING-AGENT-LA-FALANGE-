@@ -9,9 +9,23 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
 from src.engines.trading.base_broker import OrderSide, OrderType, TimeInForce, OrderRequest
+from src.engines.trading.broker_factory import NoBrokerConfiguredError
 from src.services.trading_service import get_trading_service
 
 router = APIRouter()
+
+
+def handle_broker_error(e: Exception):
+    """Convert broker errors to HTTP exceptions."""
+    if isinstance(e, NoBrokerConfiguredError):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e),
+        )
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail=str(e),
+    )
 
 
 class OrderCreate(BaseModel):
@@ -183,16 +197,23 @@ async def close_position(symbol: str, request: Optional[ClosePositionRequest] = 
 @router.get("/price/{symbol}", response_model=PriceResponse)
 async def get_price(symbol: str):
     """Get current price for a symbol."""
-    service = await get_trading_service()
-    price = await service.get_price(symbol)
+    try:
+        service = await get_trading_service()
+        price = await service.get_price(symbol)
 
-    if not price:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Price not found for {symbol}",
-        )
+        if not price:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Price not found for {symbol}",
+            )
 
-    return PriceResponse(**price)
+        return PriceResponse(**price)
+    except NoBrokerConfiguredError as e:
+        handle_broker_error(e)
+    except HTTPException:
+        raise
+    except Exception as e:
+        handle_broker_error(e)
 
 
 @router.get("/prices")
@@ -203,8 +224,13 @@ async def get_prices(symbols: str):
     Args:
         symbols: Comma-separated list of symbols (e.g., "EUR_USD,GBP_USD")
     """
-    service = await get_trading_service()
-    symbol_list = [s.strip() for s in symbols.split(",")]
-    prices = await service.get_prices(symbol_list)
+    try:
+        service = await get_trading_service()
+        symbol_list = [s.strip() for s in symbols.split(",")]
+        prices = await service.get_prices(symbol_list)
 
-    return {"prices": prices}
+        return {"prices": prices}
+    except NoBrokerConfiguredError as e:
+        handle_broker_error(e)
+    except Exception as e:
+        handle_broker_error(e)

@@ -6,12 +6,13 @@ from datetime import date
 from decimal import Decimal
 from typing import List, Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel
 
 from src.services.trading_service import get_trading_service
 from src.engines.data.market_data import get_market_data_service
 from src.engines.data.indicators import TechnicalIndicators
+from src.engines.trading.broker_factory import NoBrokerConfiguredError
 
 router = APIRouter()
 
@@ -106,26 +107,37 @@ class AnalysisResponse(BaseModel):
 @router.get("/account", response_model=AccountSummary)
 async def get_account_summary():
     """Get current account summary."""
-    service = await get_trading_service()
+    try:
+        service = await get_trading_service()
 
-    account = await service.get_account_summary()
-    positions = await service.get_positions()
-    orders = await service.get_open_orders()
+        account = await service.get_account_summary()
+        positions = await service.get_positions()
+        orders = await service.get_open_orders()
 
-    return AccountSummary(
-        account_id=account["account_id"],
-        balance=account["balance"],
-        equity=account["equity"],
-        margin_used=account["margin_used"],
-        margin_available=account["margin_available"],
-        unrealized_pnl=account["unrealized_pnl"],
-        realized_pnl_today=account["realized_pnl_today"],
-        currency=account["currency"],
-        leverage=account["leverage"],
-        margin_level=account["margin_level"],
-        open_positions=len(positions),
-        pending_orders=len(orders),
-    )
+        return AccountSummary(
+            account_id=account["account_id"],
+            balance=account["balance"],
+            equity=account["equity"],
+            margin_used=account["margin_used"],
+            margin_available=account["margin_available"],
+            unrealized_pnl=account["unrealized_pnl"],
+            realized_pnl_today=account["realized_pnl_today"],
+            currency=account["currency"],
+            leverage=account["leverage"],
+            margin_level=account["margin_level"],
+            open_positions=len(positions),
+            pending_orders=len(orders),
+        )
+    except NoBrokerConfiguredError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e),
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        )
 
 
 @router.get("/performance", response_model=PerformanceMetrics)

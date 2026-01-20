@@ -188,8 +188,13 @@ export function usePriceStream(symbols: string[]) {
 /**
  * Hook for subscribing to position updates
  */
+interface PositionData {
+  symbol: string;
+  [key: string]: unknown;
+}
+
 export function usePositionStream() {
-  const [positions, setPositions] = useState<unknown[]>([]);
+  const [positions, setPositions] = useState<PositionData[]>([]);
   const { isConnected, subscribe, addMessageHandler, removeMessageHandler } = useWebSocket();
 
   useEffect(() => {
@@ -197,12 +202,12 @@ export function usePositionStream() {
       subscribe('positions');
 
       addMessageHandler('position', (data: unknown) => {
-        const positionData = data as { data: unknown };
+        const positionData = data as { data: PositionData };
         setPositions((prev) => {
           // Update or add position
           const updated = [...prev];
           const existingIndex = updated.findIndex(
-            (p: { symbol?: string }) => p.symbol === (positionData.data as { symbol: string }).symbol
+            (p) => p.symbol === positionData.data.symbol
           );
           if (existingIndex >= 0) {
             updated[existingIndex] = positionData.data;

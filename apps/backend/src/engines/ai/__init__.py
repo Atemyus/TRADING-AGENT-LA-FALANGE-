@@ -19,6 +19,7 @@ from .consensus_engine import (
     create_consensus_engine,
 )
 from .providers import (
+    AIMLProvider,
     AnthropicProvider,
     GoogleProvider,
     GroqProvider,
@@ -42,6 +43,7 @@ __all__ = [
     "ProviderVote",
     "create_consensus_engine",
     # Providers
+    "AIMLProvider",
     "AnthropicProvider",
     "GoogleProvider",
     "GroqProvider",
