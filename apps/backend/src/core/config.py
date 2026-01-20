@@ -97,7 +97,7 @@ class Settings(BaseSettings):
     ALPHA_VANTAGE_API_KEY: Optional[str] = None
 
     # Broker Configuration
-    BROKER_TYPE: str = Field(default="oanda", description="oanda|metatrader|ig|interactive_brokers|alpaca")
+    BROKER_TYPE: str = Field(default="none", description="none|oanda|metatrader|ig|interactive_brokers|alpaca")
 
     # OANDA
     OANDA_API_KEY: Optional[str] = None
