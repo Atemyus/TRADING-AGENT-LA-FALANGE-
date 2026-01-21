@@ -1,19 +1,21 @@
 """
 Settings API routes for configuring broker, AI providers, and other settings.
-Settings are stored in a JSON file for persistence.
+Settings are stored in PostgreSQL database for persistence across deployments.
 """
 
 import json
 import os
-from pathlib import Path
 from typing import Optional
-from fastapi import APIRouter, HTTPException
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.core.database import get_db
+from src.core.models import AppSettings
 
 router = APIRouter()
-
-# Settings file path
-SETTINGS_FILE = Path("/tmp/trading_settings.json")
 
 
 # ============ Models ============
@@ -73,24 +75,51 @@ class AllSettings(BaseModel):
     notifications: NotificationSettings = NotificationSettings()
 
 
-# ============ Helper Functions ============
+# ============ Database Helper Functions ============
 
-def load_settings() -> AllSettings:
-    """Load settings from file."""
-    if SETTINGS_FILE.exists():
+async def get_setting(db: AsyncSession, key: str) -> Optional[str]:
+    """Get a setting value from database."""
+    result = await db.execute(
+        select(AppSettings).where(AppSettings.key == key)
+    )
+    setting = result.scalar_one_or_none()
+    return setting.value if setting else None
+
+
+async def set_setting(db: AsyncSession, key: str, value: Optional[str]) -> None:
+    """Set a setting value in database."""
+    result = await db.execute(
+        select(AppSettings).where(AppSettings.key == key)
+    )
+    setting = result.scalar_one_or_none()
+
+    if setting:
+        setting.value = value
+    else:
+        setting = AppSettings(key=key, value=value)
+        db.add(setting)
+
+    await db.flush()
+
+
+async def load_settings_from_db(db: AsyncSession) -> AllSettings:
+    """Load all settings from database."""
+    settings_json = await get_setting(db, "app_settings")
+
+    if settings_json:
         try:
-            with open(SETTINGS_FILE, "r") as f:
-                data = json.load(f)
-                return AllSettings(**data)
+            data = json.loads(settings_json)
+            return AllSettings(**data)
         except Exception:
             pass
+
     return AllSettings()
 
 
-def save_settings(settings: AllSettings) -> None:
-    """Save settings to file."""
-    with open(SETTINGS_FILE, "w") as f:
-        json.dump(settings.model_dump(), f, indent=2)
+async def save_settings_to_db(db: AsyncSession, settings: AllSettings) -> None:
+    """Save all settings to database."""
+    settings_json = json.dumps(settings.model_dump())
+    await set_setting(db, "app_settings", settings_json)
 
 
 def apply_settings_to_env(settings: AllSettings) -> None:
@@ -164,21 +193,31 @@ def apply_settings_to_env(settings: AllSettings) -> None:
         os.environ["DISCORD_WEBHOOK_URL"] = notif.discord_webhook
 
 
+def mask_key(key: Optional[str]) -> Optional[str]:
+    """Mask sensitive data - show only last 4 chars."""
+    if key and len(key) > 4:
+        return "***" + key[-4:]
+    return key
+
+
+def preserve_if_masked(new_val: Optional[str], old_val: Optional[str]) -> Optional[str]:
+    """Don't overwrite with masked values."""
+    if new_val and new_val.startswith("***"):
+        return old_val
+    return new_val
+
+
 # ============ API Routes ============
 
 @router.get("", response_model=AllSettings)
-async def get_settings():
+async def get_settings(db: AsyncSession = Depends(get_db)):
     """Get all current settings."""
-    settings = load_settings()
+    settings = await load_settings_from_db(db)
+
     # Mask sensitive data
     response = settings.model_dump()
 
     # Mask API keys (show only last 4 chars)
-    def mask_key(key: Optional[str]) -> Optional[str]:
-        if key and len(key) > 4:
-            return "***" + key[-4:]
-        return key
-
     if response["broker"]["oanda_api_key"]:
         response["broker"]["oanda_api_key"] = mask_key(response["broker"]["oanda_api_key"])
     if response["broker"]["metaapi_token"]:
@@ -195,72 +234,83 @@ async def get_settings():
         response["ai"]["aiml_api_key"] = mask_key(response["ai"]["aiml_api_key"])
     if response["ai"]["openai_api_key"]:
         response["ai"]["openai_api_key"] = mask_key(response["ai"]["openai_api_key"])
+    if response["ai"]["anthropic_api_key"]:
+        response["ai"]["anthropic_api_key"] = mask_key(response["ai"]["anthropic_api_key"])
+    if response["ai"]["google_api_key"]:
+        response["ai"]["google_api_key"] = mask_key(response["ai"]["google_api_key"])
+    if response["ai"]["groq_api_key"]:
+        response["ai"]["groq_api_key"] = mask_key(response["ai"]["groq_api_key"])
+    if response["ai"]["mistral_api_key"]:
+        response["ai"]["mistral_api_key"] = mask_key(response["ai"]["mistral_api_key"])
 
     return response
 
 
 @router.put("", response_model=dict)
-async def update_all_settings(settings: AllSettings):
+async def update_all_settings(
+    new_settings: AllSettings,
+    db: AsyncSession = Depends(get_db)
+):
     """Update all settings at once."""
-    # Load existing settings to preserve masked fields
-    existing = load_settings()
-
-    # Don't overwrite with masked values
-    def preserve_if_masked(new_val: Optional[str], old_val: Optional[str]) -> Optional[str]:
-        if new_val and new_val.startswith("***"):
-            return old_val
-        return new_val
+    existing = await load_settings_from_db(db)
 
     # Preserve masked broker credentials
-    settings.broker.oanda_api_key = preserve_if_masked(
-        settings.broker.oanda_api_key, existing.broker.oanda_api_key
+    new_settings.broker.oanda_api_key = preserve_if_masked(
+        new_settings.broker.oanda_api_key, existing.broker.oanda_api_key
     )
-    settings.broker.metaapi_token = preserve_if_masked(
-        settings.broker.metaapi_token, existing.broker.metaapi_token
+    new_settings.broker.metaapi_token = preserve_if_masked(
+        new_settings.broker.metaapi_token, existing.broker.metaapi_token
     )
-    settings.broker.ig_api_key = preserve_if_masked(
-        settings.broker.ig_api_key, existing.broker.ig_api_key
+    new_settings.broker.ig_api_key = preserve_if_masked(
+        new_settings.broker.ig_api_key, existing.broker.ig_api_key
     )
-    settings.broker.ig_password = preserve_if_masked(
-        settings.broker.ig_password, existing.broker.ig_password
+    new_settings.broker.ig_password = preserve_if_masked(
+        new_settings.broker.ig_password, existing.broker.ig_password
     )
-    settings.broker.alpaca_api_key = preserve_if_masked(
-        settings.broker.alpaca_api_key, existing.broker.alpaca_api_key
+    new_settings.broker.alpaca_api_key = preserve_if_masked(
+        new_settings.broker.alpaca_api_key, existing.broker.alpaca_api_key
     )
-    settings.broker.alpaca_secret_key = preserve_if_masked(
-        settings.broker.alpaca_secret_key, existing.broker.alpaca_secret_key
+    new_settings.broker.alpaca_secret_key = preserve_if_masked(
+        new_settings.broker.alpaca_secret_key, existing.broker.alpaca_secret_key
     )
 
     # Preserve masked AI keys
-    settings.ai.aiml_api_key = preserve_if_masked(
-        settings.ai.aiml_api_key, existing.ai.aiml_api_key
+    new_settings.ai.aiml_api_key = preserve_if_masked(
+        new_settings.ai.aiml_api_key, existing.ai.aiml_api_key
     )
-    settings.ai.openai_api_key = preserve_if_masked(
-        settings.ai.openai_api_key, existing.ai.openai_api_key
+    new_settings.ai.openai_api_key = preserve_if_masked(
+        new_settings.ai.openai_api_key, existing.ai.openai_api_key
     )
-    settings.ai.anthropic_api_key = preserve_if_masked(
-        settings.ai.anthropic_api_key, existing.ai.anthropic_api_key
+    new_settings.ai.anthropic_api_key = preserve_if_masked(
+        new_settings.ai.anthropic_api_key, existing.ai.anthropic_api_key
+    )
+    new_settings.ai.google_api_key = preserve_if_masked(
+        new_settings.ai.google_api_key, existing.ai.google_api_key
+    )
+    new_settings.ai.groq_api_key = preserve_if_masked(
+        new_settings.ai.groq_api_key, existing.ai.groq_api_key
+    )
+    new_settings.ai.mistral_api_key = preserve_if_masked(
+        new_settings.ai.mistral_api_key, existing.ai.mistral_api_key
     )
 
     # Save and apply
-    save_settings(settings)
-    apply_settings_to_env(settings)
+    await save_settings_to_db(db, new_settings)
+    apply_settings_to_env(new_settings)
 
     return {"status": "success", "message": "Settings saved successfully"}
 
 
 @router.put("/broker", response_model=dict)
-async def update_broker_settings(broker: BrokerSettings):
+async def update_broker_settings(
+    broker: BrokerSettings,
+    db: AsyncSession = Depends(get_db)
+):
     """Update broker settings."""
-    settings = load_settings()
+    settings = await load_settings_from_db(db)
     existing_broker = settings.broker
 
     # Preserve masked values
-    def preserve_if_masked(new_val: Optional[str], old_val: Optional[str]) -> Optional[str]:
-        if new_val and new_val.startswith("***"):
-            return old_val
-        return new_val
-
     broker.oanda_api_key = preserve_if_masked(broker.oanda_api_key, existing_broker.oanda_api_key)
     broker.metaapi_token = preserve_if_masked(broker.metaapi_token, existing_broker.metaapi_token)
     broker.ig_api_key = preserve_if_masked(broker.ig_api_key, existing_broker.ig_api_key)
@@ -269,22 +319,20 @@ async def update_broker_settings(broker: BrokerSettings):
     broker.alpaca_secret_key = preserve_if_masked(broker.alpaca_secret_key, existing_broker.alpaca_secret_key)
 
     settings.broker = broker
-    save_settings(settings)
+    await save_settings_to_db(db, settings)
     apply_settings_to_env(settings)
 
     return {"status": "success", "message": "Broker settings saved"}
 
 
 @router.put("/ai", response_model=dict)
-async def update_ai_settings(ai: AIProviderSettings):
+async def update_ai_settings(
+    ai: AIProviderSettings,
+    db: AsyncSession = Depends(get_db)
+):
     """Update AI provider settings."""
-    settings = load_settings()
+    settings = await load_settings_from_db(db)
     existing_ai = settings.ai
-
-    def preserve_if_masked(new_val: Optional[str], old_val: Optional[str]) -> Optional[str]:
-        if new_val and new_val.startswith("***"):
-            return old_val
-        return new_val
 
     ai.aiml_api_key = preserve_if_masked(ai.aiml_api_key, existing_ai.aiml_api_key)
     ai.openai_api_key = preserve_if_masked(ai.openai_api_key, existing_ai.openai_api_key)
@@ -294,38 +342,44 @@ async def update_ai_settings(ai: AIProviderSettings):
     ai.mistral_api_key = preserve_if_masked(ai.mistral_api_key, existing_ai.mistral_api_key)
 
     settings.ai = ai
-    save_settings(settings)
+    await save_settings_to_db(db, settings)
     apply_settings_to_env(settings)
 
     return {"status": "success", "message": "AI settings saved"}
 
 
 @router.put("/risk", response_model=dict)
-async def update_risk_settings(risk: RiskSettings):
+async def update_risk_settings(
+    risk: RiskSettings,
+    db: AsyncSession = Depends(get_db)
+):
     """Update risk management settings."""
-    settings = load_settings()
+    settings = await load_settings_from_db(db)
     settings.risk = risk
-    save_settings(settings)
+    await save_settings_to_db(db, settings)
     apply_settings_to_env(settings)
 
     return {"status": "success", "message": "Risk settings saved"}
 
 
 @router.put("/notifications", response_model=dict)
-async def update_notification_settings(notifications: NotificationSettings):
+async def update_notification_settings(
+    notifications: NotificationSettings,
+    db: AsyncSession = Depends(get_db)
+):
     """Update notification settings."""
-    settings = load_settings()
+    settings = await load_settings_from_db(db)
     settings.notifications = notifications
-    save_settings(settings)
+    await save_settings_to_db(db, settings)
     apply_settings_to_env(settings)
 
     return {"status": "success", "message": "Notification settings saved"}
 
 
 @router.post("/test-broker", response_model=dict)
-async def test_broker_connection():
+async def test_broker_connection(db: AsyncSession = Depends(get_db)):
     """Test the broker connection with current settings."""
-    settings = load_settings()
+    settings = await load_settings_from_db(db)
     broker = settings.broker
 
     try:
@@ -377,3 +431,11 @@ async def test_broker_connection():
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Connection test failed: {str(e)}")
+
+
+@router.post("/init-db")
+async def init_database(db: AsyncSession = Depends(get_db)):
+    """Initialize database tables. Called on first startup."""
+    from src.core.database import init_db
+    await init_db()
+    return {"status": "success", "message": "Database initialized"}

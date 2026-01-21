@@ -18,6 +18,19 @@ async def lifespan(app: FastAPI):
     """Application lifespan events."""
     # Startup
     await init_db()
+
+    # Load settings from database and apply to environment
+    try:
+        from src.core.database import async_session_maker
+        from src.api.v1.routes.settings import load_settings_from_db, apply_settings_to_env
+
+        async with async_session_maker() as session:
+            db_settings = await load_settings_from_db(session)
+            apply_settings_to_env(db_settings)
+            print("✅ Settings loaded from database")
+    except Exception as e:
+        print(f"⚠️ Could not load settings from database: {e}")
+
     print(f"🚀 La Falange Trading Platform v{settings.VERSION} started")
     print(f"📊 Environment: {settings.ENVIRONMENT}")
     yield
