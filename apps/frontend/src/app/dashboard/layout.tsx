@@ -37,10 +37,10 @@ export default function DashboardLayout({
   useEffect(() => {
     const fetchAccountData = async () => {
       try {
-        const data = await analyticsApi.getAccountOverview()
+        const data = await analyticsApi.getAccount()
         setAccountData({
-          balance: data.balance || 0,
-          todayPnl: data.daily_pnl || 0,
+          balance: parseFloat(data.balance) || 0,
+          todayPnl: parseFloat(data.realized_pnl_today) || 0,
         })
         setIsConnected(true)
         setConnectionError(null)

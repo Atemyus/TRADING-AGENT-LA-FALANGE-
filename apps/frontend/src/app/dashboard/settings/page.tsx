@@ -84,11 +84,21 @@ const BROKERS = [
 // AI Provider configurations
 const AI_PROVIDERS = [
   {
+    id: 'aiml',
+    name: 'AIML API',
+    icon: '🚀',
+    models: ['ChatGPT 5.2', 'Gemini 3 Pro', 'DeepSeek V3.2', 'Grok 4.1', 'Qwen Max', 'GLM 4.7'],
+    field: { key: 'AIML_API_KEY', label: 'API Key', placeholder: 'Your AIML API key' },
+    badge: 'Recommended - 6 Models',
+    description: 'Single API key for 6 top AI models via api.aimlapi.com',
+  },
+  {
     id: 'openai',
     name: 'OpenAI',
     icon: '🤖',
     models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'],
     field: { key: 'OPENAI_API_KEY', label: 'API Key', placeholder: 'sk-...' },
+    description: 'Fallback provider',
   },
   {
     id: 'anthropic',
@@ -96,6 +106,7 @@ const AI_PROVIDERS = [
     icon: '🧠',
     models: ['claude-3-5-sonnet', 'claude-3-haiku'],
     field: { key: 'ANTHROPIC_API_KEY', label: 'API Key', placeholder: 'sk-ant-...' },
+    description: 'Fallback provider',
   },
   {
     id: 'google',
@@ -103,6 +114,7 @@ const AI_PROVIDERS = [
     icon: '💎',
     models: ['gemini-1.5-flash', 'gemini-1.5-pro'],
     field: { key: 'GOOGLE_API_KEY', label: 'API Key', placeholder: 'AI...' },
+    description: 'Fallback provider',
   },
   {
     id: 'groq',
@@ -111,6 +123,7 @@ const AI_PROVIDERS = [
     models: ['llama-3.3-70b', 'llama-3.1-8b', 'mixtral-8x7b'],
     field: { key: 'GROQ_API_KEY', label: 'API Key', placeholder: 'gsk_...' },
     badge: 'Ultra Fast',
+    description: 'Fallback provider',
   },
   {
     id: 'mistral',
@@ -118,6 +131,7 @@ const AI_PROVIDERS = [
     icon: '🌪️',
     models: ['mistral-large', 'mistral-small'],
     field: { key: 'MISTRAL_API_KEY', label: 'API Key', placeholder: 'Your Mistral key' },
+    description: 'Fallback provider',
   },
   {
     id: 'ollama',
@@ -126,6 +140,7 @@ const AI_PROVIDERS = [
     models: ['llama3.1:8b', 'qwen2.5:14b', 'mistral:7b'],
     field: { key: 'OLLAMA_BASE_URL', label: 'Base URL', placeholder: 'http://localhost:11434' },
     badge: 'Free & Local',
+    description: 'Local inference - no API key needed',
   },
 ]
 
@@ -258,6 +273,42 @@ export default function SettingsPage() {
     }
   }
 
+  const handleSaveAI = async () => {
+    setSaving(true)
+    setSaveMessage('')
+
+    try {
+      // Build AI settings from provider settings
+      const aiData: Record<string, string | undefined> = {}
+
+      // Map provider IDs to API key names
+      const keyMapping: Record<string, string> = {
+        aiml: 'aiml_api_key',
+        openai: 'openai_api_key',
+        anthropic: 'anthropic_api_key',
+        google: 'google_api_key',
+        groq: 'groq_api_key',
+        mistral: 'mistral_api_key',
+      }
+
+      for (const [providerId, settings] of Object.entries(aiProviders)) {
+        if (settings.enabled && settings.key) {
+          const keyName = keyMapping[providerId]
+          if (keyName) {
+            aiData[keyName] = settings.key
+          }
+        }
+      }
+
+      const result = await settingsApi.updateAI(aiData)
+      setSaveMessage(result.message || 'AI settings saved successfully!')
+    } catch (error) {
+      setSaveMessage(error instanceof Error ? error.message : 'Failed to save AI settings')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const handleSave = async () => {
     await handleSaveBroker()
   }
@@ -339,8 +390,9 @@ export default function SettingsPage() {
                 providers={AI_PROVIDERS}
                 providerSettings={aiProviders}
                 setProviderSettings={setAiProviders}
-                onSave={handleSave}
+                onSave={handleSaveAI}
                 saving={saving}
+                saveMessage={saveMessage}
               />
             )}
 
@@ -563,12 +615,14 @@ function AIProvidersSettings({
   setProviderSettings,
   onSave,
   saving,
+  saveMessage,
 }: {
   providers: typeof AI_PROVIDERS
   providerSettings: Record<string, { enabled: boolean; key: string }>
   setProviderSettings: (settings: Record<string, { enabled: boolean; key: string }>) => void
   onSave: () => void
   saving: boolean
+  saveMessage?: string
 }) {
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({})
 
@@ -589,10 +643,22 @@ function AIProvidersSettings({
       exit={{ opacity: 0, y: -20 }}
       className="space-y-6"
     >
+      {/* Info Banner for AIML */}
+      <div className="p-4 bg-primary-500/10 border border-primary-500/30 rounded-xl flex items-start gap-3">
+        <Info size={20} className="text-primary-400 flex-shrink-0 mt-0.5" />
+        <div>
+          <p className="text-sm text-primary-300 font-medium">Recommended: AIML API</p>
+          <p className="text-xs text-dark-400 mt-1">
+            AIML API provides access to 6 top AI models (ChatGPT 5.2, Gemini 3 Pro, DeepSeek V3.2, Grok 4.1, Qwen Max, GLM 4.7)
+            with a single API key. Get your key at <a href="https://aimlapi.com" target="_blank" rel="noopener noreferrer" className="text-primary-400 hover:underline">aimlapi.com</a>
+          </p>
+        </div>
+      </div>
+
       <div className="card p-6">
         <h2 className="text-xl font-semibold mb-2">AI Providers</h2>
         <p className="text-dark-400 mb-6">
-          Configure which AI models to use for market analysis. Enable at least one provider.
+          Configure which AI models to use for market analysis. Enable AIML API for best results.
         </p>
 
         <div className="space-y-4">
@@ -601,7 +667,9 @@ function AIProvidersSettings({
               key={provider.id}
               className={`p-4 rounded-xl border transition-all ${
                 providerSettings[provider.id]?.enabled
-                  ? 'border-primary-500/50 bg-primary-500/5'
+                  ? provider.id === 'aiml'
+                    ? 'border-neon-green/50 bg-neon-green/5'
+                    : 'border-primary-500/50 bg-primary-500/5'
                   : 'border-dark-700 bg-dark-800/50'
               }`}
             >
@@ -612,20 +680,26 @@ function AIProvidersSettings({
                     <div className="flex items-center gap-2">
                       <span className="font-semibold">{provider.name}</span>
                       {provider.badge && (
-                        <span className="text-xs px-2 py-0.5 bg-neon-green/20 text-neon-green rounded-full">
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${
+                          provider.id === 'aiml'
+                            ? 'bg-neon-green/20 text-neon-green'
+                            : 'bg-primary-500/20 text-primary-400'
+                        }`}>
                           {provider.badge}
                         </span>
                       )}
                     </div>
                     <p className="text-xs text-dark-400">
-                      Models: {provider.models.join(', ')}
+                      {provider.description || `Models: ${provider.models.join(', ')}`}
                     </p>
                   </div>
                 </div>
                 <button
                   onClick={() => toggleProvider(provider.id)}
                   className={`relative w-12 h-6 rounded-full transition-colors ${
-                    providerSettings[provider.id]?.enabled ? 'bg-primary-500' : 'bg-dark-600'
+                    providerSettings[provider.id]?.enabled
+                      ? provider.id === 'aiml' ? 'bg-neon-green' : 'bg-primary-500'
+                      : 'bg-dark-600'
                   }`}
                 >
                   <span
@@ -642,6 +716,11 @@ function AIProvidersSettings({
                   animate={{ opacity: 1, height: 'auto' }}
                   className="mt-3"
                 >
+                  {provider.id === 'aiml' && (
+                    <p className="text-xs text-dark-400 mb-2">
+                      Models: {provider.models.join(', ')}
+                    </p>
+                  )}
                   <label className="block text-sm font-medium mb-2">{provider.field.label}</label>
                   <div className="relative">
                     <input
@@ -672,6 +751,17 @@ function AIProvidersSettings({
             </div>
           ))}
         </div>
+
+        {/* Save Status */}
+        {saveMessage && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="mt-4 text-sm text-neon-green"
+          >
+            {saveMessage}
+          </motion.div>
+        )}
 
         <div className="mt-6">
           <button
