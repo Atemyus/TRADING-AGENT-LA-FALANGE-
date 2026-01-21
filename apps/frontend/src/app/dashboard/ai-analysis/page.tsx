@@ -106,7 +106,18 @@ export default function AIAnalysisPage() {
       setResult(response)
     } catch (err) {
       console.error('Analysis failed:', err)
-      setError('Failed to run analysis. Please check your AIML API key in Settings.')
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+
+      // Provide specific error messages based on the error
+      if (errorMessage.includes('No providers available')) {
+        setError('No AI providers configured. Go to Settings > AI Providers and add your AIML API key.')
+      } else if (errorMessage.includes('No broker configured')) {
+        setError('Broker not configured. Go to Settings > Broker to connect your trading account.')
+      } else if (errorMessage.includes('AIML') || errorMessage.includes('API key')) {
+        setError('AIML API key invalid or missing. Go to Settings > AI Providers to configure.')
+      } else {
+        setError(`Analysis failed: ${errorMessage}`)
+      }
       setResult(null)
     } finally {
       setIsAnalyzing(false)

@@ -285,35 +285,52 @@ export default function TradingViewChart({
 
   // Simulate real-time updates
   useEffect(() => {
-    if (!candlestickSeriesRef.current) return;
+    // Don't start updates until chart is fully loaded
+    if (isLoading) return;
 
     const updateInterval = setInterval(() => {
-      if (!candlestickSeriesRef.current) return;
+      try {
+        if (!candlestickSeriesRef.current) return;
 
-      const data = candlestickSeriesRef.current.data();
-      if (data.length === 0) return;
+        const data = candlestickSeriesRef.current.data();
+        if (!data || data.length === 0) return;
 
-      const lastCandle = { ...data[data.length - 1] };
-      const volatility = lastCandle.close * 0.0002;
-      const change = (Math.random() - 0.5) * volatility * 2;
+        const lastCandle = data[data.length - 1];
+        if (!lastCandle || typeof lastCandle.close !== 'number') return;
 
-      lastCandle.close = Number((lastCandle.close + change).toFixed(5));
-      lastCandle.high = Number(Math.max(lastCandle.high, lastCandle.close).toFixed(5));
-      lastCandle.low = Number(Math.min(lastCandle.low, lastCandle.close).toFixed(5));
+        // Create a copy with updated values
+        const updatedCandle = {
+          time: lastCandle.time,
+          open: lastCandle.open,
+          high: lastCandle.high,
+          low: lastCandle.low,
+          close: lastCandle.close,
+        };
 
-      candlestickSeriesRef.current.update(lastCandle);
-      setCurrentPrice(lastCandle.close);
+        const volatility = updatedCandle.close * 0.0002;
+        const change = (Math.random() - 0.5) * volatility * 2;
 
-      const firstCandle = data[0];
-      if (firstCandle) {
-        const priceChangeVal = lastCandle.close - firstCandle.open;
-        setPriceChange(priceChangeVal);
-        setPriceChangePercent((priceChangeVal / firstCandle.open) * 100);
+        updatedCandle.close = Number((updatedCandle.close + change).toFixed(5));
+        updatedCandle.high = Number(Math.max(updatedCandle.high, updatedCandle.close).toFixed(5));
+        updatedCandle.low = Number(Math.min(updatedCandle.low, updatedCandle.close).toFixed(5));
+
+        candlestickSeriesRef.current.update(updatedCandle);
+        setCurrentPrice(updatedCandle.close);
+
+        const firstCandle = data[0];
+        if (firstCandle && typeof firstCandle.open === 'number') {
+          const priceChangeVal = updatedCandle.close - firstCandle.open;
+          setPriceChange(priceChangeVal);
+          setPriceChangePercent((priceChangeVal / firstCandle.open) * 100);
+        }
+      } catch (err) {
+        // Silently ignore errors during real-time updates
+        console.debug('Chart update skipped:', err);
       }
     }, 1000);
 
     return () => clearInterval(updateInterval);
-  }, [candlestickSeriesRef.current]);
+  }, [isLoading]);
 
   const handleTimeframeChange = (tf: string) => {
     setSelectedTimeframe(tf);
