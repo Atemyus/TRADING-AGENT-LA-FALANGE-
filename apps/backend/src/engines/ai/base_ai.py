@@ -29,21 +29,29 @@ class MarketContext:
     symbol: str
     timeframe: str
     current_price: Decimal
-    bid: Decimal
-    ask: Decimal
-    spread: Decimal
+
+    # Price data (optional - computed from current_price if not provided)
+    bid: Optional[Decimal] = None
+    ask: Optional[Decimal] = None
+    spread: Optional[Decimal] = None
 
     # Technical indicators
     indicators: Dict[str, Any] = field(default_factory=dict)
 
+    # Historical candles
+    candles: List[Dict[str, Any]] = field(default_factory=list)
+
     # Support/Resistance levels
-    support_levels: List[float] = field(default_factory=list)
-    resistance_levels: List[float] = field(default_factory=list)
+    support_levels: List[Decimal] = field(default_factory=list)
+    resistance_levels: List[Decimal] = field(default_factory=list)
 
     # Additional context
-    news_sentiment: Optional[str] = None
+    news_sentiment: Optional[float] = None
     market_session: Optional[str] = None  # "London", "New York", "Tokyo", "Sydney"
     volatility: Optional[str] = None  # "low", "medium", "high"
+
+    # Economic events
+    economic_events: List[Dict[str, Any]] = field(default_factory=list)
 
     # Account context
     account_balance: Optional[Decimal] = None
@@ -51,6 +59,15 @@ class MarketContext:
 
     # Timestamp
     timestamp: datetime = field(default_factory=datetime.utcnow)
+
+    def __post_init__(self):
+        """Set default bid/ask/spread based on current_price if not provided."""
+        if self.bid is None:
+            self.bid = self.current_price
+        if self.ask is None:
+            self.ask = self.current_price
+        if self.spread is None:
+            self.spread = Decimal('0')
 
     def to_prompt_string(self) -> str:
         """Convert context to a string for AI prompt."""
