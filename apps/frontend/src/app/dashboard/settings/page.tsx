@@ -309,6 +309,60 @@ export default function SettingsPage() {
     }
   }
 
+  const handleSaveRisk = async (riskData: {
+    maxPositions: number
+    maxDailyTrades: number
+    maxDailyLossPercent: number
+    riskPerTrade: number
+    defaultLeverage: number
+    enableTrading: boolean
+  }) => {
+    setSaving(true)
+    setSaveMessage('')
+
+    try {
+      const result = await settingsApi.updateRisk({
+        max_positions: riskData.maxPositions,
+        max_daily_trades: riskData.maxDailyTrades,
+        max_daily_loss_percent: riskData.maxDailyLossPercent,
+        risk_per_trade: riskData.riskPerTrade,
+        default_leverage: riskData.defaultLeverage,
+        trading_enabled: riskData.enableTrading,
+      })
+      setSaveMessage(result.message || 'Risk settings saved successfully!')
+    } catch (error) {
+      setSaveMessage(error instanceof Error ? error.message : 'Failed to save risk settings')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleSaveNotifications = async (notifData: {
+    telegramEnabled: boolean
+    telegramBotToken: string
+    telegramChatId: string
+    discordEnabled: boolean
+    discordWebhook: string
+  }) => {
+    setSaving(true)
+    setSaveMessage('')
+
+    try {
+      const result = await settingsApi.updateNotifications({
+        telegram_enabled: notifData.telegramEnabled,
+        telegram_bot_token: notifData.telegramBotToken || undefined,
+        telegram_chat_id: notifData.telegramChatId || undefined,
+        discord_enabled: notifData.discordEnabled,
+        discord_webhook: notifData.discordWebhook || undefined,
+      })
+      setSaveMessage(result.message || 'Notification settings saved successfully!')
+    } catch (error) {
+      setSaveMessage(error instanceof Error ? error.message : 'Failed to save notification settings')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const handleSave = async () => {
     await handleSaveBroker()
   }
@@ -397,11 +451,11 @@ export default function SettingsPage() {
             )}
 
             {activeSection === 'risk' && (
-              <RiskSettings key="risk" onSave={handleSave} saving={saving} />
+              <RiskSettings key="risk" onSave={handleSaveRisk} saving={saving} saveMessage={saveMessage} />
             )}
 
             {activeSection === 'notifications' && (
-              <NotificationSettings key="notifications" onSave={handleSave} saving={saving} />
+              <NotificationSettings key="notifications" onSave={handleSaveNotifications} saving={saving} saveMessage={saveMessage} />
             )}
           </AnimatePresence>
         </motion.div>
@@ -779,7 +833,22 @@ function AIProvidersSettings({
 }
 
 // Risk Settings Component
-function RiskSettings({ onSave, saving }: { onSave: () => void; saving: boolean }) {
+function RiskSettings({
+  onSave,
+  saving,
+  saveMessage,
+}: {
+  onSave: (data: {
+    maxPositions: number
+    maxDailyTrades: number
+    maxDailyLossPercent: number
+    riskPerTrade: number
+    defaultLeverage: number
+    enableTrading: boolean
+  }) => void
+  saving: boolean
+  saveMessage?: string
+}) {
   const [settings, setSettings] = useState({
     maxPositions: 5,
     maxDailyTrades: 50,
@@ -804,7 +873,7 @@ function RiskSettings({ onSave, saving }: { onSave: () => void; saving: boolean 
           <input
             type="number"
             value={settings.maxPositions}
-            onChange={(e) => setSettings({ ...settings, maxPositions: parseInt(e.target.value) })}
+            onChange={(e) => setSettings({ ...settings, maxPositions: parseInt(e.target.value) || 0 })}
             className="input"
           />
         </div>
@@ -813,7 +882,7 @@ function RiskSettings({ onSave, saving }: { onSave: () => void; saving: boolean 
           <input
             type="number"
             value={settings.maxDailyTrades}
-            onChange={(e) => setSettings({ ...settings, maxDailyTrades: parseInt(e.target.value) })}
+            onChange={(e) => setSettings({ ...settings, maxDailyTrades: parseInt(e.target.value) || 0 })}
             className="input"
           />
         </div>
@@ -822,7 +891,7 @@ function RiskSettings({ onSave, saving }: { onSave: () => void; saving: boolean 
           <input
             type="number"
             value={settings.maxDailyLossPercent}
-            onChange={(e) => setSettings({ ...settings, maxDailyLossPercent: parseFloat(e.target.value) })}
+            onChange={(e) => setSettings({ ...settings, maxDailyLossPercent: parseFloat(e.target.value) || 0 })}
             className="input"
           />
         </div>
@@ -831,7 +900,7 @@ function RiskSettings({ onSave, saving }: { onSave: () => void; saving: boolean 
           <input
             type="number"
             value={settings.riskPerTrade}
-            onChange={(e) => setSettings({ ...settings, riskPerTrade: parseFloat(e.target.value) })}
+            onChange={(e) => setSettings({ ...settings, riskPerTrade: parseFloat(e.target.value) || 0 })}
             className="input"
           />
         </div>
@@ -840,7 +909,7 @@ function RiskSettings({ onSave, saving }: { onSave: () => void; saving: boolean 
           <input
             type="number"
             value={settings.defaultLeverage}
-            onChange={(e) => setSettings({ ...settings, defaultLeverage: parseInt(e.target.value) })}
+            onChange={(e) => setSettings({ ...settings, defaultLeverage: parseInt(e.target.value) || 1 })}
             className="input"
           />
         </div>
@@ -861,8 +930,19 @@ function RiskSettings({ onSave, saving }: { onSave: () => void; saving: boolean 
         </div>
       </div>
 
+      {/* Save Status */}
+      {saveMessage && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="mt-4 text-sm text-neon-green"
+        >
+          {saveMessage}
+        </motion.div>
+      )}
+
       <div className="mt-6">
-        <button onClick={onSave} disabled={saving} className="btn-primary flex items-center gap-2">
+        <button onClick={() => onSave(settings)} disabled={saving} className="btn-primary flex items-center gap-2">
           {saving ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
           Save Risk Settings
         </button>
@@ -872,15 +952,27 @@ function RiskSettings({ onSave, saving }: { onSave: () => void; saving: boolean 
 }
 
 // Notification Settings Component
-function NotificationSettings({ onSave, saving }: { onSave: () => void; saving: boolean }) {
+function NotificationSettings({
+  onSave,
+  saving,
+  saveMessage,
+}: {
+  onSave: (data: {
+    telegramEnabled: boolean
+    telegramBotToken: string
+    telegramChatId: string
+    discordEnabled: boolean
+    discordWebhook: string
+  }) => void
+  saving: boolean
+  saveMessage?: string
+}) {
   const [settings, setSettings] = useState({
     telegramEnabled: false,
     telegramBotToken: '',
     telegramChatId: '',
     discordEnabled: false,
     discordWebhook: '',
-    emailEnabled: false,
-    email: '',
   })
 
   return (
@@ -980,7 +1072,18 @@ function NotificationSettings({ onSave, saving }: { onSave: () => void; saving: 
         )}
       </div>
 
-      <button onClick={onSave} disabled={saving} className="btn-primary flex items-center gap-2">
+      {/* Save Status */}
+      {saveMessage && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="text-sm text-neon-green"
+        >
+          {saveMessage}
+        </motion.div>
+      )}
+
+      <button onClick={() => onSave(settings)} disabled={saving} className="btn-primary flex items-center gap-2">
         {saving ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
         Save Notification Settings
       </button>
