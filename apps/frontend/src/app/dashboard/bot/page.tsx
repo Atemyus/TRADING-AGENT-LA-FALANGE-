@@ -21,6 +21,7 @@ import {
   XCircle,
   Eye,
 } from "lucide-react";
+import { botApi } from "@/lib/api";
 
 interface BotStatus {
   status: string;
@@ -140,13 +141,28 @@ export default function BotControlPage() {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch("/api/v1/bot/status");
-      if (res.ok) {
-        const data = await res.json();
-        setStatus(data);
-      } else {
-        setStatus(demoStatus);
-      }
+      const data = await botApi.getStatus();
+      // Map the API response to match our BotStatus interface
+      setStatus({
+        status: data.is_running ? 'running' : 'stopped',
+        started_at: null,
+        last_analysis_at: data.last_analysis || null,
+        config: {
+          symbols: [data.current_symbol || 'EUR/USD'],
+          analysis_mode: data.mode || 'standard',
+          min_confidence: 75,
+          risk_per_trade: 1,
+          max_positions: 3,
+        },
+        statistics: {
+          analyses_today: 0,
+          trades_today: data.trades_today || 0,
+          daily_pnl: parseFloat(data.pnl_today) || 0,
+          open_positions: 0,
+        },
+        open_positions: [],
+        recent_errors: [],
+      });
     } catch {
       setStatus(demoStatus);
     }
@@ -154,13 +170,8 @@ export default function BotControlPage() {
 
   const fetchConfig = useCallback(async () => {
     try {
-      const res = await fetch("/api/v1/bot/config");
-      if (res.ok) {
-        const data = await res.json();
-        setConfig(data);
-      } else {
-        setConfig(demoConfig);
-      }
+      const data = await botApi.getConfig() as BotConfig;
+      setConfig(data);
     } catch {
       setConfig(demoConfig);
     }
@@ -181,15 +192,14 @@ export default function BotControlPage() {
     setError(null);
 
     try {
-      const res = await fetch(`/api/v1/bot/${action}`, { method: "POST" });
-      if (res.ok) {
-        await fetchStatus();
+      if (action === "start" || action === "resume") {
+        await botApi.start();
       } else {
-        const data = await res.json();
-        setError(data.detail || `Failed to ${action} bot`);
+        await botApi.stop();
       }
+      await fetchStatus();
     } catch (e) {
-      setError(`Failed to ${action} bot`);
+      setError(e instanceof Error ? e.message : `Failed to ${action} bot`);
     }
 
     setIsActioning(false);
@@ -197,15 +207,8 @@ export default function BotControlPage() {
 
   const handleConfigUpdate = async (updates: Partial<BotConfig>) => {
     try {
-      const res = await fetch("/api/v1/bot/config", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updates),
-      });
-
-      if (res.ok) {
-        await fetchConfig();
-      }
+      await botApi.updateConfig(updates);
+      await fetchConfig();
     } catch (e) {
       console.error("Failed to update config:", e);
     }
