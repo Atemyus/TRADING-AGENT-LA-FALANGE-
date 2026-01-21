@@ -72,7 +72,7 @@ export default function DashboardLayout({
               <span className="text-xl font-bold">F</span>
             </div>
             <div>
-              <h1 className="font-bold text-lg">La Falange</h1>
+              <h1 className="font-bold text-lg">Prometheus</h1>
               <p className="text-xs text-dark-400">Trading Platform</p>
             </div>
           </Link>

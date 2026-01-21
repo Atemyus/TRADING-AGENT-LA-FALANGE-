@@ -1,7 +1,7 @@
 [project]
-name = "falange-backend"
+name = "prometheus-backend"
 version = "2.0.0"
-description = "La Falange Trading Platform - Backend API"
+description = "Prometheus Trading Platform - Backend API"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}

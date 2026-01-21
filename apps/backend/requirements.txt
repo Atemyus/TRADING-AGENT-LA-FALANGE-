@@ -1,4 +1,4 @@
-# La Falange Trading Platform - Backend Dependencies
+# Prometheus Trading Platform - Backend Dependencies
 
 # Core Framework
 fastapi>=0.109.0

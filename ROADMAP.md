@@ -1,6 +1,6 @@
 # ROADMAP - Trading Platform CFD/Futures
 
-> **Progetto:** La Falange Trading Platform
+> **Progetto:** Prometheus Trading Platform
 > **Versione:** 2.0 (Ristrutturazione Completa)
 > **Obiettivo:** Piattaforma di trading automatizzato per CFD/Futures con focus su Intraday/Scalping
 > **Data Creazione:** 21 Dicembre 2024

@@ -20,7 +20,7 @@ export default function LandingPage() {
         className="text-center mb-12"
       >
         <h1 className="text-6xl font-bold mb-4">
-          <span className="text-gradient">La Falange</span>
+          <span className="text-gradient">Prometheus</span>
         </h1>
         <p className="text-xl text-dark-400">
           AI-Powered Trading Platform

@@ -1,4 +1,4 @@
-# La Falange Trading Platform
+# Prometheus Trading Platform
 
 **AI-Powered CFD/Futures Trading Platform with Multi-Model Consensus**
 
@@ -66,8 +66,8 @@ Una piattaforma di trading professionale per CFD e Futures con analisi AI multi-
 
 ```bash
 # 1. Clona il repository
-git clone https://github.com/yourusername/la-falange-trading.git
-cd la-falange-trading
+git clone https://github.com/yourusername/prometheus-trading.git
+cd prometheus-trading
 
 # 2. Copia e configura l'environment
 cp .env.example .env
@@ -158,8 +158,8 @@ NEXT_PUBLIC_API_URL=https://your-backend-url.com
 ```bash
 # Usa Docker su un VPS
 ssh user@your-server
-git clone https://github.com/yourusername/la-falange-trading.git
-cd la-falange-trading
+git clone https://github.com/yourusername/prometheus-trading.git
+cd prometheus-trading
 docker-compose -f docker-compose.prod.yml up -d
 ```
 

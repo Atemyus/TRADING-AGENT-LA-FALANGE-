@@ -1,4 +1,4 @@
-# La Falange Trading Platform - Frontend Dockerfile
+# Prometheus Trading Platform - Frontend Dockerfile
 
 FROM node:20-alpine AS base
 

@@ -1,5 +1,5 @@
 """
-La Falange Trading Platform - Backend API
+Prometheus Trading Platform - Backend API
 FastAPI application entry point
 """
 
@@ -31,7 +31,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"⚠️ Could not load settings from database: {e}")
 
-    print(f"🚀 La Falange Trading Platform v{settings.VERSION} started")
+    print(f"🔥 Prometheus Trading Platform v{settings.VERSION} started")
     print(f"📊 Environment: {settings.ENVIRONMENT}")
     yield
     # Shutdown
@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="La Falange Trading Platform",
+    title="Prometheus Trading Platform",
     description="AI-Powered CFD/Futures Trading Platform",
     version=settings.VERSION,
     lifespan=lifespan,
@@ -82,7 +82,7 @@ async def health_check():
 async def root():
     """Root endpoint."""
     return {
-        "name": "La Falange Trading Platform",
+        "name": "Prometheus Trading Platform",
         "version": settings.VERSION,
         "docs": "/api/docs",
     }
