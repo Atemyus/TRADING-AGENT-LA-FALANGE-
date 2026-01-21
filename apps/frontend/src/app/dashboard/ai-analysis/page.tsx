@@ -1,7 +1,7 @@
 'use client'
 
 import { motion, AnimatePresence } from 'framer-motion'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Brain,
   Play,
@@ -90,15 +90,16 @@ export default function AIAnalysisPage() {
     fetchPrice()
   }, [symbol])
 
-  const runAnalysis = async () => {
+  const runAnalysis = useCallback(async () => {
     setIsAnalyzing(true)
     setError(null)
 
     try {
+      const priceToUse = currentPrice || parseFloat(selectedSymbol?.price || '1.0892')
       // Call the real AI analysis API
       const response = await aiApi.analyze(
         symbol,
-        currentPrice || parseFloat(selectedSymbol?.price || '0'),
+        priceToUse,
         timeframe,
         mode
       )
@@ -110,19 +111,19 @@ export default function AIAnalysisPage() {
     } finally {
       setIsAnalyzing(false)
     }
-  }
+  }, [symbol, currentPrice, selectedSymbol?.price, timeframe, mode])
 
   // Auto-run analysis on page load
   useEffect(() => {
     if (!hasInitialized) {
       setHasInitialized(true)
-      // Small delay to ensure price is fetched first
+      // Small delay to ensure component is mounted and price is fetched
       const timer = setTimeout(() => {
         runAnalysis()
-      }, 500)
+      }, 1000)
       return () => clearTimeout(timer)
     }
-  }, [hasInitialized])
+  }, [hasInitialized, runAnalysis])
 
   return (
     <div className="space-y-6">
