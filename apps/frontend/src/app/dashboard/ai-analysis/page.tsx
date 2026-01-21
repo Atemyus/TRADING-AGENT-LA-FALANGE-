@@ -70,6 +70,7 @@ export default function AIAnalysisPage() {
   const [error, setError] = useState<string | null>(null)
   const [expandedVote, setExpandedVote] = useState<string | null>(null)
   const [currentPrice, setCurrentPrice] = useState<number>(0)
+  const [hasInitialized, setHasInitialized] = useState(false)
 
   const selectedSymbol = SYMBOLS.find(s => s.value === symbol)
 
@@ -110,6 +111,18 @@ export default function AIAnalysisPage() {
       setIsAnalyzing(false)
     }
   }
+
+  // Auto-run analysis on page load
+  useEffect(() => {
+    if (!hasInitialized) {
+      setHasInitialized(true)
+      // Small delay to ensure price is fetched first
+      const timer = setTimeout(() => {
+        runAnalysis()
+      }, 500)
+      return () => clearTimeout(timer)
+    }
+  }, [hasInitialized])
 
   return (
     <div className="space-y-6">
