@@ -25,9 +25,9 @@ import { aiApi, analyticsApi, tradingApi } from '@/lib/api'
 import type { AccountSummary, ConsensusResult, PerformanceMetrics } from '@/lib/api'
 
 // Dynamic import for TradingView chart to avoid SSR issues
-const TradingViewChart = dynamic(
-  () => import('@/components/charts/TradingViewChart'),
-  { ssr: false, loading: () => <div className="h-[400px] bg-slate-900 rounded-xl animate-pulse" /> }
+const TradingViewWidget = dynamic(
+  () => import('@/components/charts/TradingViewWidget'),
+  { ssr: false, loading: () => <div className="h-[500px] bg-slate-900 rounded-xl animate-pulse" /> }
 )
 
 // Animation variants
@@ -216,14 +216,16 @@ export default function DashboardPage() {
         />
       </motion.div>
 
-      {/* TradingView Candlestick Chart - Full Width */}
+      {/* TradingView Real-Time Chart - Full Width */}
       <motion.div variants={itemVariants}>
-        <TradingViewChart
+        <TradingViewWidget
           symbol={selectedSymbol}
-          timeframe="60"
-          height={450}
-          showVolume={true}
+          interval="60"
+          height={500}
+          theme="dark"
+          allowSymbolChange={true}
           showToolbar={true}
+          showDrawingTools={true}
         />
       </motion.div>
 
