@@ -19,6 +19,39 @@ import {
 } from 'lucide-react'
 import { settingsApi, type BrokerSettingsData } from '@/lib/api'
 
+// Reusable Toggle Component
+function Toggle({
+  enabled,
+  onChange,
+  color = 'primary',
+}: {
+  enabled: boolean
+  onChange: () => void
+  color?: 'primary' | 'green'
+}) {
+  const bgColor = enabled
+    ? color === 'green'
+      ? 'bg-neon-green'
+      : 'bg-primary-500'
+    : 'bg-dark-600'
+
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={enabled}
+      onClick={onChange}
+      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-dark-900 ${bgColor}`}
+    >
+      <span
+        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+          enabled ? 'translate-x-5' : 'translate-x-0'
+        }`}
+      />
+    </button>
+  )
+}
+
 // Broker configurations
 const BROKERS = [
   {
@@ -748,20 +781,11 @@ function AIProvidersSettings({
                     </p>
                   </div>
                 </div>
-                <button
-                  onClick={() => toggleProvider(provider.id)}
-                  className={`relative w-12 h-6 rounded-full transition-colors ${
-                    providerSettings[provider.id]?.enabled
-                      ? provider.id === 'aiml' ? 'bg-neon-green' : 'bg-primary-500'
-                      : 'bg-dark-600'
-                  }`}
-                >
-                  <span
-                    className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
-                      providerSettings[provider.id]?.enabled ? 'translate-x-7' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
+                <Toggle
+                  enabled={providerSettings[provider.id]?.enabled || false}
+                  onChange={() => toggleProvider(provider.id)}
+                  color={provider.id === 'aiml' ? 'green' : 'primary'}
+                />
               </div>
 
               {providerSettings[provider.id]?.enabled && (
@@ -914,18 +938,11 @@ function RiskSettings({
           />
         </div>
         <div className="flex items-center gap-3 self-end">
-          <button
-            onClick={() => setSettings({ ...settings, enableTrading: !settings.enableTrading })}
-            className={`relative w-12 h-6 rounded-full transition-colors ${
-              settings.enableTrading ? 'bg-neon-green' : 'bg-dark-600'
-            }`}
-          >
-            <span
-              className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
-                settings.enableTrading ? 'translate-x-7' : 'translate-x-1'
-              }`}
-            />
-          </button>
+          <Toggle
+            enabled={settings.enableTrading}
+            onChange={() => setSettings({ ...settings, enableTrading: !settings.enableTrading })}
+            color="green"
+          />
           <label className="text-sm font-medium">Enable Live Trading</label>
         </div>
       </div>
@@ -992,18 +1009,10 @@ function NotificationSettings({
               <p className="text-sm text-dark-400">Get notifications via Telegram bot</p>
             </div>
           </div>
-          <button
-            onClick={() => setSettings({ ...settings, telegramEnabled: !settings.telegramEnabled })}
-            className={`relative w-12 h-6 rounded-full transition-colors ${
-              settings.telegramEnabled ? 'bg-primary-500' : 'bg-dark-600'
-            }`}
-          >
-            <span
-              className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
-                settings.telegramEnabled ? 'translate-x-7' : 'translate-x-1'
-              }`}
-            />
-          </button>
+          <Toggle
+            enabled={settings.telegramEnabled}
+            onChange={() => setSettings({ ...settings, telegramEnabled: !settings.telegramEnabled })}
+          />
         </div>
         {settings.telegramEnabled && (
           <motion.div
@@ -1045,18 +1054,10 @@ function NotificationSettings({
               <p className="text-sm text-dark-400">Get notifications via Discord webhook</p>
             </div>
           </div>
-          <button
-            onClick={() => setSettings({ ...settings, discordEnabled: !settings.discordEnabled })}
-            className={`relative w-12 h-6 rounded-full transition-colors ${
-              settings.discordEnabled ? 'bg-primary-500' : 'bg-dark-600'
-            }`}
-          >
-            <span
-              className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
-                settings.discordEnabled ? 'translate-x-7' : 'translate-x-1'
-              }`}
-            />
-          </button>
+          <Toggle
+            enabled={settings.discordEnabled}
+            onChange={() => setSettings({ ...settings, discordEnabled: !settings.discordEnabled })}
+          />
         </div>
         {settings.discordEnabled && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
