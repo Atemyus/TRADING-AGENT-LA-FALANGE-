@@ -349,6 +349,24 @@ export const botApi = {
   },
 
   /**
+   * Pause the trading bot
+   */
+  pause: async () => {
+    return fetchApi('/api/v1/bot/pause', {
+      method: 'POST',
+    })
+  },
+
+  /**
+   * Resume the trading bot
+   */
+  resume: async () => {
+    return fetchApi('/api/v1/bot/resume', {
+      method: 'POST',
+    })
+  },
+
+  /**
    * Update bot configuration
    */
   updateConfig: async (config: Record<string, unknown>) => {

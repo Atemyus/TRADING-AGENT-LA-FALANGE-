@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
+import dynamic from "next/dynamic";
 import {
   Play,
   Pause,
@@ -22,6 +23,42 @@ import {
   Eye,
 } from "lucide-react";
 import { botApi } from "@/lib/api";
+
+// Dynamic import for TradingView widget
+const TradingViewWidget = dynamic(
+  () => import("@/components/charts/TradingViewWidget"),
+  { ssr: false, loading: () => <div className="h-[300px] bg-slate-900 rounded-xl animate-pulse" /> }
+);
+
+// Reusable Toggle Component
+function Toggle({
+  enabled,
+  onChange,
+  disabled = false,
+}: {
+  enabled: boolean;
+  onChange: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={enabled}
+      onClick={onChange}
+      disabled={disabled}
+      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-900 ${
+        enabled ? "bg-indigo-600" : "bg-slate-600"
+      } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+    >
+      <span
+        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+          enabled ? "translate-x-5" : "translate-x-0"
+        }`}
+      />
+    </button>
+  );
+}
 
 interface BotStatus {
   status: string;
@@ -98,6 +135,7 @@ export default function BotControlPage() {
   const [isActioning, setIsActioning] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [previewSymbol, setPreviewSymbol] = useState<string>("EUR/USD");
 
   // Demo data for visualization
   const demoStatus: BotStatus = {
@@ -192,10 +230,19 @@ export default function BotControlPage() {
     setError(null);
 
     try {
-      if (action === "start" || action === "resume") {
-        await botApi.start();
-      } else {
-        await botApi.stop();
+      switch (action) {
+        case "start":
+          await botApi.start();
+          break;
+        case "stop":
+          await botApi.stop();
+          break;
+        case "pause":
+          await botApi.pause();
+          break;
+        case "resume":
+          await botApi.resume();
+          break;
       }
       await fetchStatus();
     } catch (e) {
@@ -427,6 +474,40 @@ export default function BotControlPage() {
             </p>
           </div>
         </div>
+      </div>
+
+      {/* Chart Preview */}
+      <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <BarChart3 size={20} />
+            Chart Preview
+          </h3>
+          <div className="flex items-center gap-2">
+            {currentConfig.symbols.map((symbol) => (
+              <button
+                key={symbol}
+                onClick={() => setPreviewSymbol(symbol)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  previewSymbol === symbol
+                    ? "bg-indigo-600 text-white"
+                    : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+                }`}
+              >
+                {symbol}
+              </button>
+            ))}
+          </div>
+        </div>
+        <TradingViewWidget
+          symbol={previewSymbol}
+          interval="15"
+          height={350}
+          theme="dark"
+          allowSymbolChange={false}
+          showToolbar={true}
+          showDrawingTools={false}
+        />
       </div>
 
       {/* Configuration Panel */}
@@ -661,17 +742,15 @@ export default function BotControlPage() {
                   </select>
                 </div>
               </div>
-              <label className="flex items-center gap-2 mt-3">
-                <input
-                  type="checkbox"
-                  checked={currentConfig.trade_on_weekends}
-                  onChange={(e) =>
-                    handleConfigUpdate({ trade_on_weekends: e.target.checked })
+              <div className="flex items-center gap-3 mt-3">
+                <Toggle
+                  enabled={currentConfig.trade_on_weekends}
+                  onChange={() =>
+                    handleConfigUpdate({ trade_on_weekends: !currentConfig.trade_on_weekends })
                   }
-                  className="rounded"
                 />
                 <span className="text-sm">Trade on weekends</span>
-              </label>
+              </div>
             </div>
 
             {/* Notifications */}
@@ -680,28 +759,24 @@ export default function BotControlPage() {
                 Notifications
               </label>
               <div className="space-y-3">
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={currentConfig.telegram_enabled}
-                    onChange={(e) =>
-                      handleConfigUpdate({ telegram_enabled: e.target.checked })
+                <div className="flex items-center gap-3">
+                  <Toggle
+                    enabled={currentConfig.telegram_enabled}
+                    onChange={() =>
+                      handleConfigUpdate({ telegram_enabled: !currentConfig.telegram_enabled })
                     }
-                    className="rounded"
                   />
                   <span className="text-sm">Telegram notifications</span>
-                </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={currentConfig.discord_enabled}
-                    onChange={(e) =>
-                      handleConfigUpdate({ discord_enabled: e.target.checked })
+                </div>
+                <div className="flex items-center gap-3">
+                  <Toggle
+                    enabled={currentConfig.discord_enabled}
+                    onChange={() =>
+                      handleConfigUpdate({ discord_enabled: !currentConfig.discord_enabled })
                     }
-                    className="rounded"
                   />
                   <span className="text-sm">Discord notifications</span>
-                </label>
+                </div>
               </div>
             </div>
           </div>
