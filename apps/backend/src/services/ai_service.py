@@ -64,41 +64,41 @@ class AIServiceConfig:
 # Default provider configurations - AIML API with 6 models
 # All models accessed via api.aimlapi.com with single API key
 DEFAULT_PROVIDERS = [
-    # GPT-4o (OpenAI via AIML)
+    # ChatGPT 5.2 (OpenAI via AIML)
     ProviderConfig(
         provider_class=AIMLProvider,
-        model_name="gpt-4o",
+        model_name="chatgpt-5.2",
         weight=1.0,
     ),
-    # GPT-4o Mini (OpenAI via AIML) - Fast & cheap
+    # Gemini 3 Pro (Google via AIML)
     ProviderConfig(
         provider_class=AIMLProvider,
-        model_name="gpt-4o-mini",
-        weight=0.8,
-    ),
-    # Claude 3.5 Sonnet (Anthropic via AIML)
-    ProviderConfig(
-        provider_class=AIMLProvider,
-        model_name="claude-3-5-sonnet",
+        model_name="gemini-3-pro",
         weight=1.0,
     ),
-    # Gemini 1.5 Pro (Google via AIML)
+    # DeepSeek V3.2 (DeepSeek via AIML)
     ProviderConfig(
         provider_class=AIMLProvider,
-        model_name="gemini-1.5-pro",
+        model_name="deepseek-v3.2",
         weight=1.0,
     ),
-    # DeepSeek Chat (DeepSeek via AIML)
+    # Grok 4.1 Fast (xAI via AIML)
     ProviderConfig(
         provider_class=AIMLProvider,
-        model_name="deepseek-chat",
-        weight=0.9,
+        model_name="grok-4.1-fast",
+        weight=1.0,
     ),
-    # Llama 3.1 70B (Meta via AIML)
+    # Qwen Max (Alibaba via AIML)
     ProviderConfig(
         provider_class=AIMLProvider,
-        model_name="llama-3.1-70b",
-        weight=0.9,
+        model_name="qwen-max",
+        weight=1.0,
+    ),
+    # GLM 4.7 (Zhipu via AIML)
+    ProviderConfig(
+        provider_class=AIMLProvider,
+        model_name="glm-4.7",
+        weight=1.0,
     ),
 ]
 

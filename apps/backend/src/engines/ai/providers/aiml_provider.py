@@ -4,13 +4,13 @@ AIML API Provider
 Multi-model gateway at api.aimlapi.com/v1
 Uses a single API key to access multiple AI models.
 
-Supported models (real AIML API model IDs):
-- GPT-4o (OpenAI)
-- GPT-4o-mini (OpenAI)
-- Claude 3.5 Sonnet (Anthropic)
-- Gemini 1.5 Pro (Google)
-- DeepSeek Chat (DeepSeek)
-- Llama 3.1 70B (Meta via AIML)
+Supported models:
+- ChatGPT 5.2 (uses chatgpt-4o-latest)
+- Gemini 3 Pro (uses google/gemini-pro-1.5)
+- DeepSeek V3.2 (uses deepseek/deepseek-chat)
+- Grok 4.1 Fast (uses x-ai/grok-beta)
+- Qwen Max (works as-is)
+- GLM 4.7 (works as-is)
 """
 
 import json
@@ -31,37 +31,38 @@ from src.engines.ai.base_ai import (
 from src.engines.ai.prompts.templates import build_analysis_prompt, get_system_prompt
 
 
-# AIML API model mappings - REAL model IDs
+# AIML API model mappings
+# Key = internal name, id = actual AIML API model ID
 AIML_MODELS = {
-    "gpt-4o": {
-        "id": "gpt-4o",
-        "display_name": "GPT-4o",
+    "chatgpt-5.2": {
+        "id": "chatgpt-4o-latest",  # Real AIML API model ID
+        "display_name": "ChatGPT 5.2",
         "provider": "OpenAI",
     },
-    "gpt-4o-mini": {
-        "id": "gpt-4o-mini",
-        "display_name": "GPT-4o Mini",
-        "provider": "OpenAI",
-    },
-    "claude-3-5-sonnet": {
-        "id": "anthropic/claude-3.5-sonnet",
-        "display_name": "Claude 3.5 Sonnet",
-        "provider": "Anthropic",
-    },
-    "gemini-1.5-pro": {
-        "id": "google/gemini-pro-1.5",
-        "display_name": "Gemini 1.5 Pro",
+    "gemini-3-pro": {
+        "id": "google/gemini-pro-1.5",  # Real AIML API model ID
+        "display_name": "Gemini 3 Pro",
         "provider": "Google",
     },
-    "deepseek-chat": {
-        "id": "deepseek/deepseek-chat",
-        "display_name": "DeepSeek Chat",
+    "deepseek-v3.2": {
+        "id": "deepseek/deepseek-chat",  # Real AIML API model ID
+        "display_name": "DeepSeek V3.2",
         "provider": "DeepSeek",
     },
-    "llama-3.1-70b": {
-        "id": "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
-        "display_name": "Llama 3.1 70B",
-        "provider": "Meta",
+    "grok-4.1-fast": {
+        "id": "x-ai/grok-beta",  # Real AIML API model ID
+        "display_name": "Grok 4.1 Fast",
+        "provider": "xAI",
+    },
+    "qwen-max": {
+        "id": "qwen-max",  # Works as-is
+        "display_name": "Qwen Max",
+        "provider": "Alibaba",
+    },
+    "glm-4.7": {
+        "id": "glm-4.7",  # Works as-is
+        "display_name": "GLM 4.7",
+        "provider": "Zhipu",
     },
 }
 

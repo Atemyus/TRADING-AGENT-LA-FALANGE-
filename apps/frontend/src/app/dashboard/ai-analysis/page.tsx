@@ -27,27 +27,29 @@ import { aiApi, type ConsensusResult, type AIVote, type AIServiceStatus } from '
 // Provider styling for AIML API models
 const providerStyles: Record<string, { color: string; icon: string; bg: string }> = {
   // The 6 AIML models (matching backend provider names)
-  'OpenAI': { color: 'text-green-400', icon: '🤖', bg: 'bg-green-500/20' },
-  'Anthropic': { color: 'text-orange-400', icon: '🧠', bg: 'bg-orange-500/20' },
+  'OpenAI': { color: 'text-green-400', icon: '💬', bg: 'bg-green-500/20' },
   'Google': { color: 'text-blue-400', icon: '💎', bg: 'bg-blue-500/20' },
   'DeepSeek': { color: 'text-cyan-400', icon: '🔍', bg: 'bg-cyan-500/20' },
-  'Meta': { color: 'text-purple-400', icon: '🦙', bg: 'bg-purple-500/20' },
+  'xAI': { color: 'text-red-400', icon: '⚡', bg: 'bg-red-500/20' },
+  'Alibaba': { color: 'text-orange-400', icon: '🌟', bg: 'bg-orange-500/20' },
+  'Zhipu': { color: 'text-purple-400', icon: '🧪', bg: 'bg-purple-500/20' },
   // Also match lowercase provider keys from backend
-  'aiml_openai': { color: 'text-green-400', icon: '🤖', bg: 'bg-green-500/20' },
-  'aiml_anthropic': { color: 'text-orange-400', icon: '🧠', bg: 'bg-orange-500/20' },
+  'aiml_openai': { color: 'text-green-400', icon: '💬', bg: 'bg-green-500/20' },
   'aiml_google': { color: 'text-blue-400', icon: '💎', bg: 'bg-blue-500/20' },
   'aiml_deepseek': { color: 'text-cyan-400', icon: '🔍', bg: 'bg-cyan-500/20' },
-  'aiml_meta': { color: 'text-purple-400', icon: '🦙', bg: 'bg-purple-500/20' },
+  'aiml_xai': { color: 'text-red-400', icon: '⚡', bg: 'bg-red-500/20' },
+  'aiml_alibaba': { color: 'text-orange-400', icon: '🌟', bg: 'bg-orange-500/20' },
+  'aiml_zhipu': { color: 'text-purple-400', icon: '🧪', bg: 'bg-purple-500/20' },
 }
 
-// The 6 AI models we use via AIML API (real model names)
+// The 6 AI models we use via AIML API
 const AI_MODELS = [
-  { provider: 'OpenAI', model: 'GPT-4o', icon: '🤖' },
-  { provider: 'OpenAI', model: 'GPT-4o Mini', icon: '🤖' },
-  { provider: 'Anthropic', model: 'Claude 3.5 Sonnet', icon: '🧠' },
-  { provider: 'Google', model: 'Gemini 1.5 Pro', icon: '💎' },
-  { provider: 'DeepSeek', model: 'DeepSeek Chat', icon: '🔍' },
-  { provider: 'Meta', model: 'Llama 3.1 70B', icon: '🦙' },
+  { provider: 'OpenAI', model: 'ChatGPT 5.2', icon: '💬' },
+  { provider: 'Google', model: 'Gemini 3 Pro', icon: '💎' },
+  { provider: 'DeepSeek', model: 'DeepSeek V3.2', icon: '🔍' },
+  { provider: 'xAI', model: 'Grok 4.1 Fast', icon: '⚡' },
+  { provider: 'Alibaba', model: 'Qwen Max', icon: '🌟' },
+  { provider: 'Zhipu', model: 'GLM 4.7', icon: '🧪' },
 ]
 
 const SYMBOLS = [
