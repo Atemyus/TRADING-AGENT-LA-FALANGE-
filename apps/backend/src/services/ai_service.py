@@ -124,11 +124,7 @@ class AIService:
         if not self.config.providers:
             self.config.providers = DEFAULT_PROVIDERS
 
-        # Initialize providers
-        self._providers: Dict[str, BaseAIProvider] = {}
-        self._initialize_providers()
-
-        # Initialize consensus engine
+        # Initialize consensus engine FIRST (needed by _initialize_providers)
         self._consensus_engine = create_consensus_engine(
             method=self.config.consensus_method.value,
             min_confidence_threshold=self.config.min_confidence_threshold,
@@ -136,6 +132,10 @@ class AIService:
             require_risk_reward=self.config.require_risk_reward,
             min_risk_reward=self.config.min_risk_reward,
         )
+
+        # Initialize providers (uses _consensus_engine)
+        self._providers: Dict[str, BaseAIProvider] = {}
+        self._initialize_providers()
 
     def _initialize_providers(self) -> None:
         """Initialize enabled AI providers."""
