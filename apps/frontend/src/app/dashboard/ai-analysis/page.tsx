@@ -2,6 +2,7 @@
 
 import { motion, AnimatePresence } from 'framer-motion'
 import { useState, useEffect, useCallback } from 'react'
+import Link from 'next/link'
 import {
   Brain,
   Play,
@@ -21,7 +22,7 @@ import {
   Target,
   Shield,
 } from 'lucide-react'
-import { aiApi, type ConsensusResult, type AIVote } from '@/lib/api'
+import { aiApi, type ConsensusResult, type AIVote, type AIServiceStatus } from '@/lib/api'
 
 // Provider styling for AIML API models
 const providerStyles: Record<string, { color: string; icon: string; bg: string }> = {
@@ -32,6 +33,12 @@ const providerStyles: Record<string, { color: string; icon: string; bg: string }
   'xAI': { color: 'text-red-400', icon: '⚡', bg: 'bg-red-500/20' },              // Grok 4.1 Fast
   'Alibaba': { color: 'text-orange-400', icon: '🌟', bg: 'bg-orange-500/20' },    // Qwen Max
   'Zhipu': { color: 'text-purple-400', icon: '🧪', bg: 'bg-purple-500/20' },      // GLM 4.7
+  'aiml_openai': { color: 'text-green-400', icon: '💬', bg: 'bg-green-500/20' },
+  'aiml_google': { color: 'text-blue-400', icon: '💎', bg: 'bg-blue-500/20' },
+  'aiml_deepseek': { color: 'text-cyan-400', icon: '🔍', bg: 'bg-cyan-500/20' },
+  'aiml_xai': { color: 'text-red-400', icon: '⚡', bg: 'bg-red-500/20' },
+  'aiml_alibaba': { color: 'text-orange-400', icon: '🌟', bg: 'bg-orange-500/20' },
+  'aiml_zhipu': { color: 'text-purple-400', icon: '🧪', bg: 'bg-purple-500/20' },
 }
 
 // The 6 AI models we use via AIML API
@@ -71,8 +78,25 @@ export default function AIAnalysisPage() {
   const [expandedVote, setExpandedVote] = useState<string | null>(null)
   const [currentPrice, setCurrentPrice] = useState<number>(0)
   const [hasInitialized, setHasInitialized] = useState(false)
+  const [aiStatus, setAiStatus] = useState<AIServiceStatus | null>(null)
+  const [loadingStatus, setLoadingStatus] = useState(true)
 
   const selectedSymbol = SYMBOLS.find(s => s.value === symbol)
+
+  // Fetch AI status on mount
+  useEffect(() => {
+    const fetchAiStatus = async () => {
+      try {
+        const status = await aiApi.getStatus()
+        setAiStatus(status)
+      } catch (err) {
+        console.error('Failed to fetch AI status:', err)
+      } finally {
+        setLoadingStatus(false)
+      }
+    }
+    fetchAiStatus()
+  }, [])
 
   // Fetch real price when symbol changes
   useEffect(() => {
@@ -124,9 +148,9 @@ export default function AIAnalysisPage() {
     }
   }, [symbol, currentPrice, selectedSymbol?.price, timeframe, mode])
 
-  // Auto-run analysis on page load
+  // Auto-run analysis on page load (only if providers are configured)
   useEffect(() => {
-    if (!hasInitialized) {
+    if (!hasInitialized && !loadingStatus && aiStatus && aiStatus.active_providers > 0) {
       setHasInitialized(true)
       // Small delay to ensure component is mounted and price is fetched
       const timer = setTimeout(() => {
@@ -134,7 +158,7 @@ export default function AIAnalysisPage() {
       }, 1000)
       return () => clearTimeout(timer)
     }
-  }, [hasInitialized, runAnalysis])
+  }, [hasInitialized, loadingStatus, aiStatus, runAnalysis])
 
   return (
     <div className="space-y-6">
@@ -149,8 +173,16 @@ export default function AIAnalysisPage() {
           <p className="text-dark-400">Multi-model consensus trading signals</p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-sm text-dark-400">AI Models (AIML):</span>
-          <span className="font-mono font-bold text-neon-green">6</span>
+          <span className="text-sm text-dark-400">AI Models:</span>
+          {loadingStatus ? (
+            <Loader2 size={16} className="animate-spin text-dark-400" />
+          ) : aiStatus ? (
+            <span className={`font-mono font-bold ${aiStatus.active_providers > 0 ? 'text-neon-green' : 'text-neon-red'}`}>
+              {aiStatus.active_providers}
+            </span>
+          ) : (
+            <span className="font-mono font-bold text-dark-400">-</span>
+          )}
         </div>
       </motion.div>
 
@@ -264,6 +296,32 @@ export default function AIAnalysisPage() {
         </div>
       </motion.div>
 
+      {/* No AI Providers Warning */}
+      {!loadingStatus && aiStatus && aiStatus.active_providers === 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="p-4 bg-neon-yellow/20 border border-neon-yellow/50 rounded-lg"
+        >
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="text-neon-yellow flex-shrink-0 mt-0.5" />
+            <div>
+              <h3 className="font-semibold text-neon-yellow mb-1">AI Providers Not Configured</h3>
+              <p className="text-dark-300 text-sm mb-3">
+                No AI providers are currently active. Configure your AIML API key to enable AI analysis.
+              </p>
+              <Link
+                href="/dashboard/settings"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-primary-500 hover:bg-primary-600 rounded-lg text-sm font-medium transition-colors"
+              >
+                <Settings size={16} />
+                Go to Settings
+              </Link>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       {/* Error Display */}
       <AnimatePresence>
         {error && (
@@ -271,10 +329,23 @@ export default function AIAnalysisPage() {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="p-4 bg-neon-red/20 border border-neon-red/50 rounded-lg flex items-center gap-3"
+            className="p-4 bg-neon-red/20 border border-neon-red/50 rounded-lg"
           >
-            <AlertTriangle className="text-neon-red" />
-            <span>{error}</span>
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="text-neon-red flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <span>{error}</span>
+                {error.includes('Settings') && (
+                  <Link
+                    href="/dashboard/settings"
+                    className="ml-3 inline-flex items-center gap-1 text-primary-400 hover:text-primary-300 text-sm font-medium"
+                  >
+                    <Settings size={14} />
+                    Configure
+                  </Link>
+                )}
+              </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -295,20 +366,26 @@ export default function AIAnalysisPage() {
                 className="w-16 h-16 mx-auto mb-6 rounded-full border-4 border-primary-500 border-t-transparent"
               />
               <h3 className="text-xl font-semibold mb-2">Analyzing Market...</h3>
-              <p className="text-dark-400 mb-6">Running analysis with 6 AI models via AIML API</p>
+              <p className="text-dark-400 mb-6">
+                Running analysis with {aiStatus?.active_providers || 6} AI models via AIML API
+              </p>
               <div className="flex justify-center gap-2">
-                {AI_MODELS.map((model, i) => (
-                  <motion.div
-                    key={model.provider}
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    transition={{ delay: i * 0.15 }}
-                    className={`w-10 h-10 rounded-lg ${providerStyles[model.provider]?.bg || 'bg-dark-700'} flex items-center justify-center`}
-                    title={`${model.model} (${model.provider})`}
-                  >
-                    <span>{model.icon}</span>
-                  </motion.div>
-                ))}
+                {(aiStatus?.providers || AI_MODELS.map(m => ({ name: m.provider, healthy: true, model: m.model }))).map((provider, i) => {
+                  const providerName = 'name' in provider ? provider.name : provider.provider
+                  const style = providerStyles[providerName] || providerStyles[providerName.toLowerCase()] || { bg: 'bg-dark-700', icon: '🤖' }
+                  return (
+                    <motion.div
+                      key={providerName}
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ delay: i * 0.15 }}
+                      className={`w-10 h-10 rounded-lg ${style.bg} flex items-center justify-center`}
+                      title={providerName}
+                    >
+                      <span>{style.icon}</span>
+                    </motion.div>
+                  )
+                })}
               </div>
             </div>
           </motion.div>

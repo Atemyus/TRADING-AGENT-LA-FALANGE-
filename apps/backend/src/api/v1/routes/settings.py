@@ -14,6 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_db
 from src.core.models import AppSettings
+from src.core.config import clear_settings_cache
+from src.services.ai_service import reset_ai_service
 
 router = APIRouter()
 
@@ -344,6 +346,10 @@ async def update_ai_settings(
     settings.ai = ai
     await save_settings_to_db(db, settings)
     apply_settings_to_env(settings)
+
+    # Clear settings cache and reinitialize AI service with new API keys
+    clear_settings_cache()
+    reset_ai_service()
 
     return {"status": "success", "message": "AI settings saved"}
 

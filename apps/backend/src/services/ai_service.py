@@ -428,6 +428,12 @@ def get_ai_service() -> AIService:
     return _ai_service
 
 
+def reset_ai_service() -> None:
+    """Reset the AI service singleton to reload configuration."""
+    global _ai_service
+    _ai_service = None
+
+
 async def create_market_context(
     symbol: str,
     timeframe: str,

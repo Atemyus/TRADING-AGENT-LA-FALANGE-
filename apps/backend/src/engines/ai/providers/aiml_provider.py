@@ -14,6 +14,7 @@ Supported models:
 """
 
 import json
+import os
 import time
 from decimal import Decimal
 from typing import List, Optional
@@ -84,8 +85,8 @@ class AIMLProvider(BaseAIProvider):
         model_name: str = "chatgpt-5.2",
         api_key: Optional[str] = None,
     ):
-        # Get API key from settings if not provided
-        key = api_key or getattr(settings, 'AIML_API_KEY', None)
+        # Get API key: explicit > environment > settings
+        key = api_key or os.environ.get('AIML_API_KEY') or getattr(settings, 'AIML_API_KEY', None)
         super().__init__(model_name, key)
         self._client: Optional[AsyncOpenAI] = None
 
