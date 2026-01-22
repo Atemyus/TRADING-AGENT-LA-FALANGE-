@@ -4,13 +4,13 @@ AIML API Provider
 Multi-model gateway at api.aimlapi.com/v1
 Uses a single API key to access multiple AI models.
 
-Supported models:
-- ChatGPT 5.2
-- Gemini 3 Pro
-- DeepSeek V3.2
-- Grok 4.1 Fast
-- Qwen Max
-- GLM 4.7
+Supported models (real AIML API model IDs):
+- GPT-4o (OpenAI)
+- GPT-4o-mini (OpenAI)
+- Claude 3.5 Sonnet (Anthropic)
+- Gemini 1.5 Pro (Google)
+- DeepSeek Chat (DeepSeek)
+- Llama 3.1 70B (Meta via AIML)
 """
 
 import json
@@ -31,37 +31,37 @@ from src.engines.ai.base_ai import (
 from src.engines.ai.prompts.templates import build_analysis_prompt, get_system_prompt
 
 
-# AIML API model mappings
+# AIML API model mappings - REAL model IDs
 AIML_MODELS = {
-    "chatgpt-5.2": {
-        "id": "gpt-5.2",
-        "display_name": "ChatGPT 5.2",
+    "gpt-4o": {
+        "id": "gpt-4o",
+        "display_name": "GPT-4o",
         "provider": "OpenAI",
     },
-    "gemini-3-pro": {
-        "id": "gemini-3-pro",
-        "display_name": "Gemini 3 Pro",
+    "gpt-4o-mini": {
+        "id": "gpt-4o-mini",
+        "display_name": "GPT-4o Mini",
+        "provider": "OpenAI",
+    },
+    "claude-3-5-sonnet": {
+        "id": "anthropic/claude-3.5-sonnet",
+        "display_name": "Claude 3.5 Sonnet",
+        "provider": "Anthropic",
+    },
+    "gemini-1.5-pro": {
+        "id": "google/gemini-pro-1.5",
+        "display_name": "Gemini 1.5 Pro",
         "provider": "Google",
     },
-    "deepseek-v3.2": {
-        "id": "deepseek-chat-v3.2",
-        "display_name": "DeepSeek V3.2",
+    "deepseek-chat": {
+        "id": "deepseek/deepseek-chat",
+        "display_name": "DeepSeek Chat",
         "provider": "DeepSeek",
     },
-    "grok-4.1-fast": {
-        "id": "grok-4.1-fast",
-        "display_name": "Grok 4.1 Fast",
-        "provider": "xAI",
-    },
-    "qwen-max": {
-        "id": "qwen-max",
-        "display_name": "Qwen Max",
-        "provider": "Alibaba",
-    },
-    "glm-4.7": {
-        "id": "glm-4.7",
-        "display_name": "GLM 4.7",
-        "provider": "Zhipu",
+    "llama-3.1-70b": {
+        "id": "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
+        "display_name": "Llama 3.1 70B",
+        "provider": "Meta",
     },
 }
 
