@@ -138,17 +138,40 @@ async function fetchApi<T>(
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`
 
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-  })
+  let response: Response
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    })
+  } catch (networkError) {
+    // Network error (server down, CORS, etc.)
+    throw new Error('Cannot connect to server. Please check if the backend is running.')
+  }
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
-    throw new Error(error.detail || `API error: ${response.status}`)
+    // Handle HTTP errors
+    let errorMessage = `Server error: ${response.status}`
+
+    if (response.status === 503) {
+      errorMessage = 'Server is temporarily unavailable. Please try again later.'
+    } else if (response.status === 502) {
+      errorMessage = 'Server is starting up. Please wait a moment and try again.'
+    } else if (response.status === 500) {
+      errorMessage = 'Internal server error. Please check the backend logs.'
+    } else {
+      try {
+        const error = await response.json()
+        errorMessage = error.detail || error.message || errorMessage
+      } catch {
+        // Response is not JSON, use default message
+      }
+    }
+
+    throw new Error(errorMessage)
   }
 
   return response.json()

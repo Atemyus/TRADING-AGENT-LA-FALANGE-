@@ -660,7 +660,14 @@ function BrokerSettings({
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="mt-2 text-sm text-neon-green"
+              className={`mt-2 text-sm ${
+                saveMessage.toLowerCase().includes('error') ||
+                saveMessage.toLowerCase().includes('failed') ||
+                saveMessage.toLowerCase().includes('cannot') ||
+                saveMessage.toLowerCase().includes('unavailable')
+                  ? 'text-red-400'
+                  : 'text-neon-green'
+              }`}
             >
               {saveMessage}
             </motion.div>
@@ -835,7 +842,14 @@ function AIProvidersSettings({
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="mt-4 text-sm text-neon-green"
+            className={`mt-4 text-sm ${
+              saveMessage.toLowerCase().includes('error') ||
+              saveMessage.toLowerCase().includes('failed') ||
+              saveMessage.toLowerCase().includes('cannot') ||
+              saveMessage.toLowerCase().includes('unavailable')
+                ? 'text-red-400'
+                : 'text-neon-green'
+            }`}
           >
             {saveMessage}
           </motion.div>
@@ -952,7 +966,14 @@ function RiskSettings({
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="mt-4 text-sm text-neon-green"
+          className={`mt-4 text-sm ${
+            saveMessage.toLowerCase().includes('error') ||
+            saveMessage.toLowerCase().includes('failed') ||
+            saveMessage.toLowerCase().includes('cannot') ||
+            saveMessage.toLowerCase().includes('unavailable')
+              ? 'text-red-400'
+              : 'text-neon-green'
+          }`}
         >
           {saveMessage}
         </motion.div>
@@ -1078,7 +1099,14 @@ function NotificationSettings({
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="text-sm text-neon-green"
+          className={`text-sm ${
+            saveMessage.toLowerCase().includes('error') ||
+            saveMessage.toLowerCase().includes('failed') ||
+            saveMessage.toLowerCase().includes('cannot') ||
+            saveMessage.toLowerCase().includes('unavailable')
+              ? 'text-red-400'
+              : 'text-neon-green'
+          }`}
         >
           {saveMessage}
         </motion.div>
