@@ -4,13 +4,13 @@ AIML API Provider
 Multi-model gateway at api.aimlapi.com/v1
 Uses a single API key to access multiple AI models.
 
-Supported models:
-- ChatGPT 5.2 (uses chatgpt-4o-latest)
-- Gemini 3 Pro (uses google/gemini-pro-1.5)
-- DeepSeek V3.2 (uses deepseek/deepseek-chat)
-- Grok 4.1 Fast (uses x-ai/grok-beta)
-- Qwen Max (works as-is)
-- GLM 4.7 (works as-is)
+Supported models (exact AIML API model IDs):
+- ChatGPT 5.2 → openai/gpt-5-2-chat-latest
+- Gemini 3 Pro → google/gemini-3-pro-preview
+- DeepSeek R1 → deepseek/deepseek-r1
+- Grok 4.1 Fast → x-ai/grok-4-1-fast-reasoning
+- Qwen Max → qwen-max
+- GLM 4.7 → zhipu/glm-4.7
 """
 
 import json
@@ -31,36 +31,35 @@ from src.engines.ai.base_ai import (
 from src.engines.ai.prompts.templates import build_analysis_prompt, get_system_prompt
 
 
-# AIML API model mappings
-# Key = internal name, id = actual AIML API model ID
+# AIML API model mappings - EXACT model IDs from AIML API documentation
 AIML_MODELS = {
     "chatgpt-5.2": {
-        "id": "chatgpt-4o-latest",  # Real AIML API model ID
+        "id": "openai/gpt-5-2-chat-latest",
         "display_name": "ChatGPT 5.2",
         "provider": "OpenAI",
     },
     "gemini-3-pro": {
-        "id": "google/gemini-pro-1.5",  # Real AIML API model ID
+        "id": "google/gemini-3-pro-preview",
         "display_name": "Gemini 3 Pro",
         "provider": "Google",
     },
-    "deepseek-v3.2": {
-        "id": "deepseek/deepseek-chat",  # Real AIML API model ID
-        "display_name": "DeepSeek V3.2",
+    "deepseek-r1": {
+        "id": "deepseek/deepseek-r1",
+        "display_name": "DeepSeek R1",
         "provider": "DeepSeek",
     },
     "grok-4.1-fast": {
-        "id": "x-ai/grok-beta",  # Real AIML API model ID
+        "id": "x-ai/grok-4-1-fast-reasoning",
         "display_name": "Grok 4.1 Fast",
         "provider": "xAI",
     },
     "qwen-max": {
-        "id": "qwen-max",  # Works as-is
+        "id": "qwen-max",
         "display_name": "Qwen Max",
         "provider": "Alibaba",
     },
     "glm-4.7": {
-        "id": "glm-4.7",  # Works as-is
+        "id": "zhipu/glm-4.7",
         "display_name": "GLM 4.7",
         "provider": "Zhipu",
     },

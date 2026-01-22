@@ -76,10 +76,10 @@ DEFAULT_PROVIDERS = [
         model_name="gemini-3-pro",
         weight=1.0,
     ),
-    # DeepSeek V3.2 (DeepSeek via AIML)
+    # DeepSeek R1 (DeepSeek via AIML)
     ProviderConfig(
         provider_class=AIMLProvider,
-        model_name="deepseek-v3.2",
+        model_name="deepseek-r1",
         weight=1.0,
     ),
     # Grok 4.1 Fast (xAI via AIML)
