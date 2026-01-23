@@ -21,8 +21,11 @@ import {
   AlertTriangle,
   Target,
   Shield,
+  Wifi,
+  WifiOff,
 } from 'lucide-react'
 import { aiApi, type ConsensusResult, type AIVote, type AIServiceStatus } from '@/lib/api'
+import { usePriceStream } from '@/hooks/useWebSocket'
 
 // Provider styling for AIML API models
 const providerStyles: Record<string, { color: string; icon: string; bg: string }> = {
@@ -84,6 +87,9 @@ export default function AIAnalysisPage() {
 
   const selectedSymbol = SYMBOLS.find(s => s.value === symbol)
 
+  // Use WebSocket for real-time price streaming
+  const { prices: streamPrices, isConnected: isPriceConnected } = usePriceStream([symbol])
+
   // Fetch AI status on mount
   useEffect(() => {
     const fetchAiStatus = async () => {
@@ -99,25 +105,15 @@ export default function AIAnalysisPage() {
     fetchAiStatus()
   }, [])
 
-  // Fetch real price when symbol changes
+  // Update current price from WebSocket stream
   useEffect(() => {
-    const fetchPrice = async () => {
-      try {
-        // Use new market data API endpoint for real-time prices
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/v1/market/price/${symbol}`)
-        if (response.ok) {
-          const data = await response.json()
-          setCurrentPrice(parseFloat(data.price || '0'))
-        }
-      } catch {
-        // Keep showing static price if API fails
+    if (streamPrices[symbol]) {
+      const mid = parseFloat(streamPrices[symbol].mid)
+      if (mid > 0) {
+        setCurrentPrice(mid)
       }
     }
-    fetchPrice()
-    // Refresh price every 30 seconds
-    const interval = setInterval(fetchPrice, 30000)
-    return () => clearInterval(interval)
-  }, [symbol])
+  }, [streamPrices, symbol])
 
   const runAnalysis = useCallback(async () => {
     setIsAnalyzing(true)
@@ -279,7 +275,7 @@ export default function AIAnalysisPage() {
           </div>
         </div>
 
-        {/* Current Price Display */}
+        {/* Current Price Display - Real-time WebSocket */}
         <div className="flex items-center justify-between p-4 bg-dark-800/50 rounded-lg">
           <div className="flex items-center gap-4">
             <div>
@@ -289,14 +285,56 @@ export default function AIAnalysisPage() {
             <div className="h-10 w-px bg-dark-700" />
             <div>
               <p className="text-sm text-dark-400">Current Price</p>
-              <p className="text-xl font-mono font-bold">
+              <motion.p
+                key={currentPrice}
+                initial={{ scale: 1.05, color: '#00ff88' }}
+                animate={{ scale: 1, color: '#ffffff' }}
+                transition={{ duration: 0.3 }}
+                className="text-2xl font-mono font-bold tabular-nums"
+              >
                 {currentPrice > 0 ? currentPrice.toFixed(symbol.includes('JPY') ? 3 : 5) : selectedSymbol?.price || '—'}
-              </p>
+              </motion.p>
             </div>
+            {/* Bid/Ask spread */}
+            {streamPrices[symbol] && (
+              <>
+                <div className="h-10 w-px bg-dark-700" />
+                <div className="text-sm">
+                  <div className="flex gap-4">
+                    <div>
+                      <span className="text-dark-400">Bid: </span>
+                      <span className="font-mono text-neon-red">{parseFloat(streamPrices[symbol].bid).toFixed(symbol.includes('JPY') ? 3 : 5)}</span>
+                    </div>
+                    <div>
+                      <span className="text-dark-400">Ask: </span>
+                      <span className="font-mono text-neon-green">{parseFloat(streamPrices[symbol].ask).toFixed(symbol.includes('JPY') ? 3 : 5)}</span>
+                    </div>
+                  </div>
+                  <div className="text-dark-500 text-xs mt-1">
+                    Spread: {streamPrices[symbol].spread} pips
+                  </div>
+                </div>
+              </>
+            )}
           </div>
-          <div className="text-sm text-dark-400">
-            <Clock size={14} className="inline mr-1" />
-            {currentPrice > 0 ? 'Live' : 'Configure broker for live prices'}
+          <div className="flex items-center gap-2 text-sm">
+            {isPriceConnected ? (
+              <>
+                <motion.div
+                  animate={{ opacity: [1, 0.5, 1] }}
+                  transition={{ duration: 1.5, repeat: Infinity }}
+                  className="flex items-center gap-1 text-neon-green"
+                >
+                  <Wifi size={14} />
+                  <span>Live</span>
+                </motion.div>
+              </>
+            ) : (
+              <>
+                <WifiOff size={14} className="text-dark-400" />
+                <span className="text-dark-400">Connecting...</span>
+              </>
+            )}
           </div>
         </div>
       </motion.div>

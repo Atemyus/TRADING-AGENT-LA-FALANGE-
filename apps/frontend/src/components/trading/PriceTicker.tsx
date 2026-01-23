@@ -1,9 +1,9 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { TrendingUp, TrendingDown, RefreshCw } from 'lucide-react'
-import { useEffect, useState, useCallback } from 'react'
-import { tradingApi } from '@/lib/api'
+import { TrendingUp, TrendingDown, Wifi, WifiOff } from 'lucide-react'
+import { useEffect, useState, useRef } from 'react'
+import { usePriceStream } from '@/hooks/useWebSocket'
 
 interface PriceData {
   symbol: string
@@ -21,10 +21,10 @@ interface PriceTickerProps {
   selectedSymbol?: string
 }
 
-// Available trading symbols
-const SYMBOLS = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'XAU/USD', 'US30', 'NAS100']
+// Available trading symbols (WebSocket format)
+const SYMBOLS = ['EUR_USD', 'GBP_USD', 'USD_JPY', 'XAU_USD', 'US30', 'NAS100']
 
-// Fallback demo prices (used when API is unavailable)
+// Fallback demo prices (used when WebSocket is unavailable)
 const demoPrices: PriceData[] = [
   { symbol: 'EUR/USD', bid: '1.0890', ask: '1.0892', mid: '1.0891', spread: '0.2', change: 0.0015, changePercent: 0.14 },
   { symbol: 'GBP/USD', bid: '1.2650', ask: '1.2653', mid: '1.2651', spread: '0.3', change: -0.0022, changePercent: -0.17 },
@@ -73,7 +73,7 @@ function PriceCard({ price, isSelected, onClick, isLoading }: { price: PriceData
       {/* Loading indicator */}
       {isLoading && (
         <div className="absolute top-2 left-2">
-          <RefreshCw size={12} className="animate-spin text-dark-400" />
+          <WifiOff size={12} className="text-dark-400" />
         </div>
       )}
 
@@ -111,77 +111,93 @@ function PriceCard({ price, isSelected, onClick, isLoading }: { price: PriceData
 
 export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
   const [prices, setPrices] = useState<PriceData[]>(demoPrices)
-  const [isLoading, setIsLoading] = useState(true)
-  const [prevPrices, setPrevPrices] = useState<Record<string, number>>({})
+  const prevPricesRef = useRef<Record<string, number>>({})
+  const basePricesRef = useRef<Record<string, number>>({})
 
-  // Fetch prices from backend
-  const fetchPrices = useCallback(async () => {
-    try {
-      const response = await tradingApi.getPrices(SYMBOLS)
+  // Use WebSocket for real-time price streaming
+  const { prices: streamPrices, isConnected } = usePriceStream(SYMBOLS)
 
-      if (response.prices && response.prices.length > 0) {
-        const newPrices: PriceData[] = response.prices.map(p => {
-          const mid = parseFloat(p.mid)
-          const prevMid = prevPrices[p.symbol] || mid
-          const change = mid - prevMid
-          const changePercent = prevMid > 0 ? (change / prevMid) * 100 : 0
+  // Initialize base prices from demo data
+  useEffect(() => {
+    demoPrices.forEach(p => {
+      basePricesRef.current[p.symbol.replace('/', '_')] = parseFloat(p.mid)
+    })
+  }, [])
+
+  // Update prices from WebSocket stream
+  useEffect(() => {
+    if (Object.keys(streamPrices).length > 0) {
+      const newPrices: PriceData[] = SYMBOLS.map(wsSymbol => {
+        const displaySymbol = wsSymbol.replace('_', '/')
+        const streamData = streamPrices[wsSymbol]
+
+        if (streamData) {
+          const mid = parseFloat(streamData.mid)
+          const prevMid = prevPricesRef.current[wsSymbol] || mid
+          const baseMid = basePricesRef.current[wsSymbol] || mid
+
+          // Calculate change from previous tick (for flash effect)
+          const tickChange = mid - prevMid
+          // Calculate change from session start (for display)
+          const sessionChange = mid - baseMid
+          const changePercent = baseMid > 0 ? (sessionChange / baseMid) * 100 : 0
+
+          // Update previous price for next tick
+          prevPricesRef.current[wsSymbol] = mid
 
           return {
-            symbol: p.symbol.replace('_', '/'),
-            bid: p.bid,
-            ask: p.ask,
-            mid: p.mid,
-            spread: p.spread,
-            change,
+            symbol: displaySymbol,
+            bid: streamData.bid,
+            ask: streamData.ask,
+            mid: streamData.mid,
+            spread: streamData.spread,
+            change: sessionChange,
             changePercent,
           }
-        })
+        }
 
-        // Update previous prices for next calculation
-        const newPrevPrices: Record<string, number> = {}
-        newPrices.forEach(p => {
-          newPrevPrices[p.symbol] = parseFloat(p.mid)
-        })
-        setPrevPrices(newPrevPrices)
+        // Fallback to demo price if no stream data
+        const demo = demoPrices.find(d => d.symbol === displaySymbol)
+        return demo || demoPrices[0]
+      })
 
-        setPrices(newPrices)
-      }
-    } catch (error) {
-      console.error('Failed to fetch prices:', error)
-      // Keep showing demo prices on error
-    } finally {
-      setIsLoading(false)
+      setPrices(newPrices)
     }
-  }, [prevPrices])
-
-  // Initial fetch
-  useEffect(() => {
-    fetchPrices()
-  }, []) // Only run once on mount
-
-  // Periodic refresh every 3 seconds
-  useEffect(() => {
-    const interval = setInterval(fetchPrices, 3000)
-    return () => clearInterval(interval)
-  }, [fetchPrices])
+  }, [streamPrices])
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-      {prices.map((price, index) => (
-        <motion.div
-          key={price.symbol}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: index * 0.05 }}
-        >
-          <PriceCard
-            price={price}
-            isSelected={selectedSymbol === price.symbol}
-            onClick={() => onSelect?.(price.symbol)}
-            isLoading={isLoading && index === 0}
-          />
-        </motion.div>
-      ))}
+    <div className="space-y-2">
+      {/* Connection status */}
+      <div className="flex items-center justify-end gap-2 text-xs">
+        {isConnected ? (
+          <>
+            <Wifi size={12} className="text-neon-green" />
+            <span className="text-neon-green">Live</span>
+          </>
+        ) : (
+          <>
+            <WifiOff size={12} className="text-dark-400" />
+            <span className="text-dark-400">Connecting...</span>
+          </>
+        )}
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        {prices.map((price, index) => (
+          <motion.div
+            key={price.symbol}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: index * 0.05 }}
+          >
+            <PriceCard
+              price={price}
+              isSelected={selectedSymbol === price.symbol}
+              onClick={() => onSelect?.(price.symbol)}
+              isLoading={!isConnected && index === 0}
+            />
+          </motion.div>
+        ))}
+      </div>
     </div>
   )
 }

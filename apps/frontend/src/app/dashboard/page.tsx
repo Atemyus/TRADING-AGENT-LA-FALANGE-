@@ -23,6 +23,7 @@ import { OrderHistory } from '@/components/trading/OrderHistory'
 import { StatCard } from '@/components/common/StatCard'
 import { aiApi, analyticsApi, tradingApi } from '@/lib/api'
 import type { AccountSummary, ConsensusResult, PerformanceMetrics } from '@/lib/api'
+import { usePriceStream } from '@/hooks/useWebSocket'
 
 // Dynamic import for TradingView chart to avoid SSR issues
 const TradingViewWidget = dynamic(
@@ -56,6 +57,12 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
+  // WebSocket symbol format
+  const wsSymbol = selectedSymbol.replace('/', '_')
+
+  // Use WebSocket for real-time price streaming
+  const { prices: streamPrices, isConnected: isPriceConnected } = usePriceStream([wsSymbol])
+
   // Fetch account data
   const fetchAccountData = useCallback(async () => {
     try {
@@ -72,32 +79,25 @@ export default function DashboardPage() {
     }
   }, [])
 
-  // Fetch current price
-  const fetchPrice = useCallback(async () => {
-    try {
-      const priceData = await tradingApi.getPrice(selectedSymbol)
-      setCurrentPrice(parseFloat(priceData.mid))
-    } catch (err) {
-      console.error('Failed to fetch price:', err)
-      // Don't set fake price - leave as 0
+  // Update current price from WebSocket stream
+  useEffect(() => {
+    if (streamPrices[wsSymbol]) {
+      const mid = parseFloat(streamPrices[wsSymbol].mid)
+      if (mid > 0) {
+        setCurrentPrice(mid)
+      }
     }
-  }, [selectedSymbol])
+  }, [streamPrices, wsSymbol])
 
   // Initial data load
   useEffect(() => {
     const loadData = async () => {
       setIsLoading(true)
-      await Promise.all([fetchAccountData(), fetchPrice()])
+      await fetchAccountData()
       setIsLoading(false)
     }
     loadData()
-  }, [fetchAccountData, fetchPrice])
-
-  // Refresh price every 5 seconds
-  useEffect(() => {
-    const interval = setInterval(fetchPrice, 5000)
-    return () => clearInterval(interval)
-  }, [fetchPrice])
+  }, [fetchAccountData])
 
   // Run AI analysis - calls real backend
   const handleAnalyze = async () => {
@@ -105,18 +105,13 @@ export default function DashboardPage() {
     setError(null)
 
     try {
-      // Ensure we have a current price
-      let price = currentPrice
+      // Use current price from WebSocket
+      const price = currentPrice || 0
+
       if (!price || price === 0) {
-        try {
-          const priceData = await tradingApi.getPrice(selectedSymbol)
-          price = parseFloat(priceData.mid)
-          setCurrentPrice(price)
-        } catch {
-          setError('Cannot analyze without price data. Configure broker first.')
-          setIsAnalyzing(false)
-          return
-        }
+        setError('Cannot analyze without price data. Waiting for live prices...')
+        setIsAnalyzing(false)
+        return
       }
 
       // Call the real AI analysis endpoint
