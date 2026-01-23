@@ -166,7 +166,7 @@ async def analyze_market(request: AnalysisRequest):
     """
     service = get_ai_service()
 
-    # Build indicators dict
+    # Build indicators dict (will be overridden by real data if available)
     indicators = {
         k: v for k, v in request.indicators.model_dump().items()
         if v is not None
@@ -181,27 +181,42 @@ async def analyze_market(request: AnalysisRequest):
     support = [Decimal(str(x)) for x in request.support_levels] if request.support_levels else None
     resistance = [Decimal(str(x)) for x in request.resistance_levels] if request.resistance_levels else None
 
-    # Create market context
+    # Determine if we should use premium features
+    include_mtf = request.mode == "premium"
+
+    # Create market context with REAL data from market data service
+    # This will fetch actual OHLCV data and calculate technical indicators and SMC zones
     context = await create_market_context(
         symbol=request.symbol,
         timeframe=request.timeframe,
-        current_price=Decimal(str(request.current_price)),
-        indicators=indicators,
+        current_price=Decimal(str(request.current_price)) if request.current_price else None,
+        indicators=indicators if indicators else None,
         candles=candles,
         news_sentiment=request.news_sentiment,
         market_session=request.market_session,
         support_levels=support,
         resistance_levels=resistance,
+        fetch_real_data=True,  # Fetch real OHLCV data from Yahoo/TwelveData
+        include_mtf=include_mtf,  # Include multi-timeframe analysis for premium
     )
+
+    # Determine trading style from timeframe
+    trading_style = "scalping" if request.timeframe in ["1m", "5m"] else \
+                    "swing" if request.timeframe in ["4h", "1d", "1w"] else "intraday"
 
     # Run analysis based on mode
     try:
         if request.mode == "quick":
-            result = await service.quick_analyze(context)
+            result = await service.quick_analyze(context, trading_style=trading_style)
         elif request.mode == "premium":
-            result = await service.premium_analyze(context)
+            result = await service.premium_analyze(context, trading_style=trading_style)
         else:
-            result = await service.analyze(context, providers=request.providers)
+            result = await service.analyze(
+                context,
+                providers=request.providers,
+                mode="standard",
+                trading_style=trading_style,
+            )
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

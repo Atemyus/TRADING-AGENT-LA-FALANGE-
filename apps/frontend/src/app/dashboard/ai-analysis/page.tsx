@@ -64,9 +64,9 @@ const SYMBOLS = [
 const TIMEFRAMES = ['1m', '5m', '15m', '30m', '1h', '4h', '1d']
 
 const MODES = [
-  { value: 'quick', label: 'Quick', description: 'Fastest models only', icon: Zap },
-  { value: 'standard', label: 'Standard', description: 'Balanced selection', icon: Target },
-  { value: 'premium', label: 'Premium', description: 'Best quality models', icon: Shield },
+  { value: 'quick', label: 'Quick', description: '3 fast models, momentum focus', icon: Zap },
+  { value: 'standard', label: 'Standard', description: '6 models, SMC analysis', icon: Target },
+  { value: 'premium', label: 'Premium', description: '6 models, full institutional grade', icon: Shield },
 ]
 
 export default function AIAnalysisPage() {
@@ -103,16 +103,20 @@ export default function AIAnalysisPage() {
   useEffect(() => {
     const fetchPrice = async () => {
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/v1/trading/price/${symbol}`)
+        // Use new market data API endpoint for real-time prices
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/v1/market/price/${symbol}`)
         if (response.ok) {
           const data = await response.json()
-          setCurrentPrice(parseFloat(data.mid || data.price || '0'))
+          setCurrentPrice(parseFloat(data.price || '0'))
         }
       } catch {
         // Keep showing static price if API fails
       }
     }
     fetchPrice()
+    // Refresh price every 30 seconds
+    const interval = setInterval(fetchPrice, 30000)
+    return () => clearInterval(interval)
   }, [symbol])
 
   const runAnalysis = useCallback(async () => {

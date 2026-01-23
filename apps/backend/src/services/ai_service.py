@@ -3,6 +3,9 @@ AI Service Orchestrator
 
 Orchestrates multiple AI providers to run analysis in parallel
 and produces consensus-based trading decisions.
+
+Integrates with MarketDataService for real OHLCV data
+and TechnicalAnalysisService for indicators and SMC analysis.
 """
 
 import asyncio
@@ -28,6 +31,8 @@ from src.engines.ai.providers import (
     OllamaProvider,
     OpenAIProvider,
 )
+from src.services.market_data_service import get_market_data_service, MarketData
+from src.services.technical_analysis_service import get_technical_analysis_service, FullAnalysis
 
 
 @dataclass
@@ -206,6 +211,8 @@ class AIService:
         self,
         context: MarketContext,
         providers: Optional[List[str]] = None,
+        mode: str = "standard",
+        trading_style: str = "intraday",
     ) -> ConsensusResult:
         """
         Run analysis across all (or selected) AI providers.
@@ -214,6 +221,8 @@ class AIService:
             context: Market context with all relevant data
             providers: Optional list of provider keys to use.
                       Uses all if not specified.
+            mode: Analysis mode - "quick", "standard", or "premium"
+            trading_style: Trading style - "scalping", "intraday", or "swing"
 
         Returns:
             ConsensusResult with aggregated decision
@@ -229,9 +238,9 @@ class AIService:
 
         # Run analyses
         if self.config.parallel_execution:
-            analyses = await self._run_parallel(context, selected)
+            analyses = await self._run_parallel(context, selected, mode, trading_style)
         else:
-            analyses = await self._run_sequential(context, selected)
+            analyses = await self._run_sequential(context, selected, mode, trading_style)
 
         # Calculate consensus
         result = self._consensus_engine.calculate_consensus(analyses)
@@ -242,6 +251,8 @@ class AIService:
         self,
         context: MarketContext,
         providers: Dict[str, BaseAIProvider],
+        mode: str = "standard",
+        trading_style: str = "intraday",
     ) -> List[AIAnalysis]:
         """Run all providers in parallel."""
 
@@ -249,10 +260,17 @@ class AIService:
             key: str, provider: BaseAIProvider
         ) -> AIAnalysis:
             try:
-                return await asyncio.wait_for(
-                    provider.analyze(context),
-                    timeout=self.config.timeout_seconds,
-                )
+                # Check if provider supports mode parameter
+                if hasattr(provider, 'analyze') and 'mode' in provider.analyze.__code__.co_varnames:
+                    return await asyncio.wait_for(
+                        provider.analyze(context, mode=mode, trading_style=trading_style),
+                        timeout=self.config.timeout_seconds,
+                    )
+                else:
+                    return await asyncio.wait_for(
+                        provider.analyze(context),
+                        timeout=self.config.timeout_seconds,
+                    )
             except asyncio.TimeoutError:
                 return AIAnalysis(
                     provider_name=provider.provider_name,
@@ -318,16 +336,25 @@ class AIService:
         self,
         context: MarketContext,
         providers: Dict[str, BaseAIProvider],
+        mode: str = "standard",
+        trading_style: str = "intraday",
     ) -> List[AIAnalysis]:
         """Run providers sequentially."""
         analyses = []
 
         for key, provider in providers.items():
             try:
-                analysis = await asyncio.wait_for(
-                    provider.analyze(context),
-                    timeout=self.config.timeout_seconds,
-                )
+                # Check if provider supports mode parameter
+                if hasattr(provider, 'analyze') and 'mode' in provider.analyze.__code__.co_varnames:
+                    analysis = await asyncio.wait_for(
+                        provider.analyze(context, mode=mode, trading_style=trading_style),
+                        timeout=self.config.timeout_seconds,
+                    )
+                else:
+                    analysis = await asyncio.wait_for(
+                        provider.analyze(context),
+                        timeout=self.config.timeout_seconds,
+                    )
                 analyses.append(analysis)
             except Exception as e:
                 analyses.append(AIAnalysis(
@@ -345,12 +372,14 @@ class AIService:
     async def quick_analyze(
         self,
         context: MarketContext,
+        trading_style: str = "scalping",
     ) -> ConsensusResult:
         """
         Quick analysis using fastest AIML models.
 
-        Uses Grok 4.1 Fast and DeepSeek for rapid decisions.
+        Uses Grok 4.1 Fast, DeepSeek, and Qwen for rapid decisions.
         Good for real-time scalping scenarios.
+        Focuses on momentum and immediate price action.
         """
         fast_providers = [
             "aiml_xai_grok-4.1-fast",
@@ -364,20 +393,31 @@ class AIService:
             # Fall back to first 3 available
             available = list(self._providers.keys())[:3]
 
-        return await self.analyze(context, providers=available)
+        return await self.analyze(
+            context,
+            providers=available,
+            mode="quick",
+            trading_style=trading_style,
+        )
 
     async def premium_analyze(
         self,
         context: MarketContext,
+        trading_style: str = "intraday",
     ) -> ConsensusResult:
         """
-        Premium analysis using all 6 AIML models.
+        Premium analysis using all 6 AIML models with comprehensive prompts.
 
         Uses ChatGPT 5.2, Gemini 3 Pro, DeepSeek, Grok, Qwen, GLM.
-        Best accuracy with full consensus from all models.
+        Full institutional-grade analysis with SMC concepts, liquidity analysis,
+        and detailed trade narrative.
         """
-        # Use all 6 models for premium analysis
-        return await self.analyze(context)
+        # Use all 6 models with premium prompts for best analysis
+        return await self.analyze(
+            context,
+            mode="premium",
+            trading_style=trading_style,
+        )
 
     def enable_provider(self, provider_key: str) -> bool:
         """Enable a disabled provider."""
@@ -437,30 +477,126 @@ def reset_ai_service() -> None:
 async def create_market_context(
     symbol: str,
     timeframe: str,
-    current_price: Decimal,
-    indicators: Dict[str, Any],
+    current_price: Optional[Decimal] = None,
+    indicators: Optional[Dict[str, Any]] = None,
     candles: Optional[List[Dict[str, Any]]] = None,
     news_sentiment: Optional[float] = None,
     market_session: Optional[str] = None,
     economic_events: Optional[List[Dict[str, Any]]] = None,
     support_levels: Optional[List[Decimal]] = None,
     resistance_levels: Optional[List[Decimal]] = None,
+    fetch_real_data: bool = True,
+    include_mtf: bool = False,
 ) -> MarketContext:
     """
     Helper to create MarketContext from trading data.
 
-    This is a convenience function to build the context
-    object required by AI providers.
+    If fetch_real_data is True, will fetch real OHLCV data from
+    MarketDataService and calculate full technical analysis.
+
+    Args:
+        symbol: Trading symbol (e.g., EUR_USD)
+        timeframe: Chart timeframe (e.g., 5m, 1h)
+        current_price: Optional current price (fetched if not provided)
+        indicators: Optional pre-calculated indicators
+        candles: Optional pre-fetched candles
+        news_sentiment: Optional news sentiment score
+        market_session: Current trading session
+        economic_events: Upcoming economic events
+        support_levels: Pre-defined support levels
+        resistance_levels: Pre-defined resistance levels
+        fetch_real_data: Whether to fetch real market data
+        include_mtf: Include multi-timeframe analysis (premium mode)
+
+    Returns:
+        MarketContext with full technical analysis
     """
-    return MarketContext(
+    full_analysis = None
+    final_price = current_price or Decimal("1.0")
+    final_candles = candles or []
+    final_indicators = indicators or {}
+    final_support = support_levels or []
+    final_resistance = resistance_levels or []
+
+    if fetch_real_data:
+        try:
+            # Fetch real market data
+            market_data_service = get_market_data_service()
+            ta_service = get_technical_analysis_service()
+
+            # Get market data
+            market_data = await market_data_service.get_market_data(
+                symbol=symbol,
+                timeframe=timeframe,
+                bars=200,  # Get 200 candles for analysis
+            )
+
+            final_price = market_data.current_price
+
+            # Convert candles for context
+            final_candles = [c.to_dict() for c in market_data.candles[-20:]]  # Last 20 for prompt
+
+            # Perform full technical analysis
+            mtf_data = None
+            if include_mtf:
+                mtf_data = await market_data_service.get_multiple_timeframes(
+                    symbol=symbol,
+                    timeframes=["15m", "1h", "4h"],
+                    bars=100,
+                )
+
+            full_analysis = await ta_service.full_analysis(
+                market_data=market_data,
+                include_mtf=include_mtf,
+                mtf_data=mtf_data,
+            )
+
+            # Extract indicators from analysis
+            final_indicators = full_analysis.indicators.to_dict()
+
+            # Extract support/resistance from SMC analysis
+            if full_analysis.smc.support_levels:
+                final_support = full_analysis.smc.support_levels
+            if full_analysis.smc.resistance_levels:
+                final_resistance = full_analysis.smc.resistance_levels
+
+        except Exception as e:
+            print(f"Error fetching real market data: {e}")
+            # Fall back to provided data
+            if current_price is None:
+                final_price = Decimal("1.0")
+
+    # Create context
+    context = MarketContext(
         symbol=symbol,
         timeframe=timeframe,
-        current_price=current_price,
-        indicators=indicators,
-        candles=candles or [],
+        current_price=final_price,
+        indicators=final_indicators,
+        candles=final_candles,
         news_sentiment=news_sentiment,
-        market_session=market_session,
+        market_session=market_session or _detect_session(),
         economic_events=economic_events or [],
-        support_levels=support_levels or [],
-        resistance_levels=resistance_levels or [],
+        support_levels=final_support,
+        resistance_levels=final_resistance,
     )
+
+    # Attach full analysis if available (for enhanced prompts)
+    if full_analysis:
+        context._full_analysis = full_analysis
+
+    return context
+
+
+def _detect_session() -> str:
+    """Detect current trading session based on UTC time."""
+    from datetime import datetime
+    hour = datetime.utcnow().hour
+
+    if 7 <= hour < 16:
+        return "London"
+    elif 13 <= hour < 22:
+        return "New York"
+    elif 23 <= hour or hour < 8:
+        return "Tokyo/Sydney"
+    else:
+        return "Overlap"

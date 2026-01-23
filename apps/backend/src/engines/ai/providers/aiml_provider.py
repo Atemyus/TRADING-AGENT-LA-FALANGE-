@@ -29,7 +29,7 @@ from src.engines.ai.base_ai import (
     MarketContext,
     TradeDirection,
 )
-from src.engines.ai.prompts.templates import build_analysis_prompt, get_system_prompt
+from src.engines.ai.prompts.templates import build_analysis_prompt, get_system_prompt, ANALYSIS_MODES
 
 
 # AIML API model mappings - EXACT model IDs from AIML API documentation
@@ -136,12 +136,19 @@ class AIMLProvider(BaseAIProvider):
             print(f"AIML health check failed for {self.model_name}: {e}")
             return False
 
-    async def analyze(self, context: MarketContext) -> AIAnalysis:
+    async def analyze(
+        self,
+        context: MarketContext,
+        mode: str = "standard",
+        trading_style: str = "intraday",
+    ) -> AIAnalysis:
         """
         Analyze market context using AIML API.
 
         Args:
             context: Market context with all relevant data
+            mode: Analysis mode - "quick", "standard", or "premium"
+            trading_style: Trading style - "scalping", "intraday", or "swing"
 
         Returns:
             AIAnalysis with trading recommendation
@@ -151,23 +158,26 @@ class AIMLProvider(BaseAIProvider):
         start_time = time.time()
 
         try:
-            # Build prompt
+            # Build prompt with mode-specific system prompt
             user_prompt = build_analysis_prompt(
                 context_str=context.to_prompt_string(),
-                trading_style="intraday",
-                risk_tolerance="moderate",
+                mode=mode,
+                trading_style=trading_style,
                 session=context.market_session or "unknown",
             )
+
+            # Adjust max_tokens based on mode
+            max_tokens = 1000 if mode == "quick" else 2000 if mode == "standard" else 3000
 
             # Call AIML API - don't use response_format as not all models support it
             response = await self._client.chat.completions.create(
                 model=self._model_info["id"],
                 messages=[
-                    {"role": "system", "content": get_system_prompt()},
+                    {"role": "system", "content": get_system_prompt(mode)},
                     {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.4,
-                max_tokens=2000,  # Increased for detailed reasoning
+                temperature=0.3 if mode == "quick" else 0.4,
+                max_tokens=max_tokens,
             )
 
             # Parse response - handle potential non-JSON content
