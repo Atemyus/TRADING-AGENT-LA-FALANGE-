@@ -33,6 +33,7 @@ from src.engines.ai.prompts.templates import build_analysis_prompt, get_system_p
 
 
 # AIML API model mappings - EXACT model IDs from AIML API documentation
+# Updated 2026-01-23 from https://docs.aimlapi.com/api-references/model-database
 AIML_MODELS = {
     "chatgpt-5.2": {
         "id": "openai/gpt-5-2-chat-latest",
@@ -44,9 +45,9 @@ AIML_MODELS = {
         "display_name": "Gemini 3 Pro",
         "provider": "Google",
     },
-    "deepseek-v3.2": {
-        "id": "deepseek/deepseek-non-thinking-v3.2-exp",
-        "display_name": "DeepSeek V3.2",
+    "deepseek-v3": {
+        "id": "deepseek/deepseek-chat-v3.1",
+        "display_name": "DeepSeek V3.1",
         "provider": "DeepSeek",
     },
     "grok-4.1-fast": {
@@ -59,9 +60,9 @@ AIML_MODELS = {
         "display_name": "Qwen Max",
         "provider": "Alibaba",
     },
-    "glm-4.7": {
-        "id": "zhipu/glm-4.7",
-        "display_name": "GLM 4.7",
+    "glm-4.5": {
+        "id": "zhipu/glm-4.5-air",
+        "display_name": "GLM 4.5 Air",
         "provider": "Zhipu",
     },
 }

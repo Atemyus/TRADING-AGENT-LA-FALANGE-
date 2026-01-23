@@ -68,6 +68,7 @@ class AIServiceConfig:
 
 # Default provider configurations - AIML API with 6 models
 # All models accessed via api.aimlapi.com with single API key
+# Model IDs verified from https://docs.aimlapi.com/api-references/model-database
 DEFAULT_PROVIDERS = [
     # ChatGPT 5.2 (OpenAI via AIML)
     ProviderConfig(
@@ -81,10 +82,10 @@ DEFAULT_PROVIDERS = [
         model_name="gemini-3-pro",
         weight=1.0,
     ),
-    # DeepSeek V3.2 (DeepSeek via AIML)
+    # DeepSeek V3.1 (DeepSeek via AIML)
     ProviderConfig(
         provider_class=AIMLProvider,
-        model_name="deepseek-v3.2",
+        model_name="deepseek-v3",
         weight=1.0,
     ),
     # Grok 4.1 Fast (xAI via AIML)
@@ -99,10 +100,10 @@ DEFAULT_PROVIDERS = [
         model_name="qwen-max",
         weight=1.0,
     ),
-    # GLM 4.7 (Zhipu via AIML)
+    # GLM 4.5 Air (Zhipu via AIML) - faster than GLM 4.7
     ProviderConfig(
         provider_class=AIMLProvider,
-        model_name="glm-4.7",
+        model_name="glm-4.5",
         weight=1.0,
     ),
 ]
@@ -383,7 +384,7 @@ class AIService:
         """
         fast_providers = [
             "aiml_xai_grok-4.1-fast",
-            "aiml_deepseek_deepseek-v3.2",
+            "aiml_deepseek_deepseek-v3",
             "aiml_alibaba_qwen-max",
         ]
 
