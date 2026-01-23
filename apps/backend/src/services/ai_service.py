@@ -76,16 +76,16 @@ DEFAULT_PROVIDERS = [
         model_name="chatgpt-5.2",
         weight=1.0,
     ),
-    # Gemini 3 Pro (Google via AIML)
+    # Gemini 3 Pro Preview (Google via AIML)
     ProviderConfig(
         provider_class=AIMLProvider,
         model_name="gemini-3-pro",
         weight=1.0,
     ),
-    # DeepSeek V3.1 (DeepSeek via AIML)
+    # DeepSeek V3.2 (DeepSeek via AIML)
     ProviderConfig(
         provider_class=AIMLProvider,
-        model_name="deepseek-v3",
+        model_name="deepseek-v3.2",
         weight=1.0,
     ),
     # Grok 4.1 Fast (xAI via AIML)
@@ -100,7 +100,7 @@ DEFAULT_PROVIDERS = [
         model_name="qwen-max",
         weight=1.0,
     ),
-    # GLM 4.5 Air (Zhipu via AIML) - faster than GLM 4.7
+    # GLM 4.5 Air (Zhipu via AIML)
     ProviderConfig(
         provider_class=AIMLProvider,
         model_name="glm-4.5",
@@ -384,7 +384,7 @@ class AIService:
         """
         fast_providers = [
             "aiml_xai_grok-4.1-fast",
-            "aiml_deepseek_deepseek-v3",
+            "aiml_deepseek_deepseek-v3.2",
             "aiml_alibaba_qwen-max",
         ]
 

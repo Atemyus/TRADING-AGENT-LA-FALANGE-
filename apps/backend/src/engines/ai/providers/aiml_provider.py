@@ -42,12 +42,12 @@ AIML_MODELS = {
     },
     "gemini-3-pro": {
         "id": "google/gemini-3-pro-preview",
-        "display_name": "Gemini 3 Pro",
+        "display_name": "Gemini 3 Pro Preview",
         "provider": "Google",
     },
-    "deepseek-v3": {
-        "id": "deepseek/deepseek-chat-v3.1",
-        "display_name": "DeepSeek V3.1",
+    "deepseek-v3.2": {
+        "id": "deepseek/deepseek-non-thinking-v3.2-exp",
+        "display_name": "DeepSeek V3.2",
         "provider": "DeepSeek",
     },
     "grok-4.1-fast": {

@@ -45,8 +45,8 @@ const providerStyles: Record<string, { color: string; icon: string; bg: string }
 // The 6 AI models we use via AIML API (exact model IDs)
 const AI_MODELS = [
   { provider: 'OpenAI', model: 'ChatGPT 5.2', icon: '💬' },
-  { provider: 'Google', model: 'Gemini 3 Pro', icon: '💎' },
-  { provider: 'DeepSeek', model: 'DeepSeek V3.1', icon: '🔍' },
+  { provider: 'Google', model: 'Gemini 3 Pro Preview', icon: '💎' },
+  { provider: 'DeepSeek', model: 'DeepSeek V3.2', icon: '🔍' },
   { provider: 'xAI', model: 'Grok 4.1 Fast', icon: '⚡' },
   { provider: 'Alibaba', model: 'Qwen Max', icon: '🌟' },
   { provider: 'Zhipu', model: 'GLM 4.5 Air', icon: '🧪' },
