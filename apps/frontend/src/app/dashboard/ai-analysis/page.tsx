@@ -1,8 +1,9 @@
 'use client'
 
 import { motion, AnimatePresence } from 'framer-motion'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
+import dynamic from 'next/dynamic'
 import {
   Brain,
   Play,
@@ -23,9 +24,18 @@ import {
   Shield,
   Wifi,
   WifiOff,
+  Camera,
+  Eye,
 } from 'lucide-react'
 import { aiApi, type ConsensusResult, type AIVote, type AIServiceStatus } from '@/lib/api'
 import { usePriceStream } from '@/hooks/useWebSocket'
+import { useChartCapture, type AIAnalysisResult } from '@/hooks/useChartCapture'
+
+// Dynamic import for TradingView chart
+const TradingViewWidget = dynamic(
+  () => import('@/components/charts/TradingViewWidget'),
+  { ssr: false, loading: () => <div className="h-[400px] bg-slate-900 rounded-xl animate-pulse" /> }
+)
 
 // Provider styling for AIML API models
 const providerStyles: Record<string, { color: string; icon: string; bg: string }> = {
@@ -84,6 +94,13 @@ export default function AIAnalysisPage() {
   const [hasInitialized, setHasInitialized] = useState(false)
   const [aiStatus, setAiStatus] = useState<AIServiceStatus | null>(null)
   const [loadingStatus, setLoadingStatus] = useState(true)
+
+  // Vision Analysis State
+  const [isCapturing, setIsCapturing] = useState(false)
+  const [visionResult, setVisionResult] = useState<AIAnalysisResult | null>(null)
+  const [showChart, setShowChart] = useState(false)
+  const chartRef = useRef<HTMLDivElement>(null)
+  const { captureChart } = useChartCapture()
 
   const selectedSymbol = SYMBOLS.find(s => s.value === symbol)
 
@@ -148,6 +165,36 @@ export default function AIAnalysisPage() {
       setIsAnalyzing(false)
     }
   }, [symbol, currentPrice, selectedSymbol?.price, timeframe, mode])
+
+  // Capture TradingView chart and analyze with Vision AI
+  const captureAndAnalyze = useCallback(async () => {
+    if (!chartRef.current) {
+      setError('Chart not ready. Please wait for it to load.')
+      return
+    }
+
+    setIsCapturing(true)
+    setError(null)
+    setVisionResult(null)
+
+    try {
+      const result = await captureChart(
+        chartRef.current,
+        selectedSymbol?.label || symbol,
+        [timeframe]
+      )
+
+      if (result.success && result.analysis) {
+        setVisionResult(result.analysis)
+      } else {
+        setError(result.error || 'Failed to analyze chart')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Chart capture failed')
+    } finally {
+      setIsCapturing(false)
+    }
+  }, [captureChart, selectedSymbol?.label, symbol, timeframe])
 
   // Auto-run analysis on page load (only if providers are configured)
   useEffect(() => {
@@ -337,6 +384,135 @@ export default function AIAnalysisPage() {
             )}
           </div>
         </div>
+      </motion.div>
+
+      {/* TradingView Chart with Vision Analysis */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+        className="card overflow-hidden"
+      >
+        <div className="p-4 border-b border-dark-700/50 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Eye size={20} className="text-primary-400" />
+            <div>
+              <h3 className="font-semibold">Chart Vision Analysis</h3>
+              <p className="text-xs text-dark-400">AI sees the chart with all visible indicators</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowChart(!showChart)}
+              className="px-3 py-1.5 bg-dark-700 hover:bg-dark-600 rounded-lg text-sm transition-colors"
+            >
+              {showChart ? 'Hide Chart' : 'Show Chart'}
+            </button>
+            {showChart && (
+              <button
+                onClick={captureAndAnalyze}
+                disabled={isCapturing}
+                className="px-4 py-1.5 bg-primary-500 hover:bg-primary-600 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 disabled:opacity-50"
+              >
+                {isCapturing ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    Analyzing...
+                  </>
+                ) : (
+                  <>
+                    <Camera size={14} />
+                    Capture & Analyze
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        </div>
+
+        <AnimatePresence>
+          {showChart && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <div ref={chartRef} className="relative">
+                <TradingViewWidget
+                  symbol={selectedSymbol?.label || 'EUR/USD'}
+                  interval={timeframe === '1m' ? '1' : timeframe === '5m' ? '5' : timeframe === '15m' ? '15' : timeframe === '30m' ? '30' : timeframe === '1h' ? '60' : timeframe === '4h' ? '240' : 'D'}
+                  height={400}
+                  theme="dark"
+                  allowSymbolChange={false}
+                  showToolbar={true}
+                  showDrawingTools={true}
+                />
+                {isCapturing && (
+                  <div className="absolute inset-0 bg-dark-900/80 flex items-center justify-center">
+                    <div className="text-center">
+                      <Loader2 size={40} className="animate-spin mx-auto mb-3 text-primary-400" />
+                      <p className="text-sm">Capturing chart & sending to 6 AI models...</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Vision Analysis Result */}
+              {visionResult && (
+                <div className="p-4 border-t border-dark-700/50 bg-dark-800/30">
+                  <h4 className="font-semibold mb-3 flex items-center gap-2">
+                    <Eye size={16} className="text-primary-400" />
+                    Vision Analysis Result
+                  </h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                    <div className="p-3 bg-dark-700/50 rounded-lg">
+                      <p className="text-xs text-dark-400 mb-1">Direction</p>
+                      <p className={`text-lg font-bold ${
+                        visionResult.direction === 'LONG' ? 'text-neon-green' :
+                        visionResult.direction === 'SHORT' ? 'text-neon-red' : 'text-neon-yellow'
+                      }`}>
+                        {visionResult.direction}
+                      </p>
+                    </div>
+                    <div className="p-3 bg-dark-700/50 rounded-lg">
+                      <p className="text-xs text-dark-400 mb-1">Confidence</p>
+                      <p className="text-lg font-bold">{visionResult.confidence}%</p>
+                    </div>
+                    <div className="p-3 bg-dark-700/50 rounded-lg">
+                      <p className="text-xs text-dark-400 mb-1">Stop Loss</p>
+                      <p className="text-lg font-mono text-neon-red">{visionResult.stop_loss || '—'}</p>
+                    </div>
+                    <div className="p-3 bg-dark-700/50 rounded-lg">
+                      <p className="text-xs text-dark-400 mb-1">Take Profit</p>
+                      <p className="text-lg font-mono text-neon-green">
+                        {visionResult.take_profit?.[0] || '—'}
+                      </p>
+                    </div>
+                  </div>
+                  {visionResult.patterns_detected && visionResult.patterns_detected.length > 0 && (
+                    <div className="mb-3">
+                      <p className="text-xs text-dark-400 mb-2">Patterns Detected</p>
+                      <div className="flex flex-wrap gap-2">
+                        {visionResult.patterns_detected.map((pattern, i) => (
+                          <span key={i} className="px-2 py-1 bg-primary-500/20 text-primary-300 rounded text-xs">
+                            {pattern}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {visionResult.reasoning && (
+                    <div className="p-3 bg-dark-700/30 rounded-lg">
+                      <p className="text-xs text-dark-400 mb-1">AI Reasoning</p>
+                      <p className="text-sm text-dark-300">{visionResult.reasoning}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
 
       {/* No AI Providers Warning */}

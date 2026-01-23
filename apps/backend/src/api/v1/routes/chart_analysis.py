@@ -51,32 +51,15 @@ class AnalysisResponse(BaseModel):
 
 VISION_PROMPT = """Analyze this TradingView chart for {symbol} ({timeframes}).
 
-Based on the chart, provide:
+You are looking at a live TradingView chart. Analyze EVERYTHING visible including:
+- All visible indicators (RSI, MACD, Moving Averages, Bollinger Bands, etc.)
+- Smart Money Concepts (Order Blocks, FVG, BOS, CHoCH, Liquidity)
+- Price action and candlestick patterns
+- Support and resistance levels
+- Volume analysis if visible
 
-## DIRECTION
-LONG, SHORT, or HOLD with confidence 0-100%
+Provide your analysis in this EXACT format:
 
-## ENTRY PRICE
-Exact entry price level
-
-## STOP LOSS (SL)
-Price for stop loss based on visible support/resistance
-
-## TAKE PROFIT (TP)
-1-3 take profit levels
-
-## BREAK EVEN (BE) TRIGGER
-Price at which to move SL to entry (usually when TP1 hit)
-
-## TRAILING STOP (TS)
-- Should trailing stop be enabled?
-- Activation price
-- Trail distance in pips
-
-## PATTERNS
-Chart patterns you see
-
-FORMAT YOUR RESPONSE:
 DIRECTION: [LONG/SHORT/HOLD]
 CONFIDENCE: [0-100]
 ENTRY: [price]
@@ -88,8 +71,12 @@ BREAK_EVEN_TRIGGER: [price]
 TRAILING_STOP_ENABLED: [yes/no]
 TRAILING_STOP_ACTIVATION: [price]
 TRAILING_STOP_DISTANCE: [pips]
+INDICATORS: [RSI: value, MACD: signal, etc. - read from chart]
+SMC: [Order Blocks, FVG, structure analysis]
 PATTERNS: [pattern1, pattern2]
-REASONING: [analysis]
+REASONING: [Your institutional-grade analysis]
+
+Be PRECISE with price levels - read them from the chart axis.
 """
 
 
