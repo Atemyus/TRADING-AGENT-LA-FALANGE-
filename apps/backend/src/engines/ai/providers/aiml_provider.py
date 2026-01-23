@@ -7,7 +7,7 @@ Uses a single API key to access multiple AI models.
 Supported models (exact AIML API model IDs):
 - ChatGPT 5.2 → openai/gpt-5-2-chat-latest
 - Gemini 3 Pro → google/gemini-3-pro-preview
-- DeepSeek R1 → deepseek/deepseek-r1
+- DeepSeek V3.2 → deepseek/deepseek-non-thinking-v3.2-exp
 - Grok 4.1 Fast → x-ai/grok-4-1-fast-reasoning
 - Qwen Max → qwen-max
 - GLM 4.7 → zhipu/glm-4.7
@@ -43,9 +43,9 @@ AIML_MODELS = {
         "display_name": "Gemini 3 Pro",
         "provider": "Google",
     },
-    "deepseek-r1": {
-        "id": "deepseek/deepseek-r1",
-        "display_name": "DeepSeek R1",
+    "deepseek-v3.2": {
+        "id": "deepseek/deepseek-non-thinking-v3.2-exp",
+        "display_name": "DeepSeek V3.2",
         "provider": "DeepSeek",
     },
     "grok-4.1-fast": {

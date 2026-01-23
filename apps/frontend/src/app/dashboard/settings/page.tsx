@@ -120,7 +120,7 @@ const AI_PROVIDERS = [
     id: 'aiml',
     name: 'AIML API',
     icon: '🚀',
-    models: ['ChatGPT 5.2', 'Gemini 3 Pro', 'DeepSeek R1', 'Grok 4.1 Fast', 'Qwen Max', 'GLM 4.7'],
+    models: ['ChatGPT 5.2', 'Gemini 3 Pro', 'DeepSeek V3.2', 'Grok 4.1 Fast', 'Qwen Max', 'GLM 4.7'],
     field: { key: 'AIML_API_KEY', label: 'API Key', placeholder: 'Your AIML API key' },
     badge: 'Recommended - 6 Models',
     description: 'Single API key for 6 top AI models via api.aimlapi.com',
