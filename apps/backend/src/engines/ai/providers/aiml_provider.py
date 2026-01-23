@@ -15,6 +15,7 @@ Supported models (exact AIML API model IDs):
 
 import json
 import os
+import re
 import time
 from decimal import Decimal
 from typing import List, Optional
@@ -158,21 +159,26 @@ class AIMLProvider(BaseAIProvider):
                 session=context.market_session or "unknown",
             )
 
-            # Call AIML API
+            # Call AIML API - don't use response_format as not all models support it
             response = await self._client.chat.completions.create(
                 model=self._model_info["id"],
                 messages=[
                     {"role": "system", "content": get_system_prompt()},
                     {"role": "user", "content": user_prompt},
                 ],
-                response_format={"type": "json_object"},
-                temperature=0.3,
-                max_tokens=1000,
+                temperature=0.4,
+                max_tokens=2000,  # Increased for detailed reasoning
             )
 
-            # Parse response
+            # Parse response - handle potential non-JSON content
             content = response.choices[0].message.content
-            data = json.loads(content)
+            if not content:
+                return self._create_error_response("Empty response from model")
+
+            # Try to extract JSON from response
+            data = self._extract_json(content)
+            if data is None:
+                return self._create_error_response(f"Failed to parse JSON response: {content[:200]}")
 
             # Calculate metrics
             processing_time = int((time.time() - start_time) * 1000)
@@ -204,3 +210,54 @@ class AIMLProvider(BaseAIProvider):
             return self._create_error_response(f"Failed to parse JSON response: {e}")
         except Exception as e:
             return self._create_error_response(str(e))
+
+    def _extract_json(self, content: str) -> Optional[dict]:
+        """
+        Extract JSON from response content.
+        Handles cases where model returns JSON wrapped in markdown or extra text.
+        """
+        # First try direct parsing
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            pass
+
+        # Try to find JSON in markdown code block
+        json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', content, re.DOTALL)
+        if json_match:
+            try:
+                return json.loads(json_match.group(1))
+            except json.JSONDecodeError:
+                pass
+
+        # Try to find raw JSON object
+        json_match = re.search(r'\{[^{}]*"direction"[^{}]*\}', content, re.DOTALL)
+        if json_match:
+            try:
+                return json.loads(json_match.group(0))
+            except json.JSONDecodeError:
+                pass
+
+        # Try to find JSON that spans multiple lines
+        json_match = re.search(r'\{[\s\S]*?"direction"[\s\S]*?\}', content)
+        if json_match:
+            try:
+                # Clean up the match
+                potential_json = json_match.group(0)
+                # Find matching closing brace
+                brace_count = 0
+                end_idx = 0
+                for i, char in enumerate(potential_json):
+                    if char == '{':
+                        brace_count += 1
+                    elif char == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            end_idx = i + 1
+                            break
+                if end_idx > 0:
+                    return json.loads(potential_json[:end_idx])
+            except json.JSONDecodeError:
+                pass
+
+        return None
