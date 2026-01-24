@@ -70,6 +70,8 @@ interface BotStatus {
     min_confidence: number;
     risk_per_trade: number;
     max_positions: number;
+    autonomous_analysis?: boolean;
+    autonomous_timeframe?: string;
   };
   statistics: {
     analyses_today: number;
@@ -104,6 +106,9 @@ interface BotConfig {
   trade_on_weekends: boolean;
   telegram_enabled: boolean;
   discord_enabled: boolean;
+  // Autonomous AI Analysis
+  use_autonomous_analysis: boolean;
+  autonomous_timeframe: string;
 }
 
 const AVAILABLE_SYMBOLS = [
@@ -148,6 +153,8 @@ export default function BotControlPage() {
       min_confidence: 75,
       risk_per_trade: 1,
       max_positions: 3,
+      autonomous_analysis: true,
+      autonomous_timeframe: "15m",
     },
     statistics: {
       analyses_today: 0,
@@ -175,6 +182,9 @@ export default function BotControlPage() {
     trade_on_weekends: false,
     telegram_enabled: false,
     discord_enabled: false,
+    // Autonomous AI - each AI chooses its own indicators/strategy
+    use_autonomous_analysis: true,
+    autonomous_timeframe: "15m",
   };
 
   const fetchStatus = useCallback(async () => {
@@ -361,9 +371,17 @@ export default function BotControlPage() {
               </span>
             </div>
             <div>
-              <h2 className="text-xl font-semibold capitalize">
-                Bot {currentStatus.status}
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-xl font-semibold capitalize">
+                  Bot {currentStatus.status}
+                </h2>
+                {currentConfig.use_autonomous_analysis && (
+                  <span className="px-2 py-0.5 bg-indigo-500/20 text-indigo-300 text-xs rounded-full flex items-center gap-1">
+                    <Eye size={12} />
+                    Autonomous AI
+                  </span>
+                )}
+              </div>
               {currentStatus.started_at && (
                 <p className="text-sm text-slate-400">
                   Started: {new Date(currentStatus.started_at).toLocaleString()}
@@ -751,6 +769,50 @@ export default function BotControlPage() {
                 />
                 <span className="text-sm">Trade on weekends</span>
               </div>
+            </div>
+
+            {/* Autonomous AI Analysis */}
+            <div className="col-span-2 p-4 bg-indigo-500/10 border border-indigo-500/30 rounded-lg">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <Eye size={20} className="text-indigo-400" />
+                  <div>
+                    <label className="block text-sm font-medium">
+                      Autonomous AI Analysis
+                    </label>
+                    <p className="text-xs text-slate-400">
+                      Each AI independently chooses indicators and strategy
+                    </p>
+                  </div>
+                </div>
+                <Toggle
+                  enabled={currentConfig.use_autonomous_analysis}
+                  onChange={() =>
+                    handleConfigUpdate({ use_autonomous_analysis: !currentConfig.use_autonomous_analysis })
+                  }
+                />
+              </div>
+              {currentConfig.use_autonomous_analysis && (
+                <div className="mt-3 pt-3 border-t border-indigo-500/30">
+                  <label className="block text-xs text-slate-400 mb-2">
+                    Analysis Timeframe
+                  </label>
+                  <select
+                    value={currentConfig.autonomous_timeframe}
+                    onChange={(e) => handleConfigUpdate({ autonomous_timeframe: e.target.value })}
+                    className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm"
+                  >
+                    <option value="5m">5 Minutes</option>
+                    <option value="15m">15 Minutes</option>
+                    <option value="30m">30 Minutes</option>
+                    <option value="1h">1 Hour</option>
+                    <option value="4h">4 Hours</option>
+                  </select>
+                  <p className="text-xs text-slate-500 mt-2">
+                    AI models will analyze charts with SMC, indicators, and price action
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Notifications */}
