@@ -28,6 +28,16 @@ from src.engines.ai.autonomous_analyst import (
     AutonomousAnalysisResult,
     get_autonomous_analyst,
 )
+try:
+    from src.engines.ai.tradingview_agent import (
+        TradingViewAIAgent,
+        TradingViewAnalysisResult,
+        get_tradingview_agent,
+    )
+    TRADINGVIEW_AGENT_AVAILABLE = True
+except ImportError:
+    TRADINGVIEW_AGENT_AVAILABLE = False
+    TradingViewAIAgent = None
 from src.engines.trading.broker_factory import BrokerFactory
 from src.engines.trading.base_broker import BaseBroker, OrderRequest, OrderType, OrderSide
 from src.core.config import settings
@@ -84,6 +94,10 @@ class BotConfig:
     use_autonomous_analysis: bool = True  # Use chart vision with AI autonomy
     autonomous_timeframe: str = "15m"     # Timeframe for autonomous analysis
 
+    # TradingView AI Agent - Full browser control
+    use_tradingview_agent: bool = False   # Use real TradingView with browser automation
+    tradingview_headless: bool = True     # Run browser in headless mode
+
     # Entry requirements
     min_confidence: float = 70.0  # Minimum consensus confidence to enter
     min_models_agree: int = 4     # Minimum models agreeing on direction (4 out of 6)
@@ -136,6 +150,7 @@ class AutoTrader:
         self.state = BotState()
         self.analyzer: Optional[MultiTimeframeAnalyzer] = None
         self.autonomous_analyst: Optional[AutonomousAnalyst] = None
+        self.tradingview_agent: Optional[TradingViewAIAgent] = None
         self.broker: Optional[BaseBroker] = None
         self._task: Optional[asyncio.Task] = None
         self._stop_event = asyncio.Event()
@@ -168,6 +183,12 @@ class AutoTrader:
                 self.autonomous_analyst = get_autonomous_analyst()
                 await self.autonomous_analyst.initialize()
 
+            # Initialize TradingView agent (full browser control)
+            if self.config.use_tradingview_agent and TRADINGVIEW_AGENT_AVAILABLE:
+                self.tradingview_agent = await get_tradingview_agent(
+                    headless=self.config.tradingview_headless
+                )
+
             # Initialize broker
             self.broker = await BrokerFactory.create_broker()
             await self.broker.connect()
@@ -177,7 +198,12 @@ class AutoTrader:
             self._task = asyncio.create_task(self._main_loop())
             self.state.status = BotStatus.RUNNING
 
-            analysis_type = "Autonomous Vision" if self.config.use_autonomous_analysis else "Standard"
+            if self.config.use_tradingview_agent and TRADINGVIEW_AGENT_AVAILABLE:
+                analysis_type = "TradingView AI Agent"
+            elif self.config.use_autonomous_analysis:
+                analysis_type = "Autonomous Vision"
+            else:
+                analysis_type = "Standard"
             await self._notify(f"🤖 Bot started ({analysis_type} Analysis). Monitoring: {', '.join(self.config.symbols)}")
 
         except Exception as e:
@@ -351,8 +377,25 @@ class AutoTrader:
                 if any(p.symbol == symbol for p in self.state.open_positions):
                     continue
 
+                # Use TradingView AI Agent (full browser control)
+                if self.config.use_tradingview_agent and self.tradingview_agent:
+                    # Convert timeframe format (15m -> 15)
+                    tf = self.config.autonomous_timeframe.replace("m", "").replace("h", "0")
+                    # Convert symbol format (EUR/USD -> EURUSD)
+                    tv_symbol = symbol.replace("/", "")
+
+                    results = await self.tradingview_agent.analyze_all_models(
+                        symbol=tv_symbol,
+                        timeframe=tf
+                    )
+                    consensus = self.tradingview_agent.calculate_consensus(results)
+
+                    # Check if trade conditions are met
+                    if self._should_enter_tradingview_trade(consensus):
+                        await self._execute_tradingview_trade(symbol, consensus, results)
+
                 # Use Autonomous Analysis (each AI chooses its own indicators/strategy)
-                if self.config.use_autonomous_analysis and self.autonomous_analyst:
+                elif self.config.use_autonomous_analysis and self.autonomous_analyst:
                     results = await self.autonomous_analyst.analyze_all_models(
                         symbol=symbol,
                         timeframe=self.config.autonomous_timeframe
@@ -403,6 +446,124 @@ class AutoTrader:
             return False
 
         return True
+
+    def _should_enter_tradingview_trade(self, consensus: Dict[str, Any]) -> bool:
+        """Check if TradingView AI agent consensus meets trading criteria."""
+        # Same logic as autonomous trade
+        return self._should_enter_autonomous_trade(consensus)
+
+    async def _execute_tradingview_trade(
+        self,
+        symbol: str,
+        consensus: Dict[str, Any],
+        results: List[TradingViewAnalysisResult]
+    ):
+        """Execute a trade based on TradingView AI agent consensus."""
+        try:
+            # Get current price
+            price = await self.broker.get_price(symbol)
+            current_price = (price["bid"] + price["ask"]) / 2
+
+            # Calculate position size
+            account_info = await self.broker.get_account_info()
+            account_balance = account_info.get("balance", 10000)
+
+            risk_amount = account_balance * (self.config.risk_per_trade_percent / 100)
+            sl_distance = abs(current_price - consensus["stop_loss"])
+
+            if sl_distance == 0:
+                return
+
+            units = risk_amount / sl_distance
+            side = OrderSide.BUY if consensus["direction"] == "LONG" else OrderSide.SELL
+
+            order = OrderRequest(
+                symbol=symbol,
+                side=side,
+                order_type=OrderType.MARKET,
+                units=units,
+                stop_loss=consensus["stop_loss"],
+                take_profit=consensus["take_profit"],
+            )
+
+            order_result = await self.broker.place_order(order)
+
+            if order_result.success:
+                trade = TradeRecord(
+                    id=order_result.order_id,
+                    symbol=symbol,
+                    direction=consensus["direction"],
+                    entry_price=order_result.fill_price or current_price,
+                    stop_loss=consensus["stop_loss"],
+                    take_profit=consensus["take_profit"],
+                    units=units,
+                    timestamp=datetime.utcnow(),
+                    confidence=consensus["confidence"],
+                    timeframes_analyzed=[self.config.autonomous_timeframe],
+                    models_agreed=consensus["models_agree"],
+                    total_models=consensus["total_models"],
+                    break_even_trigger=consensus.get("break_even_trigger"),
+                    trailing_stop_pips=consensus.get("trailing_stop_pips"),
+                )
+
+                self.state.open_positions.append(trade)
+                self.state.trades_today += 1
+
+                await self._notify_tradingview_trade(trade, consensus, results)
+
+        except Exception as e:
+            self.state.errors.append({
+                "timestamp": datetime.utcnow().isoformat(),
+                "symbol": symbol,
+                "error": f"TradingView trade execution failed: {str(e)}"
+            })
+
+    async def _notify_tradingview_trade(
+        self,
+        trade: TradeRecord,
+        consensus: Dict[str, Any],
+        results: List[TradingViewAnalysisResult]
+    ):
+        """Send notification for TradingView AI agent trade."""
+        # Get key observations
+        observations = consensus.get("key_observations", [])[:5]
+        observations_str = "\n".join([f"  • {obs}" for obs in observations]) if observations else "  N/A"
+
+        # Get reasoning from top model
+        combined_reasoning = consensus.get("combined_reasoning", "")[:600]
+
+        # Advanced management
+        advanced_mgmt = []
+        if trade.break_even_trigger:
+            advanced_mgmt.append(f"🔒 BE: {trade.break_even_trigger:.5f}")
+        if trade.trailing_stop_pips:
+            advanced_mgmt.append(f"📈 Trail: {trade.trailing_stop_pips:.1f} pips")
+        advanced_str = " | ".join(advanced_mgmt) if advanced_mgmt else "Standard"
+
+        # Indicators and styles
+        styles = consensus.get("analysis_styles_used", [])
+        indicators = consensus.get("indicators_used", [])[:6]
+
+        message = f"""
+🎯 **TRADINGVIEW AI AGENT TRADE**
+
+📊 **{trade.direction}** {trade.symbol}
+💰 Entry: {trade.entry_price:.5f}
+🛑 SL: {trade.stop_loss:.5f}
+🎯 TP: {trade.take_profit:.5f}
+⚙️ {advanced_str}
+
+🤖 **AI Consensus**: {consensus['models_agree']}/{consensus['total_models']} ({consensus['confidence']:.1f}%)
+📈 **Styles**: {', '.join(styles) if styles else 'Mixed'}
+📉 **Indicators**: {', '.join(indicators) if indicators else 'Various'}
+
+🔍 **Key Observations**:
+{observations_str}
+
+💭 **AI Reasoning**:
+{combined_reasoning}
+"""
+        await self._notify(message)
 
     def _should_enter_autonomous_trade(self, consensus: Dict[str, Any]) -> bool:
         """Check if autonomous analysis consensus meets trading criteria."""

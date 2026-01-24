@@ -34,6 +34,9 @@ ta>=0.11.0
 matplotlib>=3.8.0
 mplfinance>=0.12.10b0
 
+# Browser Automation (for TradingView AI Agent)
+playwright>=1.40.0
+
 # AI/LLM Providers (only httpx needed for AIML API)
 openai>=1.10.0
 
