@@ -181,7 +181,7 @@ async def get_daily_performance(
 async def get_equity_curve(
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
-    resolution: str = Query("1h", regex="^(1m|5m|15m|1h|4h|1d)$"),
+    resolution: str = Query("1h", pattern="^(1m|5m|15m|1h|4h|1d)$"),
 ):
     """Get equity curve data."""
     # TODO: Calculate from database
@@ -191,7 +191,7 @@ async def get_equity_curve(
 @router.get("/indicators/{symbol}", response_model=IndicatorData)
 async def get_indicators(
     symbol: str,
-    timeframe: str = Query("M15", regex="^(M1|M5|M15|M30|H1|H4|D)$"),
+    timeframe: str = Query("M15", pattern="^(M1|M5|M15|M30|H1|H4|D)$"),
 ):
     """Get technical indicators for a symbol."""
     market_data = await get_market_data_service()
@@ -229,7 +229,7 @@ async def get_indicators(
 @router.get("/analysis/{symbol}", response_model=AnalysisResponse)
 async def get_analysis(
     symbol: str,
-    timeframe: str = Query("M15", regex="^(M1|M5|M15|M30|H1|H4|D)$"),
+    timeframe: str = Query("M15", pattern="^(M1|M5|M15|M30|H1|H4|D)$"),
 ):
     """Get full technical analysis for a symbol."""
     market_data = await get_market_data_service()

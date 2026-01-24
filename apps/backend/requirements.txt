@@ -30,6 +30,10 @@ numpy>=1.26.0
 # Technical Analysis
 ta>=0.11.0
 
+# Chart Generation
+matplotlib>=3.8.0
+mplfinance>=0.12.10b0
+
 # AI/LLM Providers (only httpx needed for AIML API)
 openai>=1.10.0
 
