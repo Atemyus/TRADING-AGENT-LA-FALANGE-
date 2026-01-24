@@ -431,11 +431,27 @@ class TradingViewAIAgent:
         },
     }
 
-    def __init__(self):
+    # TradingView indicator limits by plan
+    TRADINGVIEW_PLANS = {
+        "basic": 3,      # Free plan
+        "essential": 5,
+        "plus": 10,
+        "premium": 25,
+    }
+
+    def __init__(self, max_indicators: int = 3):
+        """
+        Initialize TradingView AI Agent.
+
+        Args:
+            max_indicators: Maximum indicators allowed by TradingView plan.
+                           Default 3 (Basic/Free plan).
+        """
         self.browser: Optional[TradingViewBrowser] = None
         self.api_key = settings.AIML_API_KEY
         self.base_url = settings.AIML_BASE_URL
         self.timeout = 120.0
+        self.max_indicators = max_indicators
 
     async def initialize(self, headless: bool = True):
         """Initialize the browser for TradingView interaction."""
@@ -593,6 +609,9 @@ class TradingViewAIAgent:
     ) -> List[str]:
         """Ask AI which indicators to add based on initial chart."""
 
+        # Respect TradingView indicator limit
+        max_ind = min(self.max_indicators, 4)  # Cap at 4 for performance
+
         prompt = f"""You are analyzing a {symbol} chart on TradingView.
 
 Your preferred analysis style: {preferences.get('style', 'mixed')}
@@ -601,10 +620,11 @@ Your preferred focus: {preferences.get('focus', 'general analysis')}
 Look at this chart and decide which indicators you want to add.
 You can choose from: RSI, MACD, EMA, SMA, Bollinger Bands, Stochastic, ADX, ATR, Ichimoku, VWAP, Volume, Supertrend
 
-Based on your analysis style and what you see on the chart, which 2-4 indicators would help your analysis?
+IMPORTANT: You can add a MAXIMUM of {max_ind} indicators (TradingView plan limit).
+Choose the {max_ind} most useful indicators for your analysis style.
 
-Respond with ONLY a JSON array of indicator names, e.g.:
-["RSI", "MACD", "EMA"]
+Respond with ONLY a JSON array of indicator names (max {max_ind}), e.g.:
+["RSI", "EMA"]
 """
 
         try:
@@ -632,12 +652,16 @@ Respond with ONLY a JSON array of indicator names, e.g.:
                 data = response.json()
                 text = data["choices"][0]["message"]["content"]
 
-                # Parse JSON array
+                # Parse JSON array and enforce limit
                 import re
                 match = re.search(r'\[.*?\]', text, re.DOTALL)
                 if match:
-                    return json.loads(match.group())
-                return preferences.get("indicators", ["EMA", "RSI"])
+                    indicators = json.loads(match.group())
+                    # Enforce the max_indicators limit
+                    return indicators[:self.max_indicators]
+                # Fallback: use preferences but respect limit
+                fallback = preferences.get("indicators", ["EMA", "RSI"])
+                return fallback[:self.max_indicators]
 
         except Exception as e:
             print(f"Error asking AI for indicators: {e}")
@@ -915,10 +939,19 @@ Be specific with price levels based on what you see on the chart.
 _tv_agent: Optional[TradingViewAIAgent] = None
 
 
-async def get_tradingview_agent(headless: bool = True) -> TradingViewAIAgent:
-    """Get or create the TradingView AI agent singleton."""
+async def get_tradingview_agent(
+    headless: bool = True,
+    max_indicators: int = 3
+) -> TradingViewAIAgent:
+    """
+    Get or create the TradingView AI agent singleton.
+
+    Args:
+        headless: Run browser in headless mode
+        max_indicators: Max indicators allowed by TradingView plan (default 3 for free)
+    """
     global _tv_agent
     if _tv_agent is None:
-        _tv_agent = TradingViewAIAgent()
+        _tv_agent = TradingViewAIAgent(max_indicators=max_indicators)
         await _tv_agent.initialize(headless=headless)
     return _tv_agent

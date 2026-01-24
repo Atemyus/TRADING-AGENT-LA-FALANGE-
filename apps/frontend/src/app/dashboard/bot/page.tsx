@@ -109,6 +109,10 @@ interface BotConfig {
   // Autonomous AI Analysis
   use_autonomous_analysis: boolean;
   autonomous_timeframe: string;
+  // TradingView AI Agent
+  use_tradingview_agent: boolean;
+  tradingview_headless: boolean;
+  tradingview_max_indicators: number;
 }
 
 const AVAILABLE_SYMBOLS = [
@@ -185,6 +189,10 @@ export default function BotControlPage() {
     // Autonomous AI - each AI chooses its own indicators/strategy
     use_autonomous_analysis: true,
     autonomous_timeframe: "15m",
+    // TradingView AI Agent - full browser control
+    use_tradingview_agent: false,
+    tradingview_headless: true,
+    tradingview_max_indicators: 3,  // TradingView Basic plan limit
   };
 
   const fetchStatus = useCallback(async () => {
@@ -810,6 +818,67 @@ export default function BotControlPage() {
                   </select>
                   <p className="text-xs text-slate-500 mt-2">
                     AI models will analyze charts with SMC, indicators, and price action
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* TradingView AI Agent */}
+            <div className="md:col-span-2 p-4 bg-purple-500/10 border border-purple-500/30 rounded-lg">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <BarChart3 size={20} className="text-purple-400" />
+                  <div>
+                    <label className="block text-sm font-medium">
+                      TradingView AI Agent
+                    </label>
+                    <p className="text-xs text-slate-400">
+                      AI controls real TradingView charts via browser automation
+                    </p>
+                  </div>
+                </div>
+                <Toggle
+                  enabled={currentConfig.use_tradingview_agent}
+                  onChange={() =>
+                    handleConfigUpdate({ use_tradingview_agent: !currentConfig.use_tradingview_agent })
+                  }
+                />
+              </div>
+              {currentConfig.use_tradingview_agent && (
+                <div className="mt-3 pt-3 border-t border-purple-500/30 space-y-4">
+                  {/* TradingView Plan / Max Indicators */}
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-2">
+                      TradingView Plan (Max Indicators: {currentConfig.tradingview_max_indicators})
+                    </label>
+                    <select
+                      value={currentConfig.tradingview_max_indicators}
+                      onChange={(e) => handleConfigUpdate({ tradingview_max_indicators: parseInt(e.target.value) })}
+                      className="select-input text-sm"
+                    >
+                      <option value={3}>Basic (Free) - 3 indicators</option>
+                      <option value={5}>Essential - 5 indicators</option>
+                      <option value={10}>Plus - 10 indicators</option>
+                      <option value={25}>Premium - 25 indicators</option>
+                    </select>
+                  </div>
+
+                  {/* Headless Mode */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-sm">Headless Mode</span>
+                      <p className="text-xs text-slate-500">Run browser in background (faster)</p>
+                    </div>
+                    <Toggle
+                      enabled={currentConfig.tradingview_headless}
+                      onChange={() =>
+                        handleConfigUpdate({ tradingview_headless: !currentConfig.tradingview_headless })
+                      }
+                    />
+                  </div>
+
+                  <p className="text-xs text-slate-500 mt-2">
+                    AI can add indicators, draw zones/trendlines, and take screenshots on TradingView.com
                   </p>
                 </div>
               )}

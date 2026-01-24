@@ -97,6 +97,7 @@ class BotConfig:
     # TradingView AI Agent - Full browser control
     use_tradingview_agent: bool = False   # Use real TradingView with browser automation
     tradingview_headless: bool = True     # Run browser in headless mode
+    tradingview_max_indicators: int = 3   # Max indicators (3=Basic, 5=Essential, 10=Plus, 25=Premium)
 
     # Entry requirements
     min_confidence: float = 70.0  # Minimum consensus confidence to enter
@@ -186,7 +187,8 @@ class AutoTrader:
             # Initialize TradingView agent (full browser control)
             if self.config.use_tradingview_agent and TRADINGVIEW_AGENT_AVAILABLE:
                 self.tradingview_agent = await get_tradingview_agent(
-                    headless=self.config.tradingview_headless
+                    headless=self.config.tradingview_headless,
+                    max_indicators=self.config.tradingview_max_indicators
                 )
 
             # Initialize broker
