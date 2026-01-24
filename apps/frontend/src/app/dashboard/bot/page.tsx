@@ -598,7 +598,7 @@ export default function BotControlPage() {
               </label>
               <div className="space-y-4">
                 <div>
-                  <label className="text-xs text-slate-400">
+                  <label className="text-xs text-slate-400 block mb-1">
                     Risk per Trade: {currentConfig.risk_per_trade_percent}%
                   </label>
                   <input
@@ -612,11 +612,11 @@ export default function BotControlPage() {
                         risk_per_trade_percent: parseFloat(e.target.value),
                       })
                     }
-                    className="w-full"
+                    className="range-input"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-slate-400">
+                  <label className="text-xs text-slate-400 block mb-1">
                     Max Daily Loss: {currentConfig.max_daily_loss_percent}%
                   </label>
                   <input
@@ -630,11 +630,11 @@ export default function BotControlPage() {
                         max_daily_loss_percent: parseFloat(e.target.value),
                       })
                     }
-                    className="w-full"
+                    className="range-input"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-slate-400">
+                  <label className="text-xs text-slate-400 block mb-1">
                     Max Open Positions: {currentConfig.max_open_positions}
                   </label>
                   <input
@@ -648,7 +648,7 @@ export default function BotControlPage() {
                         max_open_positions: parseInt(e.target.value),
                       })
                     }
-                    className="w-full"
+                    className="range-input"
                   />
                 </div>
               </div>
@@ -661,7 +661,7 @@ export default function BotControlPage() {
               </label>
               <div className="space-y-4">
                 <div>
-                  <label className="text-xs text-slate-400">
+                  <label className="text-xs text-slate-400 block mb-1">
                     Min Confidence: {currentConfig.min_confidence}%
                   </label>
                   <input
@@ -675,11 +675,11 @@ export default function BotControlPage() {
                         min_confidence: parseFloat(e.target.value),
                       })
                     }
-                    className="w-full"
+                    className="range-input"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-slate-400">
+                  <label className="text-xs text-slate-400 block mb-1">
                     Min Models Agree: {currentConfig.min_models_agree}
                   </label>
                   <input
@@ -693,11 +693,11 @@ export default function BotControlPage() {
                         min_models_agree: parseInt(e.target.value),
                       })
                     }
-                    className="w-full"
+                    className="range-input"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-slate-400">
+                  <label className="text-xs text-slate-400 block mb-1">
                     Min Confluence: {currentConfig.min_confluence}%
                   </label>
                   <input
@@ -711,7 +711,7 @@ export default function BotControlPage() {
                         min_confluence: parseFloat(e.target.value),
                       })
                     }
-                    className="w-full"
+                    className="range-input"
                   />
                 </div>
               </div>
@@ -724,7 +724,7 @@ export default function BotControlPage() {
               </label>
               <div className="flex items-center gap-4">
                 <div className="flex-1">
-                  <label className="text-xs text-slate-400">Start</label>
+                  <label className="text-xs text-slate-400 block mb-1">Start</label>
                   <select
                     value={currentConfig.trading_start_hour}
                     onChange={(e) =>
@@ -732,7 +732,7 @@ export default function BotControlPage() {
                         trading_start_hour: parseInt(e.target.value),
                       })
                     }
-                    className="input w-full"
+                    className="select-input"
                   >
                     {Array.from({ length: 24 }, (_, i) => (
                       <option key={i} value={i}>
@@ -742,7 +742,7 @@ export default function BotControlPage() {
                   </select>
                 </div>
                 <div className="flex-1">
-                  <label className="text-xs text-slate-400">End</label>
+                  <label className="text-xs text-slate-400 block mb-1">End</label>
                   <select
                     value={currentConfig.trading_end_hour}
                     onChange={(e) =>
@@ -750,7 +750,7 @@ export default function BotControlPage() {
                         trading_end_hour: parseInt(e.target.value),
                       })
                     }
-                    className="input w-full"
+                    className="select-input"
                   >
                     {Array.from({ length: 24 }, (_, i) => (
                       <option key={i} value={i}>
@@ -772,7 +772,7 @@ export default function BotControlPage() {
             </div>
 
             {/* Autonomous AI Analysis */}
-            <div className="col-span-2 p-4 bg-indigo-500/10 border border-indigo-500/30 rounded-lg">
+            <div className="md:col-span-2 p-4 bg-indigo-500/10 border border-indigo-500/30 rounded-lg">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-3">
                   <Eye size={20} className="text-indigo-400" />
@@ -800,7 +800,7 @@ export default function BotControlPage() {
                   <select
                     value={currentConfig.autonomous_timeframe}
                     onChange={(e) => handleConfigUpdate({ autonomous_timeframe: e.target.value })}
-                    className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm"
+                    className="select-input text-sm"
                   >
                     <option value="5m">5 Minutes</option>
                     <option value="15m">15 Minutes</option>
