@@ -80,26 +80,30 @@ class MultiTimeframeAnalyzer:
     Analyzes assets across multiple timeframes using both text and vision AI.
     """
 
-    # Mode configurations
+    # Mode configurations - Vision AI enabled for ALL modes
     MODE_CONFIG = {
         AnalysisMode.QUICK: {
             "timeframes": ["1H"],
-            "use_vision": False,
+            "use_vision": True,  # Vision AI now enabled
+            "vision_models": 1,  # Use 1 vision model for speed
             "text_models": ["groq"],  # Fastest
         },
         AnalysisMode.STANDARD: {
             "timeframes": ["15m", "1H"],
-            "use_vision": False,
+            "use_vision": True,  # Vision AI now enabled
+            "vision_models": 2,  # Use 2 vision models
             "text_models": ["groq", "openai", "anthropic"],
         },
         AnalysisMode.PREMIUM: {
             "timeframes": ["15m", "1H", "4H"],
             "use_vision": True,
+            "vision_models": 4,  # Use 4 vision models
             "text_models": ["groq", "openai", "anthropic", "gemini"],
         },
         AnalysisMode.ULTRA: {
             "timeframes": ["5m", "15m", "1H", "4H", "1D"],
             "use_vision": True,
+            "vision_models": 6,  # Use all 6 vision models
             "text_models": ["groq", "openai", "anthropic", "gemini", "mistral"],
         },
     }
@@ -163,9 +167,10 @@ class MultiTimeframeAnalyzer:
         for tf in timeframes:
             tasks.append(self._run_text_analysis(symbol, tf, config["text_models"]))
 
-        # 2. Vision-based AI analysis (if enabled)
+        # 2. Vision-based AI analysis (enabled for all modes)
         if config["use_vision"] and self.chart_service:
-            tasks.append(self._run_vision_analysis(symbol, timeframes))
+            max_vision_models = config.get("vision_models", 6)
+            tasks.append(self._run_vision_analysis(symbol, timeframes, max_vision_models))
 
         # Run all analyses in parallel
         try:
@@ -254,7 +259,8 @@ class MultiTimeframeAnalyzer:
     async def _run_vision_analysis(
         self,
         symbol: str,
-        timeframes: List[str]
+        timeframes: List[str],
+        max_models: int = 6
     ) -> Dict[str, Any]:
         """Run vision-based AI analysis across multiple timeframes."""
         if not self.chart_service or not self.vision_analyzer:
@@ -273,10 +279,11 @@ class MultiTimeframeAnalyzer:
                 timeframes=timeframes
             )
 
-            # Run vision analysis on all models
+            # Run vision analysis on specified number of models
             vision_results = await self.vision_analyzer.analyze_all_models(
                 images_base64=charts,
-                prompt=prompt
+                prompt=prompt,
+                max_models=max_models
             )
 
             # Convert to vote format

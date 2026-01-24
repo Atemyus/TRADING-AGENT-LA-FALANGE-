@@ -57,10 +57,17 @@ class TradeRecord:
     timeframes_analyzed: List[str]
     models_agreed: int
     total_models: int
-    status: str = "open"  # open, closed_tp, closed_sl, closed_manual
+    status: str = "open"  # open, closed_tp, closed_sl, closed_manual, closed_be
     exit_price: Optional[float] = None
     exit_timestamp: Optional[datetime] = None
     profit_loss: Optional[float] = None
+
+    # Advanced trade management
+    break_even_trigger: Optional[float] = None  # Move SL to entry when price hits this
+    trailing_stop_pips: Optional[float] = None  # Trail SL by this many pips
+    partial_tp_percent: Optional[float] = None  # Close this % at TP1
+    is_break_even: bool = False  # Has SL been moved to entry?
+    current_trailing_sl: Optional[float] = None  # Current trailing SL level
 
 
 @dataclass
@@ -273,8 +280,67 @@ class AutoTrader:
                 })
                 await asyncio.sleep(60)  # Wait before retrying
 
+    async def _manage_open_positions(self):
+        """Manage open positions: Break Even, Trailing Stop, Partial TP."""
+        for trade in self.state.open_positions:
+            try:
+                price = await self.broker.get_price(trade.symbol)
+                current_price = (price["bid"] + price["ask"]) / 2
+
+                # Check Break Even
+                if trade.break_even_trigger and not trade.is_break_even:
+                    should_move_be = False
+                    if trade.direction == "LONG" and current_price >= trade.break_even_trigger:
+                        should_move_be = True
+                    elif trade.direction == "SHORT" and current_price <= trade.break_even_trigger:
+                        should_move_be = True
+
+                    if should_move_be:
+                        # Move SL to entry price
+                        await self.broker.modify_order(
+                            order_id=trade.id,
+                            stop_loss=trade.entry_price
+                        )
+                        trade.stop_loss = trade.entry_price
+                        trade.is_break_even = True
+                        await self._notify(f"🔒 {trade.symbol} Break Even attivato a {trade.entry_price:.5f}")
+
+                # Check Trailing Stop
+                if trade.trailing_stop_pips and trade.is_break_even:
+                    pip_value = 0.0001 if "JPY" not in trade.symbol else 0.01
+                    trail_distance = trade.trailing_stop_pips * pip_value
+
+                    new_sl = None
+                    if trade.direction == "LONG":
+                        potential_sl = current_price - trail_distance
+                        if potential_sl > trade.stop_loss:
+                            new_sl = potential_sl
+                    elif trade.direction == "SHORT":
+                        potential_sl = current_price + trail_distance
+                        if potential_sl < trade.stop_loss:
+                            new_sl = potential_sl
+
+                    if new_sl:
+                        await self.broker.modify_order(
+                            order_id=trade.id,
+                            stop_loss=new_sl
+                        )
+                        trade.stop_loss = new_sl
+                        trade.current_trailing_sl = new_sl
+                        await self._notify(f"📈 {trade.symbol} Trailing Stop aggiornato a {new_sl:.5f}")
+
+            except Exception as e:
+                self.state.errors.append({
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "symbol": trade.symbol,
+                    "error": f"Position management failed: {str(e)}"
+                })
+
     async def _analyze_and_trade(self):
         """Analyze all symbols and execute trades if conditions met."""
+        # First manage existing positions (BE, Trailing Stop)
+        await self._manage_open_positions()
+
         for symbol in self.config.symbols:
             try:
                 # Skip if max positions reached
@@ -408,7 +474,7 @@ class AutoTrader:
                 styles_used = consensus.get("analysis_styles_used", [])
                 indicators_used = consensus.get("indicators_considered", [])
 
-                # Record trade
+                # Record trade with advanced management
                 trade = TradeRecord(
                     id=order_result.order_id,
                     symbol=symbol,
@@ -422,6 +488,10 @@ class AutoTrader:
                     timeframes_analyzed=[self.config.autonomous_timeframe],
                     models_agreed=consensus["models_agree"],
                     total_models=consensus["total_models"],
+                    # Advanced trade management
+                    break_even_trigger=consensus.get("break_even_trigger"),
+                    trailing_stop_pips=consensus.get("trailing_stop_pips"),
+                    partial_tp_percent=consensus.get("partial_tp_percent"),
                 )
 
                 self.state.open_positions.append(trade)
@@ -454,6 +524,17 @@ class AutoTrader:
         styles = consensus.get("analysis_styles_used", [])
         indicators = consensus.get("indicators_considered", [])[:5]
 
+        # Build advanced management info
+        advanced_mgmt = []
+        if trade.break_even_trigger:
+            advanced_mgmt.append(f"🔒 BE Trigger: {trade.break_even_trigger:.5f}")
+        if trade.trailing_stop_pips:
+            advanced_mgmt.append(f"📈 Trailing: {trade.trailing_stop_pips:.1f} pips")
+        if trade.partial_tp_percent:
+            advanced_mgmt.append(f"📊 Partial Close: {trade.partial_tp_percent:.0f}% at TP1")
+
+        advanced_str = "\n".join(advanced_mgmt) if advanced_mgmt else "Standard SL/TP"
+
         message = f"""
 🤖 **AUTONOMOUS AI TRADE**
 
@@ -461,6 +542,9 @@ class AutoTrader:
 💰 Entry: {trade.entry_price:.5f}
 🛑 SL: {trade.stop_loss:.5f}
 🎯 TP: {trade.take_profit:.5f}
+
+⚙️ **Trade Management**:
+{advanced_str}
 
 📊 **AI Consensus**: {consensus['models_agree']}/{consensus['total_models']} models agree
 🎯 **Confidence**: {consensus['confidence']:.1f}%

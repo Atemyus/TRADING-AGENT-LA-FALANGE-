@@ -66,6 +66,11 @@ class AutonomousAnalysisResult:
     take_profit: List[float] = field(default_factory=list)
     risk_reward: Optional[float] = None
 
+    # Advanced trade management
+    break_even_trigger: Optional[float] = None  # Price at which to move SL to entry
+    trailing_stop_pips: Optional[float] = None  # Trailing stop distance in pips
+    partial_tp_percent: Optional[float] = None  # Percentage to close at TP1 (e.g., 50%)
+
     # AI's chosen analysis approach
     indicators_used: List[str] = field(default_factory=list)
     analysis_style: str = ""  # "momentum", "smc", "trend", etc.
@@ -164,7 +169,10 @@ The chart shows {chart_description}
     "take_profit_1": [price],
     "take_profit_2": [price],
     "take_profit_3": [price],
-    "risk_reward": [ratio like 2.5]
+    "risk_reward": [ratio like 2.5],
+    "break_even_trigger": [price at which to move SL to entry, null if not recommended],
+    "trailing_stop_pips": [trailing stop distance in pips, null if not recommended],
+    "partial_close_at_tp1": [percentage to close at TP1, e.g. 50, null if full position]
   }},
 
   "reasoning": "[Your complete analysis narrative - explain WHY you see what you see, WHY you chose this approach, and WHY this trade makes sense. Be specific with prices and levels.]"
@@ -443,6 +451,11 @@ class AutonomousAnalyst:
         take_profits = [r.take_profit[0] for r in agreeing if r.take_profit]
         entries = [r.entry_price for r in agreeing if r.entry_price]
 
+        # Advanced management parameters
+        break_evens = [r.break_even_trigger for r in agreeing if r.break_even_trigger]
+        trailing_stops = [r.trailing_stop_pips for r in agreeing if r.trailing_stop_pips]
+        partial_tps = [r.partial_tp_percent for r in agreeing if r.partial_tp_percent]
+
         # Collect unique analysis approaches
         styles_used = list(set(r.analysis_style for r in agreeing if r.analysis_style))
         all_indicators = []
@@ -462,6 +475,11 @@ class AutonomousAnalyst:
             "entry_price": round(sum(entries) / len(entries), 5) if entries else None,
             "stop_loss": round(sum(stop_losses) / len(stop_losses), 5) if stop_losses else None,
             "take_profit": round(sum(take_profits) / len(take_profits), 5) if take_profits else None,
+
+            # Advanced trade management
+            "break_even_trigger": round(sum(break_evens) / len(break_evens), 5) if break_evens else None,
+            "trailing_stop_pips": round(sum(trailing_stops) / len(trailing_stops), 1) if trailing_stops else None,
+            "partial_tp_percent": round(sum(partial_tps) / len(partial_tps), 0) if partial_tps else None,
 
             # Analysis diversity
             "analysis_styles_used": styles_used,
@@ -620,6 +638,14 @@ class AutonomousAnalyst:
                 result.take_profit = tps
 
                 result.risk_reward = trade.get("risk_reward")
+
+                # Advanced trade management
+                if trade.get("break_even_trigger"):
+                    result.break_even_trigger = float(trade["break_even_trigger"])
+                if trade.get("trailing_stop_pips"):
+                    result.trailing_stop_pips = float(trade["trailing_stop_pips"])
+                if trade.get("partial_close_at_tp1"):
+                    result.partial_tp_percent = float(trade["partial_close_at_tp1"])
 
                 # Market structure
                 ms = data.get("market_structure", {})

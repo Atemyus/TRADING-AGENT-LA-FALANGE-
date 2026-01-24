@@ -243,6 +243,7 @@ IMPORTANT: Be PRECISE with price levels. Read them directly from the chart. Refe
         images_base64: Dict[str, str],
         prompt: str,
         models: Optional[List[VisionModel]] = None,
+        max_models: int = 6,
     ) -> List[VisionAnalysisResult]:
         """
         Run analysis on all specified vision models in parallel via AIML API.
@@ -251,12 +252,17 @@ IMPORTANT: Be PRECISE with price levels. Read them directly from the chart. Refe
             images_base64: Dict mapping timeframe to base64 chart image
             prompt: Analysis prompt
             models: List of models to use. Defaults to all 6 models.
+            max_models: Maximum number of models to use (for faster modes)
 
         Returns:
             List of analysis results from each model
         """
         if models is None:
             models = list(VisionModel)
+
+        # Limit models based on max_models parameter
+        if max_models < len(models):
+            models = models[:max_models]
 
         # Run all models in parallel
         tasks = [
