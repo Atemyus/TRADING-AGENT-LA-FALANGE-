@@ -83,11 +83,13 @@ class TradingViewAnalysisResult:
     analysis_style: str  # "smc", "price_action", "indicator_based", etc.
     indicators_used: List[str]
     drawings_made: List[Dict[str, Any]]  # trendlines, zones, etc.
-    timeframe: str = "15"  # Timeframe analyzed
 
     # Trading decision
     direction: str  # LONG, SHORT, HOLD
     confidence: float  # 0-100
+
+    # Fields with defaults must come after fields without defaults
+    timeframe: str = "15"  # Timeframe analyzed
     entry_price: Optional[float] = None
     stop_loss: Optional[float] = None
     take_profit: List[float] = field(default_factory=list)
