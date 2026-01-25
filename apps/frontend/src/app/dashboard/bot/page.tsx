@@ -70,8 +70,6 @@ interface BotStatus {
     min_confidence: number;
     risk_per_trade: number;
     max_positions: number;
-    autonomous_analysis?: boolean;
-    autonomous_timeframe?: string;
   };
   statistics: {
     analyses_today: number;
@@ -106,11 +104,7 @@ interface BotConfig {
   trade_on_weekends: boolean;
   telegram_enabled: boolean;
   discord_enabled: boolean;
-  // Autonomous AI Analysis
-  use_autonomous_analysis: boolean;
-  autonomous_timeframe: string;
-  // TradingView AI Agent
-  use_tradingview_agent: boolean;
+  // TradingView AI Agent (always enabled - the only analysis method)
   tradingview_headless: boolean;
   tradingview_max_indicators: number;
 }
@@ -157,8 +151,6 @@ export default function BotControlPage() {
       min_confidence: 75,
       risk_per_trade: 1,
       max_positions: 3,
-      autonomous_analysis: true,
-      autonomous_timeframe: "15m",
     },
     statistics: {
       analyses_today: 0,
@@ -186,11 +178,7 @@ export default function BotControlPage() {
     trade_on_weekends: false,
     telegram_enabled: false,
     discord_enabled: false,
-    // Autonomous AI - each AI chooses its own indicators/strategy
-    use_autonomous_analysis: true,
-    autonomous_timeframe: "15m",
-    // TradingView AI Agent - full browser control
-    use_tradingview_agent: false,
+    // TradingView AI Agent - full browser control (always enabled)
     tradingview_headless: true,
     tradingview_max_indicators: 3,  // TradingView Basic plan limit
   };
@@ -383,12 +371,10 @@ export default function BotControlPage() {
                 <h2 className="text-xl font-semibold capitalize">
                   Bot {currentStatus.status}
                 </h2>
-                {currentConfig.use_autonomous_analysis && (
-                  <span className="px-2 py-0.5 bg-indigo-500/20 text-indigo-300 text-xs rounded-full flex items-center gap-1">
-                    <Eye size={12} />
-                    Autonomous AI
-                  </span>
-                )}
+                <span className="px-2 py-0.5 bg-purple-500/20 text-purple-300 text-xs rounded-full flex items-center gap-1">
+                  <BarChart3 size={12} />
+                  TradingView Agent
+                </span>
               </div>
               {currentStatus.started_at && (
                 <p className="text-sm text-slate-400">
@@ -779,109 +765,55 @@ export default function BotControlPage() {
               </div>
             </div>
 
-            {/* Autonomous AI Analysis */}
-            <div className="md:col-span-2 p-4 bg-indigo-500/10 border border-indigo-500/30 rounded-lg">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-3">
-                  <Eye size={20} className="text-indigo-400" />
-                  <div>
-                    <label className="block text-sm font-medium">
-                      Autonomous AI Analysis
-                    </label>
-                    <p className="text-xs text-slate-400">
-                      Each AI independently chooses indicators and strategy
-                    </p>
-                  </div>
+            {/* TradingView AI Agent - Always Enabled */}
+            <div className="md:col-span-2 p-4 bg-purple-500/10 border border-purple-500/30 rounded-lg">
+              <div className="flex items-center gap-3 mb-3">
+                <BarChart3 size={20} className="text-purple-400" />
+                <div>
+                  <label className="block text-sm font-medium">
+                    TradingView AI Agent
+                  </label>
+                  <p className="text-xs text-slate-400">
+                    AI controls real TradingView charts via browser automation
+                  </p>
                 </div>
-                <Toggle
-                  enabled={currentConfig.use_autonomous_analysis}
-                  onChange={() =>
-                    handleConfigUpdate({ use_autonomous_analysis: !currentConfig.use_autonomous_analysis })
-                  }
-                />
               </div>
-              {currentConfig.use_autonomous_analysis && (
-                <div className="mt-3 pt-3 border-t border-indigo-500/30">
+              <div className="mt-3 pt-3 border-t border-purple-500/30 space-y-4">
+                {/* TradingView Plan / Max Indicators */}
+                <div>
                   <label className="block text-xs text-slate-400 mb-2">
-                    Analysis Timeframe
+                    TradingView Plan (Max Indicators: {currentConfig.tradingview_max_indicators})
                   </label>
                   <select
-                    value={currentConfig.autonomous_timeframe}
-                    onChange={(e) => handleConfigUpdate({ autonomous_timeframe: e.target.value })}
+                    value={currentConfig.tradingview_max_indicators}
+                    onChange={(e) => handleConfigUpdate({ tradingview_max_indicators: parseInt(e.target.value) })}
                     className="select-input text-sm"
                   >
-                    <option value="5m">5 Minutes</option>
-                    <option value="15m">15 Minutes</option>
-                    <option value="30m">30 Minutes</option>
-                    <option value="1h">1 Hour</option>
-                    <option value="4h">4 Hours</option>
+                    <option value={3}>Basic (Free) - 3 indicators</option>
+                    <option value={5}>Essential - 5 indicators</option>
+                    <option value={10}>Plus - 10 indicators</option>
+                    <option value={25}>Premium - 25 indicators</option>
                   </select>
-                  <p className="text-xs text-slate-500 mt-2">
-                    AI models will analyze charts with SMC, indicators, and price action
-                  </p>
                 </div>
-              )}
-            </div>
 
-            {/* TradingView AI Agent */}
-            <div className="md:col-span-2 p-4 bg-purple-500/10 border border-purple-500/30 rounded-lg">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-3">
-                  <BarChart3 size={20} className="text-purple-400" />
+                {/* Headless Mode */}
+                <div className="flex items-center justify-between">
                   <div>
-                    <label className="block text-sm font-medium">
-                      TradingView AI Agent
-                    </label>
-                    <p className="text-xs text-slate-400">
-                      AI controls real TradingView charts via browser automation
-                    </p>
+                    <span className="text-sm">Headless Mode</span>
+                    <p className="text-xs text-slate-500">Run browser in background (faster)</p>
                   </div>
+                  <Toggle
+                    enabled={currentConfig.tradingview_headless}
+                    onChange={() =>
+                      handleConfigUpdate({ tradingview_headless: !currentConfig.tradingview_headless })
+                    }
+                  />
                 </div>
-                <Toggle
-                  enabled={currentConfig.use_tradingview_agent}
-                  onChange={() =>
-                    handleConfigUpdate({ use_tradingview_agent: !currentConfig.use_tradingview_agent })
-                  }
-                />
+
+                <p className="text-xs text-slate-500 mt-2">
+                  AI can add indicators, draw zones/trendlines, and take screenshots on TradingView.com
+                </p>
               </div>
-              {currentConfig.use_tradingview_agent && (
-                <div className="mt-3 pt-3 border-t border-purple-500/30 space-y-4">
-                  {/* TradingView Plan / Max Indicators */}
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-2">
-                      TradingView Plan (Max Indicators: {currentConfig.tradingview_max_indicators})
-                    </label>
-                    <select
-                      value={currentConfig.tradingview_max_indicators}
-                      onChange={(e) => handleConfigUpdate({ tradingview_max_indicators: parseInt(e.target.value) })}
-                      className="select-input text-sm"
-                    >
-                      <option value={3}>Basic (Free) - 3 indicators</option>
-                      <option value={5}>Essential - 5 indicators</option>
-                      <option value={10}>Plus - 10 indicators</option>
-                      <option value={25}>Premium - 25 indicators</option>
-                    </select>
-                  </div>
-
-                  {/* Headless Mode */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-sm">Headless Mode</span>
-                      <p className="text-xs text-slate-500">Run browser in background (faster)</p>
-                    </div>
-                    <Toggle
-                      enabled={currentConfig.tradingview_headless}
-                      onChange={() =>
-                        handleConfigUpdate({ tradingview_headless: !currentConfig.tradingview_headless })
-                      }
-                    />
-                  </div>
-
-                  <p className="text-xs text-slate-500 mt-2">
-                    AI can add indicators, draw zones/trendlines, and take screenshots on TradingView.com
-                  </p>
-                </div>
-              )}
             </div>
 
             {/* Notifications */}
