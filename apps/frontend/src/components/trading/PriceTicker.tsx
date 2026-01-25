@@ -288,48 +288,50 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
       </div>
 
       {/* Scrollable container with arrows */}
-      <div className="relative group">
-        {/* Left Arrow */}
+      <div className="relative">
+        {/* Left Arrow - Always visible */}
         <button
           onClick={() => scroll('left')}
           disabled={!canScrollLeft}
           className={`
-            absolute left-0 top-1/2 -translate-y-1/2 z-10
-            w-10 h-10 rounded-full bg-dark-900/90 border border-dark-700
+            absolute left-0 top-1/2 -translate-y-1/2 z-20
+            w-12 h-12 rounded-full
+            bg-dark-800 border-2 border-primary-500/50
             flex items-center justify-center
-            transition-all duration-200
+            transition-all duration-200 shadow-lg shadow-dark-900/50
             ${canScrollLeft
-              ? 'opacity-100 hover:bg-dark-800 hover:border-primary-500 cursor-pointer'
-              : 'opacity-30 cursor-not-allowed'
+              ? 'opacity-100 hover:bg-primary-500/20 hover:border-primary-500 hover:scale-110 cursor-pointer'
+              : 'opacity-40 cursor-not-allowed border-dark-600'
             }
           `}
         >
-          <ChevronLeft size={20} className="text-white" />
+          <ChevronLeft size={24} className="text-white" />
         </button>
 
-        {/* Right Arrow */}
+        {/* Right Arrow - Always visible */}
         <button
           onClick={() => scroll('right')}
           disabled={!canScrollRight}
           className={`
-            absolute right-0 top-1/2 -translate-y-1/2 z-10
-            w-10 h-10 rounded-full bg-dark-900/90 border border-dark-700
+            absolute right-0 top-1/2 -translate-y-1/2 z-20
+            w-12 h-12 rounded-full
+            bg-dark-800 border-2 border-primary-500/50
             flex items-center justify-center
-            transition-all duration-200
+            transition-all duration-200 shadow-lg shadow-dark-900/50
             ${canScrollRight
-              ? 'opacity-100 hover:bg-dark-800 hover:border-primary-500 cursor-pointer'
-              : 'opacity-30 cursor-not-allowed'
+              ? 'opacity-100 hover:bg-primary-500/20 hover:border-primary-500 hover:scale-110 cursor-pointer'
+              : 'opacity-40 cursor-not-allowed border-dark-600'
             }
           `}
         >
-          <ChevronRight size={20} className="text-white" />
+          <ChevronRight size={24} className="text-white" />
         </button>
 
         {/* Scrollable Price Cards */}
         <div
           ref={scrollContainerRef}
           onScroll={handleScroll}
-          className="flex gap-3 overflow-x-auto scrollbar-hide px-12 py-2"
+          className="flex gap-3 overflow-x-auto scrollbar-hide px-14 py-2"
           style={{ scrollBehavior: 'smooth' }}
         >
           {prices.map((price, index) => (
@@ -349,9 +351,9 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
           ))}
         </div>
 
-        {/* Gradient fades */}
-        <div className="absolute left-10 top-0 bottom-0 w-8 bg-gradient-to-r from-dark-900 to-transparent pointer-events-none" />
-        <div className="absolute right-10 top-0 bottom-0 w-8 bg-gradient-to-l from-dark-900 to-transparent pointer-events-none" />
+        {/* Gradient fades for smooth edges */}
+        <div className="absolute left-12 top-0 bottom-0 w-6 bg-gradient-to-r from-dark-900 to-transparent pointer-events-none z-10" />
+        <div className="absolute right-12 top-0 bottom-0 w-6 bg-gradient-to-l from-dark-900 to-transparent pointer-events-none z-10" />
       </div>
     </div>
   )
