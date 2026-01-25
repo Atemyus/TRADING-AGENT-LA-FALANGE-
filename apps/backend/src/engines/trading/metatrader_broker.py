@@ -52,7 +52,7 @@ class MetaTraderBroker(BaseBroker):
 
     # Common symbol variations across brokers
     SYMBOL_ALIASES = {
-        # Forex majors
+        # ============ FOREX MAJORS ============
         'EUR_USD': ['EURUSD', 'EURUSDm', 'EURUSD.', 'EURUSD-ECN', 'EURUSDpro', 'EURUSD.ecn'],
         'GBP_USD': ['GBPUSD', 'GBPUSDm', 'GBPUSD.', 'GBPUSD-ECN', 'GBPUSDpro'],
         'USD_JPY': ['USDJPY', 'USDJPYm', 'USDJPY.', 'USDJPY-ECN', 'USDJPYpro'],
@@ -60,7 +60,8 @@ class MetaTraderBroker(BaseBroker):
         'AUD_USD': ['AUDUSD', 'AUDUSDm', 'AUDUSD.', 'AUDUSD-ECN', 'AUDUSDpro'],
         'USD_CAD': ['USDCAD', 'USDCADm', 'USDCAD.', 'USDCAD-ECN', 'USDCADpro'],
         'NZD_USD': ['NZDUSD', 'NZDUSDm', 'NZDUSD.', 'NZDUSD-ECN', 'NZDUSDpro'],
-        # Cross pairs
+
+        # ============ FOREX CROSS PAIRS ============
         'EUR_GBP': ['EURGBP', 'EURGBPm', 'EURGBP.', 'EURGBP-ECN'],
         'EUR_JPY': ['EURJPY', 'EURJPYm', 'EURJPY.', 'EURJPY-ECN'],
         'GBP_JPY': ['GBPJPY', 'GBPJPYm', 'GBPJPY.', 'GBPJPY-ECN'],
@@ -75,21 +76,85 @@ class MetaTraderBroker(BaseBroker):
         'CAD_JPY': ['CADJPY', 'CADJPYm', 'CADJPY.', 'CADJPY-ECN'],
         'NZD_JPY': ['NZDJPY', 'NZDJPYm', 'NZDJPY.', 'NZDJPY-ECN'],
         'CHF_JPY': ['CHFJPY', 'CHFJPYm', 'CHFJPY.', 'CHFJPY-ECN'],
-        # Metals
-        'XAU_USD': ['XAUUSD', 'XAUUSDm', 'GOLD', 'GOLDm', 'GOLD.', 'XAUUSD.'],
+
+        # ============ FOREX EXOTIC PAIRS ============
+        'EUR_TRY': ['EURTRY', 'EURTRYm', 'EURTRY.', 'EURTRY-ECN'],
+        'USD_TRY': ['USDTRY', 'USDTRYm', 'USDTRY.', 'USDTRY-ECN'],
+        'USD_MXN': ['USDMXN', 'USDMXNm', 'USDMXN.', 'USDMXN-ECN'],
+        'USD_ZAR': ['USDZAR', 'USDZARm', 'USDZAR.', 'USDZAR-ECN'],
+        'USD_SGD': ['USDSGD', 'USDSGDm', 'USDSGD.', 'USDSGD-ECN'],
+        'USD_HKD': ['USDHKD', 'USDHKDm', 'USDHKD.', 'USDHKD-ECN'],
+        'USD_NOK': ['USDNOK', 'USDNOKm', 'USDNOK.', 'USDNOK-ECN'],
+        'USD_SEK': ['USDSEK', 'USDSEKm', 'USDSEK.', 'USDSEK-ECN'],
+        'USD_DKK': ['USDDKK', 'USDDKKm', 'USDDKK.', 'USDDKK-ECN'],
+        'USD_PLN': ['USDPLN', 'USDPLNm', 'USDPLN.', 'USDPLN-ECN'],
+
+        # ============ METALS ============
+        'XAU_USD': ['XAUUSD', 'XAUUSDm', 'GOLD', 'GOLDm', 'GOLD.', 'XAUUSD.', 'XAUUSD-ECN'],
         'XAG_USD': ['XAGUSD', 'XAGUSDm', 'SILVER', 'SILVERm', 'SILVER.', 'XAGUSD.'],
-        'XPT_USD': ['XPTUSD', 'XPTUSDm', 'PLATINUM', 'XPTUSD.'],
-        'XPD_USD': ['XPDUSD', 'XPDUSDm', 'PALLADIUM', 'XPDUSD.'],
-        # Oil
-        'WTI_USD': ['USOUSD', 'USOUSDm', 'WTIUSD', 'WTI', 'USOIL', 'USOILm', 'XTIUSD'],
+        'XPT_USD': ['XPTUSD', 'XPTUSDm', 'PLATINUM', 'XPTUSD.', 'PLATINUMm'],
+        'XPD_USD': ['XPDUSD', 'XPDUSDm', 'PALLADIUM', 'XPDUSD.', 'PALLADIUMm'],
+        'XCU_USD': ['XCUUSD', 'COPPER', 'COPPERm', 'COPPER.', 'HG', 'HGm'],
+
+        # ============ ENERGY / OIL ============
+        'WTI_USD': ['USOUSD', 'USOUSDm', 'WTIUSD', 'WTI', 'USOIL', 'USOILm', 'XTIUSD', 'CL', 'CLm'],
         'BRENT_USD': ['UKOUSD', 'UKOUSDm', 'BRENT', 'BRENTm', 'UKOIL', 'UKOILm', 'XBRUSD'],
-        # Indices
-        'US30': ['US30', 'US30m', 'US30.', 'DJ30', 'DJI30', 'USTEC'],
-        'US500': ['US500', 'US500m', 'US500.', 'SPX500', 'SP500'],
-        'NAS100': ['NAS100', 'NAS100m', 'NAS100.', 'USTEC', 'NDX100', 'NASDAQ'],
-        'DE40': ['DE40', 'DE40m', 'DE40.', 'GER40', 'GER30', 'DAX40', 'DAX'],
-        'UK100': ['UK100', 'UK100m', 'UK100.', 'FTSE100', 'FTSE'],
-        'JP225': ['JP225', 'JP225m', 'JP225.', 'JPN225', 'NIKKEI', 'NI225'],
+        'NATGAS_USD': ['NATGAS', 'NATGASm', 'NATGAS.', 'NGAS', 'NGASm', 'NG', 'NGm', 'XNGUSD'],
+
+        # ============ AGRICULTURAL COMMODITIES ============
+        'WHEAT_USD': ['WHEAT', 'WHEATm', 'WHEAT.', 'ZW', 'ZWm'],
+        'CORN_USD': ['CORN', 'CORNm', 'CORN.', 'ZC', 'ZCm'],
+        'SOYBEAN_USD': ['SOYBEAN', 'SOYBEANm', 'SOYBEAN.', 'SOYA', 'SOYAm', 'ZS', 'ZSm'],
+        'COFFEE_USD': ['COFFEE', 'COFFEEm', 'COFFEE.', 'KC', 'KCm'],
+        'SUGAR_USD': ['SUGAR', 'SUGARm', 'SUGAR.', 'SB', 'SBm'],
+        'COCOA_USD': ['COCOA', 'COCOAm', 'COCOA.', 'CC', 'CCm'],
+        'COTTON_USD': ['COTTON', 'COTTONm', 'COTTON.', 'CT', 'CTm'],
+
+        # ============ US INDICES ============
+        'US30': ['US30', 'US30m', 'US30.', 'DJ30', 'DJI30', 'DOW30', 'DJIA'],
+        'US500': ['US500', 'US500m', 'US500.', 'SPX500', 'SP500', 'SPX', 'SPXm'],
+        'NAS100': ['NAS100', 'NAS100m', 'NAS100.', 'USTEC', 'NDX100', 'NASDAQ', 'NDX', 'NDXm'],
+        'US2000': ['US2000', 'US2000m', 'US2000.', 'RUSSELL', 'RUT', 'RUTm', 'RTY'],
+
+        # ============ EUROPEAN INDICES ============
+        'DE40': ['DE40', 'DE40m', 'DE40.', 'GER40', 'GER30', 'DAX40', 'DAX', 'DAXm'],
+        'UK100': ['UK100', 'UK100m', 'UK100.', 'FTSE100', 'FTSE', 'FTSEm'],
+        'FR40': ['FR40', 'FR40m', 'FR40.', 'FRA40', 'CAC40', 'CAC', 'CACm'],
+        'EU50': ['EU50', 'EU50m', 'EU50.', 'EUSTX50', 'STOXX50', 'SX5E'],
+        'ES35': ['ES35', 'ES35m', 'ES35.', 'ESP35', 'IBEX35', 'IBEX', 'IBEXm'],
+        'IT40': ['IT40', 'IT40m', 'IT40.', 'ITA40', 'FTMIB', 'MIB', 'MIBm'],
+
+        # ============ ASIAN INDICES ============
+        'JP225': ['JP225', 'JP225m', 'JP225.', 'JPN225', 'NIKKEI', 'NI225', 'NIKKEIm'],
+        'HK50': ['HK50', 'HK50m', 'HK50.', 'HSI', 'HSIm', 'HANGSENG'],
+        'AU200': ['AU200', 'AU200m', 'AU200.', 'AUS200', 'ASX200', 'ASX', 'ASXm'],
+        'CN50': ['CN50', 'CN50m', 'CN50.', 'CHINA50', 'CHINAA50', 'A50', 'A50m'],
+
+        # ============ OTHER INDICES ============
+        'VIX': ['VIX', 'VIXm', 'VIX.', 'VOLATILITY', 'UVXY'],
+
+        # ============ INDEX FUTURES ============
+        'ES1': ['ES', 'ESm', 'ES1', 'ES1!', 'SP500FUT'],
+        'NQ1': ['NQ', 'NQm', 'NQ1', 'NQ1!', 'NASDAQFUT'],
+        'YM1': ['YM', 'YMm', 'YM1', 'YM1!', 'DOWFUT'],
+        'RTY1': ['RTY', 'RTYm', 'RTY1', 'RTY1!', 'RUSSELLFUT'],
+
+        # ============ METAL FUTURES ============
+        'GC1': ['GC', 'GCm', 'GC1', 'GC1!', 'GOLDFUT'],
+        'SI1': ['SI', 'SIm', 'SI1', 'SI1!', 'SILVERFUT'],
+
+        # ============ ENERGY FUTURES ============
+        'CL1': ['CL', 'CLm', 'CL1', 'CL1!', 'CRUDEOIL', 'OILFUT'],
+        'NG1': ['NG', 'NGm', 'NG1', 'NG1!', 'NATGASFUT'],
+
+        # ============ CURRENCY FUTURES ============
+        '6E1': ['6E', '6Em', '6E1', '6E1!', 'EUROFUT'],
+        '6B1': ['6B', '6Bm', '6B1', '6B1!', 'GBPFUT'],
+        '6J1': ['6J', '6Jm', '6J1', '6J1!', 'JPYFUT'],
+
+        # ============ BOND FUTURES ============
+        'ZB1': ['ZB', 'ZBm', 'ZB1', 'ZB1!', 'TBOND'],
+        'ZN1': ['ZN', 'ZNm', 'ZN1', 'ZN1!', 'TNOTE'],
     }
 
     def __init__(
