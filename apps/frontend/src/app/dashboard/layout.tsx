@@ -57,7 +57,7 @@ export default function DashboardLayout({
   }, [])
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex overflow-x-hidden max-w-[100vw]">
       {/* Sidebar */}
       <motion.aside
         initial={{ x: -250 }}
@@ -118,7 +118,7 @@ export default function DashboardLayout({
       </motion.aside>
 
       {/* Main content */}
-      <div className={`flex-1 transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-0'}`}>
+      <div className={`flex-1 transition-all duration-300 overflow-x-hidden max-w-full ${sidebarOpen ? 'ml-64' : 'ml-0'}`}>
         {/* Top header */}
         <header className="sticky top-0 z-30 bg-dark-950/80 backdrop-blur-xl border-b border-dark-700/50">
           <div className="flex items-center justify-between px-6 py-4">
@@ -172,7 +172,7 @@ export default function DashboardLayout({
         )}
 
         {/* Page content */}
-        <main className="p-6">
+        <main className="p-6 overflow-x-hidden">
           {children}
         </main>
       </div>
