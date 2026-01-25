@@ -295,7 +295,7 @@ export const aiApi = {
     return fetchApi('/api/v1/ai/tradingview-agent', {
       method: 'POST',
       body: JSON.stringify({
-        symbol: symbol.replace('/', ''),
+        symbol: symbol.replace('/', '').replace('_', ''),  // EUR_USD -> EURUSD
         mode,
         max_indicators: maxIndicators,
         headless,
