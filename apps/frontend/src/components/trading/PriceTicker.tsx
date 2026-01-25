@@ -264,7 +264,14 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
   const selectedValue = selectedSymbol?.replace('/', '_')
 
   return (
-    <div className="space-y-2">
+    <>
+      {/* Hide scrollbar for webkit browsers */}
+      <style jsx>{`
+        .hide-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+      `}</style>
+      <div className="space-y-2 w-full overflow-hidden">
       {/* Header with connection status */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -288,7 +295,7 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
       </div>
 
       {/* Scrollable container with arrows */}
-      <div className="relative">
+      <div className="relative w-full overflow-hidden">
         {/* Left Arrow - Always visible */}
         <button
           onClick={() => scroll('left')}
@@ -331,8 +338,12 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
         <div
           ref={scrollContainerRef}
           onScroll={handleScroll}
-          className="flex gap-3 overflow-x-auto scrollbar-hide px-14 py-2"
-          style={{ scrollBehavior: 'smooth' }}
+          className="flex gap-3 overflow-x-scroll px-14 py-2 hide-scrollbar"
+          style={{
+            scrollBehavior: 'smooth',
+            scrollbarWidth: 'none', /* Firefox */
+            msOverflowStyle: 'none', /* IE/Edge */
+          }}
         >
           {prices.map((price, index) => (
             <motion.div
@@ -356,6 +367,7 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
         <div className="absolute right-12 top-0 bottom-0 w-6 bg-gradient-to-l from-dark-900 to-transparent pointer-events-none z-10" />
       </div>
     </div>
+    </>
   )
 }
 
