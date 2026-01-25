@@ -30,6 +30,7 @@ import {
 import { aiApi, type AIServiceStatus, type TradingViewAgentResult } from '@/lib/api'
 import { usePriceStream } from '@/hooks/useWebSocket'
 import { useChartCapture, type AIAnalysisResult } from '@/hooks/useChartCapture'
+import { ALL_SYMBOLS, CATEGORY_LABELS, findSymbol, toTradingViewSymbol, type TradingSymbol } from '@/lib/symbols'
 
 // Dynamic import for TradingView chart
 const TradingViewWidget = dynamic(
@@ -65,14 +66,14 @@ const AI_MODELS = [
   { provider: 'Zhipu', model: 'GLM 4.5 Air', icon: '🧪' },
 ]
 
-const SYMBOLS = [
-  { value: 'EUR_USD', label: 'EUR/USD', price: '1.0892' },
-  { value: 'GBP_USD', label: 'GBP/USD', price: '1.2651' },
-  { value: 'USD_JPY', label: 'USD/JPY', price: '149.86' },
-  { value: 'XAU_USD', label: 'XAU/USD (Gold)', price: '2045.50' },
-  { value: 'US30', label: 'US30 (Dow)', price: '38252' },
-  { value: 'NAS100', label: 'NAS100', price: '17522' },
-]
+// Group symbols by category for the dropdown
+const GROUPED_SYMBOLS = Object.entries(
+  ALL_SYMBOLS.reduce((acc, symbol) => {
+    if (!acc[symbol.category]) acc[symbol.category] = []
+    acc[symbol.category].push(symbol)
+    return acc
+  }, {} as Record<TradingSymbol['category'], TradingSymbol[]>)
+)
 
 const MODES = [
   { value: 'quick', label: 'Quick', description: '1 TF, 1 model', icon: Zap },
@@ -110,7 +111,7 @@ export default function AIAnalysisPage() {
   const [maxIndicators, setMaxIndicators] = useState(3)
   const [expandedTvResult, setExpandedTvResult] = useState<string | null>(null)
 
-  const selectedSymbol = SYMBOLS.find(s => s.value === symbol)
+  const selectedSymbol = findSymbol(symbol)
 
   // Use WebSocket for real-time price streaming
   const { prices: streamPrices, isConnected: isPriceConnected } = usePriceStream([symbol])
@@ -253,14 +254,18 @@ export default function AIAnalysisPage() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           {/* Symbol Selection */}
           <div>
-            <label className="block text-sm font-medium mb-2">Symbol</label>
+            <label className="block text-sm font-medium mb-2">Symbol ({ALL_SYMBOLS.length} assets)</label>
             <select
               value={symbol}
               onChange={(e) => setSymbol(e.target.value)}
               className="input"
             >
-              {SYMBOLS.map(s => (
-                <option key={s.value} value={s.value}>{s.label}</option>
+              {GROUPED_SYMBOLS.map(([category, symbols]) => (
+                <optgroup key={category} label={CATEGORY_LABELS[category as TradingSymbol['category']]}>
+                  {symbols.map(s => (
+                    <option key={s.value} value={s.value}>{s.label}</option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </div>
@@ -343,7 +348,7 @@ export default function AIAnalysisPage() {
                 transition={{ duration: 0.3 }}
                 className="text-2xl font-mono font-bold tabular-nums"
               >
-                {currentPrice > 0 ? currentPrice.toFixed(symbol.includes('JPY') ? 3 : 5) : selectedSymbol?.price || '—'}
+                {currentPrice > 0 ? currentPrice.toFixed(symbol.includes('JPY') ? 3 : 5) : '—'}
               </motion.p>
             </div>
             {/* Bid/Ask spread */}
