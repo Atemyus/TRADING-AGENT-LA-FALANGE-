@@ -294,15 +294,14 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
         </div>
       </div>
 
-      {/* Scrollable container with arrows */}
-      <div className="relative w-full overflow-hidden">
-        {/* Left Arrow - Always visible */}
+      {/* Scrollable container with arrows on sides */}
+      <div className="flex items-center gap-2 w-full">
+        {/* Left Arrow - Fixed on left side */}
         <button
           onClick={() => scroll('left')}
           disabled={!canScrollLeft}
           className={`
-            absolute left-0 top-1/2 -translate-y-1/2 z-20
-            w-12 h-12 rounded-full
+            flex-shrink-0 w-10 h-10 rounded-full
             bg-dark-800 border-2 border-primary-500/50
             flex items-center justify-center
             transition-all duration-200 shadow-lg shadow-dark-900/50
@@ -312,16 +311,49 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
             }
           `}
         >
-          <ChevronLeft size={24} className="text-white" />
+          <ChevronLeft size={20} className="text-white" />
         </button>
 
-        {/* Right Arrow - Always visible */}
+        {/* Scrollable Price Cards Container */}
+        <div className="flex-1 overflow-hidden relative">
+          <div
+            ref={scrollContainerRef}
+            onScroll={handleScroll}
+            className="flex gap-3 overflow-x-scroll py-2 px-2 hide-scrollbar"
+            style={{
+              scrollBehavior: 'smooth',
+              scrollbarWidth: 'none', /* Firefox */
+              msOverflowStyle: 'none', /* IE/Edge */
+            }}
+          >
+            {prices.map((price, index) => (
+              <motion.div
+                key={price.value}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: Math.min(index * 0.02, 0.5) }}
+                className="flex-shrink-0"
+              >
+                <PriceCard
+                  price={price}
+                  isSelected={selectedValue === price.value}
+                  onClick={() => onSelect?.(price.label)}
+                  isLoading={!isConnected}
+                />
+              </motion.div>
+            ))}
+          </div>
+          {/* Gradient fades for smooth edges */}
+          <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-dark-900 to-transparent pointer-events-none z-10" />
+          <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-dark-900 to-transparent pointer-events-none z-10" />
+        </div>
+
+        {/* Right Arrow - Fixed on right side */}
         <button
           onClick={() => scroll('right')}
           disabled={!canScrollRight}
           className={`
-            absolute right-0 top-1/2 -translate-y-1/2 z-20
-            w-12 h-12 rounded-full
+            flex-shrink-0 w-10 h-10 rounded-full
             bg-dark-800 border-2 border-primary-500/50
             flex items-center justify-center
             transition-all duration-200 shadow-lg shadow-dark-900/50
@@ -331,40 +363,8 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
             }
           `}
         >
-          <ChevronRight size={24} className="text-white" />
+          <ChevronRight size={20} className="text-white" />
         </button>
-
-        {/* Scrollable Price Cards */}
-        <div
-          ref={scrollContainerRef}
-          onScroll={handleScroll}
-          className="flex gap-3 overflow-x-scroll px-14 py-2 hide-scrollbar"
-          style={{
-            scrollBehavior: 'smooth',
-            scrollbarWidth: 'none', /* Firefox */
-            msOverflowStyle: 'none', /* IE/Edge */
-          }}
-        >
-          {prices.map((price, index) => (
-            <motion.div
-              key={price.value}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: Math.min(index * 0.02, 0.5) }}
-            >
-              <PriceCard
-                price={price}
-                isSelected={selectedValue === price.value}
-                onClick={() => onSelect?.(price.label)}
-                isLoading={!isConnected}
-              />
-            </motion.div>
-          ))}
-        </div>
-
-        {/* Gradient fades for smooth edges */}
-        <div className="absolute left-12 top-0 bottom-0 w-6 bg-gradient-to-r from-dark-900 to-transparent pointer-events-none z-10" />
-        <div className="absolute right-12 top-0 bottom-0 w-6 bg-gradient-to-l from-dark-900 to-transparent pointer-events-none z-10" />
       </div>
     </div>
     </>
