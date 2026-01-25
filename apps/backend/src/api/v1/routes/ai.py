@@ -14,6 +14,17 @@ from src.engines.ai.base_ai import MarketContext, TradeDirection
 from src.engines.ai.consensus_engine import AgreementLevel, ConsensusMethod
 from src.services.ai_service import get_ai_service, create_market_context
 
+# TradingView Agent imports
+try:
+    from src.engines.ai.tradingview_agent import (
+        TradingViewAIAgent,
+        TradingViewAnalysisResult,
+        get_tradingview_agent,
+    )
+    TRADINGVIEW_AGENT_AVAILABLE = True
+except ImportError:
+    TRADINGVIEW_AGENT_AVAILABLE = False
+
 router = APIRouter()
 
 
@@ -455,5 +466,228 @@ async def list_agreement_levels():
                 "threshold": "< 40%",
                 "description": "Providers are split, no clear direction",
             },
+        ],
+    }
+
+
+# ========== TradingView Agent Endpoints ==========
+
+
+class TradingViewAgentRequest(BaseModel):
+    """Request for TradingView Agent analysis."""
+    symbol: str = Field(..., description="Trading symbol (e.g., EURUSD)")
+    mode: str = Field(
+        default="standard",
+        description="Analysis mode: quick (1 TF), standard (2 TF), premium (3 TF), ultra (5 TF)"
+    )
+    max_indicators: int = Field(
+        default=3,
+        ge=1,
+        le=25,
+        description="Max indicators per TradingView plan (3=Basic, 5=Essential, 10=Plus, 25=Premium)"
+    )
+    headless: bool = Field(
+        default=True,
+        description="Run browser in headless mode"
+    )
+
+
+class TimeframeConsensus(BaseModel):
+    """Consensus for a single timeframe."""
+    direction: str
+    confidence: float
+    models_agree: int
+    total_models: int
+
+
+class TradingViewModelResult(BaseModel):
+    """Individual AI model result from TradingView analysis."""
+    model: str
+    model_display_name: str
+    timeframe: str
+    analysis_style: str
+    direction: str
+    confidence: float
+    indicators_used: List[str]
+    drawings_made: List[Dict[str, Any]]
+    reasoning: str
+    key_observations: List[str]
+    entry_price: Optional[float] = None
+    stop_loss: Optional[float] = None
+    take_profit: List[float] = []
+    break_even_trigger: Optional[float] = None
+    trailing_stop_pips: Optional[float] = None
+    error: Optional[str] = None
+
+
+class TradingViewAgentResponse(BaseModel):
+    """Response from TradingView Agent analysis."""
+    # Overall consensus
+    direction: str
+    confidence: float
+    is_strong_signal: bool
+
+    # Model agreement
+    models_agree: int
+    total_models: int
+
+    # Multi-timeframe data
+    mode: str
+    timeframes_analyzed: List[str]
+    models_used: List[str]
+    timeframe_alignment: float
+    is_aligned: bool
+    timeframe_consensus: Dict[str, TimeframeConsensus]
+
+    # Trade parameters
+    entry_price: Optional[float] = None
+    stop_loss: Optional[float] = None
+    take_profit: Optional[float] = None
+    break_even_trigger: Optional[float] = None
+    trailing_stop_pips: Optional[float] = None
+
+    # Analysis details
+    analysis_styles_used: List[str]
+    indicators_used: List[str]
+    key_observations: List[str]
+    combined_reasoning: str
+
+    # Vote breakdown
+    vote_breakdown: Dict[str, int]
+
+    # Individual results (optional, can be large)
+    individual_results: Optional[List[TradingViewModelResult]] = None
+
+
+@router.post("/tradingview-agent", response_model=TradingViewAgentResponse)
+async def analyze_with_tradingview_agent(request: TradingViewAgentRequest):
+    """
+    Run AI analysis using TradingView Agent with real browser automation.
+
+    This endpoint:
+    1. Opens TradingView.com in a real browser
+    2. Each AI model autonomously:
+       - Changes timeframes on TradingView
+       - Adds its preferred indicators
+       - Draws zones, trendlines, support/resistance
+       - Takes screenshots at each step
+       - Provides detailed analysis with reasoning
+    3. Returns multi-timeframe consensus with alignment score
+
+    Modes:
+    - quick: 1 timeframe (15m), 1 AI model
+    - standard: 2 timeframes (15m, 1h), 2 AI models
+    - premium: 3 timeframes (15m, 1h, 4h), 4 AI models
+    - ultra: 5 timeframes (5m, 15m, 1h, 4h, D), 6 AI models
+    """
+    if not TRADINGVIEW_AGENT_AVAILABLE:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="TradingView Agent not available. Install playwright: pip install playwright && playwright install chromium"
+        )
+
+    try:
+        # Get or create the TradingView agent
+        agent = await get_tradingview_agent(
+            headless=request.headless,
+            max_indicators=request.max_indicators
+        )
+
+        # Run multi-timeframe analysis
+        consensus = await agent.analyze_with_mode(
+            symbol=request.symbol,
+            mode=request.mode
+        )
+
+        # Build timeframe consensus response
+        tf_consensus = {}
+        for tf, tc in consensus.get("timeframe_consensus", {}).items():
+            tf_consensus[tf] = TimeframeConsensus(
+                direction=tc.get("direction", "HOLD"),
+                confidence=tc.get("confidence", 0),
+                models_agree=tc.get("models_agree", 0),
+                total_models=tc.get("total_models", 0),
+            )
+
+        # Build individual results (without screenshots to reduce payload)
+        individual_results = []
+        for r in consensus.get("all_results", []):
+            individual_results.append(TradingViewModelResult(
+                model=r.model,
+                model_display_name=r.model_display_name,
+                timeframe=r.timeframe,
+                analysis_style=r.analysis_style,
+                direction=r.direction,
+                confidence=r.confidence,
+                indicators_used=r.indicators_used,
+                drawings_made=r.drawings_made,
+                reasoning=r.reasoning[:500] if r.reasoning else "",
+                key_observations=r.key_observations[:5],
+                entry_price=r.entry_price,
+                stop_loss=r.stop_loss,
+                take_profit=r.take_profit,
+                break_even_trigger=r.break_even_trigger,
+                trailing_stop_pips=r.trailing_stop_pips,
+                error=r.error,
+            ))
+
+        return TradingViewAgentResponse(
+            direction=consensus.get("direction", "HOLD"),
+            confidence=consensus.get("confidence", 0),
+            is_strong_signal=consensus.get("is_strong_signal", False),
+            models_agree=consensus.get("models_agree", 0),
+            total_models=consensus.get("total_models", 0),
+            mode=consensus.get("mode", request.mode),
+            timeframes_analyzed=consensus.get("timeframes_analyzed", []),
+            models_used=consensus.get("models_used", []),
+            timeframe_alignment=consensus.get("timeframe_alignment", 0),
+            is_aligned=consensus.get("is_aligned", False),
+            timeframe_consensus=tf_consensus,
+            entry_price=consensus.get("entry_price"),
+            stop_loss=consensus.get("stop_loss"),
+            take_profit=consensus.get("take_profit"),
+            break_even_trigger=consensus.get("break_even_trigger"),
+            trailing_stop_pips=consensus.get("trailing_stop_pips"),
+            analysis_styles_used=consensus.get("analysis_styles_used", []),
+            indicators_used=consensus.get("indicators_used", []),
+            key_observations=consensus.get("key_observations", [])[:10],
+            combined_reasoning=consensus.get("combined_reasoning", "")[:2000],
+            vote_breakdown=consensus.get("vote_breakdown", {}),
+            individual_results=individual_results,
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"TradingView Agent analysis failed: {str(e)}"
+        )
+
+
+@router.get("/tradingview-agent/status")
+async def get_tradingview_agent_status():
+    """
+    Get TradingView Agent availability and configuration.
+    """
+    return {
+        "available": TRADINGVIEW_AGENT_AVAILABLE,
+        "modes": {
+            "quick": {"timeframes": ["15"], "models": 1},
+            "standard": {"timeframes": ["15", "60"], "models": 2},
+            "premium": {"timeframes": ["15", "60", "240"], "models": 4},
+            "ultra": {"timeframes": ["5", "15", "60", "240", "D"], "models": 6},
+        },
+        "tradingview_plans": {
+            "basic": {"max_indicators": 3, "price": "Free"},
+            "essential": {"max_indicators": 5, "price": "$12.95/mo"},
+            "plus": {"max_indicators": 10, "price": "$24.95/mo"},
+            "premium": {"max_indicators": 25, "price": "$49.95/mo"},
+        },
+        "ai_models": [
+            {"key": "chatgpt", "name": "ChatGPT 5.2", "style": "SMC"},
+            {"key": "gemini", "name": "Gemini 3 Pro", "style": "Trend"},
+            {"key": "deepseek", "name": "DeepSeek V3.2", "style": "Price Action"},
+            {"key": "glm", "name": "GLM 4.5", "style": "Indicator-based"},
+            {"key": "grok", "name": "Grok 4.1", "style": "Volatility"},
+            {"key": "qwen", "name": "Qwen Max", "style": "Hybrid"},
         ],
     }

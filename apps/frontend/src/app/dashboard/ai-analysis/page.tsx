@@ -26,8 +26,11 @@ import {
   WifiOff,
   Camera,
   Eye,
+  Monitor,
+  BarChart3,
+  Layers,
 } from 'lucide-react'
-import { aiApi, type ConsensusResult, type AIVote, type AIServiceStatus } from '@/lib/api'
+import { aiApi, type ConsensusResult, type AIVote, type AIServiceStatus, type TradingViewAgentResult } from '@/lib/api'
 import { usePriceStream } from '@/hooks/useWebSocket'
 import { useChartCapture, type AIAnalysisResult } from '@/hooks/useChartCapture'
 
@@ -77,15 +80,28 @@ const SYMBOLS = [
 const TIMEFRAMES = ['1m', '5m', '15m', '30m', '1h', '4h', '1d']
 
 const MODES = [
-  { value: 'quick', label: 'Quick', description: '3 fast models, momentum focus', icon: Zap },
-  { value: 'standard', label: 'Standard', description: '6 models, SMC analysis', icon: Target },
-  { value: 'premium', label: 'Premium', description: '6 models, full institutional grade', icon: Shield },
+  { value: 'quick', label: 'Quick', description: '1 TF, 1 model', icon: Zap },
+  { value: 'standard', label: 'Standard', description: '2 TF, 2 models', icon: Target },
+  { value: 'premium', label: 'Premium', description: '3 TF, 4 models', icon: Shield },
+  { value: 'ultra', label: 'Ultra', description: '5 TF, 6 models', icon: Layers },
+]
+
+const ANALYSIS_TYPES = [
+  { value: 'standard', label: 'Standard AI', description: 'Text-based analysis', icon: Brain },
+  { value: 'tradingview', label: 'TradingView Agent', description: 'Browser automation with real TradingView', icon: Monitor },
+]
+
+const TRADINGVIEW_PLANS = [
+  { value: 3, label: 'Basic (Free)', description: '3 indicators' },
+  { value: 5, label: 'Essential', description: '5 indicators' },
+  { value: 10, label: 'Plus', description: '10 indicators' },
+  { value: 25, label: 'Premium', description: '25 indicators' },
 ]
 
 export default function AIAnalysisPage() {
   const [symbol, setSymbol] = useState('EUR_USD')
   const [timeframe, setTimeframe] = useState('5m')
-  const [mode, setMode] = useState<'quick' | 'standard' | 'premium'>('standard')
+  const [mode, setMode] = useState<'quick' | 'standard' | 'premium' | 'ultra'>('standard')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [result, setResult] = useState<ConsensusResult | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -101,6 +117,12 @@ export default function AIAnalysisPage() {
   const [showChart, setShowChart] = useState(false)
   const chartRef = useRef<HTMLDivElement>(null)
   const { captureChart } = useChartCapture()
+
+  // TradingView Agent State
+  const [analysisType, setAnalysisType] = useState<'standard' | 'tradingview'>('standard')
+  const [tvAgentResult, setTvAgentResult] = useState<TradingViewAgentResult | null>(null)
+  const [maxIndicators, setMaxIndicators] = useState(3)
+  const [expandedTvResult, setExpandedTvResult] = useState<string | null>(null)
 
   const selectedSymbol = SYMBOLS.find(s => s.value === symbol)
 
@@ -135,17 +157,30 @@ export default function AIAnalysisPage() {
   const runAnalysis = useCallback(async () => {
     setIsAnalyzing(true)
     setError(null)
+    setResult(null)
+    setTvAgentResult(null)
 
     try {
-      const priceToUse = currentPrice || parseFloat(selectedSymbol?.price || '1.0892')
-      // Call the real AI analysis API
-      const response = await aiApi.analyze(
-        symbol,
-        priceToUse,
-        timeframe,
-        mode
-      )
-      setResult(response)
+      if (analysisType === 'tradingview') {
+        // TradingView Agent - browser automation with multi-timeframe
+        const response = await aiApi.tradingViewAgent(
+          symbol,
+          mode,
+          maxIndicators,
+          true // headless
+        )
+        setTvAgentResult(response)
+      } else {
+        // Standard AI analysis
+        const priceToUse = currentPrice || parseFloat(selectedSymbol?.price || '1.0892')
+        const response = await aiApi.analyze(
+          symbol,
+          priceToUse,
+          timeframe,
+          mode === 'ultra' ? 'premium' : mode // ultra not available for standard
+        )
+        setResult(response)
+      }
     } catch (err) {
       console.error('Analysis failed:', err)
       const errorMessage = err instanceof Error ? err.message : 'Unknown error'
@@ -157,14 +192,15 @@ export default function AIAnalysisPage() {
         setError('Broker not configured. Go to Settings > Broker to connect your trading account.')
       } else if (errorMessage.includes('AIML') || errorMessage.includes('API key')) {
         setError('AIML API key invalid or missing. Go to Settings > AI Providers to configure.')
+      } else if (errorMessage.includes('playwright') || errorMessage.includes('TradingView Agent not available')) {
+        setError('TradingView Agent not available. Install playwright on the server.')
       } else {
         setError(`Analysis failed: ${errorMessage}`)
       }
-      setResult(null)
     } finally {
       setIsAnalyzing(false)
     }
-  }, [symbol, currentPrice, selectedSymbol?.price, timeframe, mode])
+  }, [symbol, currentPrice, selectedSymbol?.price, timeframe, mode, analysisType, maxIndicators])
 
   // Capture TradingView chart and analyze with Vision AI
   const captureAndAnalyze = useCallback(async () => {
@@ -241,6 +277,37 @@ export default function AIAnalysisPage() {
         transition={{ delay: 0.1 }}
         className="card p-6"
       >
+        {/* Analysis Type Selector */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium mb-2">Analysis Type</label>
+          <div className="flex gap-3">
+            {ANALYSIS_TYPES.map(t => {
+              const Icon = t.icon
+              return (
+                <button
+                  key={t.value}
+                  onClick={() => setAnalysisType(t.value as typeof analysisType)}
+                  className={`flex-1 p-4 rounded-xl transition-all ${
+                    analysisType === t.value
+                      ? 'bg-primary-500/20 border-2 border-primary-500'
+                      : 'bg-dark-800 border-2 border-transparent hover:border-dark-600'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${analysisType === t.value ? 'bg-primary-500/30' : 'bg-dark-700'}`}>
+                      <Icon size={20} className={analysisType === t.value ? 'text-primary-400' : 'text-dark-400'} />
+                    </div>
+                    <div className="text-left">
+                      <p className="font-semibold">{t.label}</p>
+                      <p className="text-xs text-dark-400">{t.description}</p>
+                    </div>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           {/* Symbol Selection */}
           <div>
@@ -256,31 +323,51 @@ export default function AIAnalysisPage() {
             </select>
           </div>
 
-          {/* Timeframe */}
-          <div>
-            <label className="block text-sm font-medium mb-2">Timeframe</label>
-            <div className="flex gap-1">
-              {TIMEFRAMES.map(tf => (
-                <button
-                  key={tf}
-                  onClick={() => setTimeframe(tf)}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    timeframe === tf
-                      ? 'bg-primary-500 text-white'
-                      : 'bg-dark-800 text-dark-400 hover:text-dark-200'
-                  }`}
-                >
-                  {tf}
-                </button>
-              ))}
+          {/* Timeframe - only for standard analysis */}
+          {analysisType === 'standard' && (
+            <div>
+              <label className="block text-sm font-medium mb-2">Timeframe</label>
+              <div className="flex gap-1">
+                {TIMEFRAMES.map(tf => (
+                  <button
+                    key={tf}
+                    onClick={() => setTimeframe(tf)}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      timeframe === tf
+                        ? 'bg-primary-500 text-white'
+                        : 'bg-dark-800 text-dark-400 hover:text-dark-200'
+                    }`}
+                  >
+                    {tf}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* TradingView Plan - only for TradingView Agent */}
+          {analysisType === 'tradingview' && (
+            <div>
+              <label className="block text-sm font-medium mb-2">TradingView Plan</label>
+              <select
+                value={maxIndicators}
+                onChange={(e) => setMaxIndicators(parseInt(e.target.value))}
+                className="input"
+              >
+                {TRADINGVIEW_PLANS.map(p => (
+                  <option key={p.value} value={p.value}>{p.label} - {p.description}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Mode Selection */}
           <div>
-            <label className="block text-sm font-medium mb-2">Analysis Mode</label>
+            <label className="block text-sm font-medium mb-2">
+              {analysisType === 'tradingview' ? 'Multi-TF Mode' : 'Analysis Mode'}
+            </label>
             <div className="flex gap-2">
-              {MODES.map(m => {
+              {MODES.filter(m => analysisType === 'tradingview' || m.value !== 'ultra').map(m => {
                 const Icon = m.icon
                 return (
                   <button
@@ -291,6 +378,7 @@ export default function AIAnalysisPage() {
                         ? 'bg-primary-500/20 border border-primary-500/50'
                         : 'bg-dark-800 border border-transparent hover:border-dark-600'
                     }`}
+                    title={m.description}
                   >
                     <Icon size={16} className="mx-auto mb-1" />
                     <span className="text-xs">{m.label}</span>
@@ -310,7 +398,7 @@ export default function AIAnalysisPage() {
               {isAnalyzing ? (
                 <>
                   <Loader2 size={20} className="animate-spin" />
-                  Analyzing...
+                  {analysisType === 'tradingview' ? 'Running TradingView Agent...' : 'Analyzing...'}
                 </>
               ) : (
                 <>
@@ -876,6 +964,314 @@ export default function AIAnalysisPage() {
               </div>
             </div>
           </motion.div>
+        </div>
+      )}
+
+      {/* TradingView Agent Results */}
+      {tvAgentResult && !isAnalyzing && (
+        <div className="space-y-6">
+          {/* Main Signal Card */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="card p-6"
+          >
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-4">
+                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center ${
+                  tvAgentResult.direction === 'LONG' ? 'bg-neon-green/20' :
+                  tvAgentResult.direction === 'SHORT' ? 'bg-neon-red/20' : 'bg-neon-yellow/20'
+                }`}>
+                  {tvAgentResult.direction === 'LONG' ? (
+                    <TrendingUp size={32} className="text-neon-green" />
+                  ) : tvAgentResult.direction === 'SHORT' ? (
+                    <TrendingDown size={32} className="text-neon-red" />
+                  ) : (
+                    <Minus size={32} className="text-neon-yellow" />
+                  )}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Monitor size={16} className="text-primary-400" />
+                    <p className="text-sm text-dark-400">TradingView Agent Signal</p>
+                  </div>
+                  <h2 className={`text-4xl font-bold ${
+                    tvAgentResult.direction === 'LONG' ? 'text-neon-green' :
+                    tvAgentResult.direction === 'SHORT' ? 'text-neon-red' : 'text-neon-yellow'
+                  }`}>
+                    {tvAgentResult.direction}
+                  </h2>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-dark-400">Confidence</p>
+                <p className="text-4xl font-bold font-mono">{tvAgentResult.confidence.toFixed(1)}%</p>
+              </div>
+            </div>
+
+            {/* Confidence & Alignment Bars */}
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div>
+                <p className="text-xs text-dark-400 mb-1">Model Confidence</p>
+                <div className="h-3 bg-dark-800 rounded-full overflow-hidden">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${tvAgentResult.confidence}%` }}
+                    className="h-full bg-gradient-to-r from-primary-500 to-primary-400 rounded-full"
+                  />
+                </div>
+              </div>
+              <div>
+                <p className="text-xs text-dark-400 mb-1">Timeframe Alignment: {tvAgentResult.timeframe_alignment.toFixed(0)}%</p>
+                <div className="h-3 bg-dark-800 rounded-full overflow-hidden">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${tvAgentResult.timeframe_alignment}%` }}
+                    className={`h-full rounded-full ${
+                      tvAgentResult.is_aligned ? 'bg-gradient-to-r from-neon-green to-neon-blue' : 'bg-gradient-to-r from-neon-yellow to-neon-orange'
+                    }`}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Trade Parameters */}
+            {tvAgentResult.is_strong_signal && (
+              <div className="grid grid-cols-5 gap-4 p-4 bg-dark-800/50 rounded-xl">
+                <div>
+                  <p className="text-xs text-dark-400 mb-1">Entry</p>
+                  <p className="font-mono font-bold">{tvAgentResult.entry_price?.toFixed(5) || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-dark-400 mb-1">Stop Loss</p>
+                  <p className="font-mono font-bold text-neon-red">{tvAgentResult.stop_loss?.toFixed(5) || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-dark-400 mb-1">Take Profit</p>
+                  <p className="font-mono font-bold text-neon-green">{tvAgentResult.take_profit?.toFixed(5) || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-dark-400 mb-1">Break Even</p>
+                  <p className="font-mono font-bold">{tvAgentResult.break_even_trigger?.toFixed(5) || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-dark-400 mb-1">Trailing SL</p>
+                  <p className="font-mono font-bold">{tvAgentResult.trailing_stop_pips ? `${tvAgentResult.trailing_stop_pips} pips` : '—'}</p>
+                </div>
+              </div>
+            )}
+          </motion.div>
+
+          {/* Multi-Timeframe Analysis */}
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+            {/* Timeframe Consensus */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="card p-6"
+            >
+              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <BarChart3 size={20} className="text-primary-400" />
+                Timeframe Analysis
+              </h3>
+              <div className="space-y-3">
+                {Object.entries(tvAgentResult.timeframe_consensus).map(([tf, consensus]) => (
+                  <div key={tf} className="flex items-center justify-between p-3 bg-dark-800/50 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <span className="font-mono font-bold text-primary-400">{tf === 'D' ? 'Daily' : `${tf}m`}</span>
+                      <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                        consensus.direction === 'LONG' ? 'bg-neon-green/20 text-neon-green' :
+                        consensus.direction === 'SHORT' ? 'bg-neon-red/20 text-neon-red' : 'bg-neon-yellow/20 text-neon-yellow'
+                      }`}>
+                        {consensus.direction}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-mono text-sm">{consensus.confidence.toFixed(0)}%</p>
+                      <p className="text-xs text-dark-400">{consensus.models_agree}/{consensus.total_models} agree</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+
+            {/* Models Used & Indicators */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="card p-6"
+            >
+              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <Brain size={20} className="text-primary-400" />
+                AI Models
+              </h3>
+              <div className="space-y-2 mb-4">
+                {tvAgentResult.models_used.map((model, i) => (
+                  <div key={i} className="flex items-center gap-2 p-2 bg-dark-800/50 rounded-lg">
+                    <span className="text-lg">{['💬', '💎', '🔍', '🧪', '⚡', '🌟'][i] || '🤖'}</span>
+                    <span className="text-sm">{model}</span>
+                  </div>
+                ))}
+              </div>
+              <h4 className="text-sm font-semibold mb-2 text-dark-400">Indicators Used</h4>
+              <div className="flex flex-wrap gap-2">
+                {tvAgentResult.indicators_used.map((ind, i) => (
+                  <span key={i} className="px-2 py-1 bg-primary-500/20 text-primary-300 rounded text-xs">
+                    {ind}
+                  </span>
+                ))}
+              </div>
+            </motion.div>
+
+            {/* Key Observations */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+              className="card p-6"
+            >
+              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <CheckCircle size={20} className="text-neon-green" />
+                Key Observations
+              </h3>
+              <ul className="space-y-2">
+                {tvAgentResult.key_observations.slice(0, 6).map((obs, i) => (
+                  <motion.li
+                    key={i}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.05 }}
+                    className="flex items-start gap-2 text-sm"
+                  >
+                    <CheckCircle size={14} className="text-neon-green mt-1 flex-shrink-0" />
+                    <span className="text-dark-300">{obs}</span>
+                  </motion.li>
+                ))}
+              </ul>
+            </motion.div>
+          </div>
+
+          {/* Individual Model Results */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="card overflow-hidden"
+          >
+            <div className="p-4 border-b border-dark-700/50">
+              <h3 className="text-lg font-semibold">Individual AI Analyses</h3>
+              <p className="text-xs text-dark-400">Click to expand reasoning</p>
+            </div>
+            <div className="divide-y divide-dark-700/30">
+              {tvAgentResult.individual_results?.map((r, index) => (
+                <motion.div
+                  key={`${r.model}-${r.timeframe}-${index}`}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.03 }}
+                  className="p-4 hover:bg-dark-800/30 transition-colors cursor-pointer"
+                  onClick={() => setExpandedTvResult(expandedTvResult === `${r.model}-${r.timeframe}` ? null : `${r.model}-${r.timeframe}`)}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-primary-500/20 flex items-center justify-center">
+                        <span className="text-lg">{['💬', '💎', '🔍', '🧪', '⚡', '🌟'][index % 6]}</span>
+                      </div>
+                      <div>
+                        <p className="font-semibold">{r.model_display_name}</p>
+                        <div className="flex items-center gap-2 text-xs text-dark-400">
+                          <span className="font-mono">{r.timeframe === 'D' ? 'Daily' : `${r.timeframe}m`}</span>
+                          <span>•</span>
+                          <span>{r.analysis_style}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      {r.error ? (
+                        <div className="flex items-center gap-2 text-neon-red">
+                          <XCircle size={16} />
+                          <span className="text-sm">Failed</span>
+                        </div>
+                      ) : (
+                        <>
+                          <div className={`px-3 py-1 rounded-lg text-sm font-semibold ${
+                            r.direction === 'LONG' ? 'bg-neon-green/20 text-neon-green' :
+                            r.direction === 'SHORT' ? 'bg-neon-red/20 text-neon-red' :
+                            'bg-neon-yellow/20 text-neon-yellow'
+                          }`}>
+                            {r.direction}
+                          </div>
+                          <div className="w-16 text-right">
+                            <p className="font-mono font-bold">{r.confidence}%</p>
+                          </div>
+                        </>
+                      )}
+                      <ChevronDown size={16} className={`text-dark-400 transition-transform ${
+                        expandedTvResult === `${r.model}-${r.timeframe}` ? 'rotate-180' : ''
+                      }`} />
+                    </div>
+                  </div>
+                  <AnimatePresence>
+                    {expandedTvResult === `${r.model}-${r.timeframe}` && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="mt-4 space-y-3"
+                      >
+                        {r.indicators_used.length > 0 && (
+                          <div>
+                            <p className="text-xs text-dark-400 mb-1">Indicators</p>
+                            <div className="flex flex-wrap gap-1">
+                              {r.indicators_used.map((ind, i) => (
+                                <span key={i} className="px-2 py-0.5 bg-dark-700 rounded text-xs">{ind}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {r.drawings_made.length > 0 && (
+                          <div>
+                            <p className="text-xs text-dark-400 mb-1">Drawings Made</p>
+                            <div className="flex flex-wrap gap-1">
+                              {r.drawings_made.map((d, i) => (
+                                <span key={i} className="px-2 py-0.5 bg-primary-500/20 text-primary-300 rounded text-xs">
+                                  {(d as Record<string, unknown>).label || (d as Record<string, unknown>).type || 'Drawing'}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        <div className="p-3 bg-dark-800/50 rounded-lg">
+                          <p className="text-xs text-dark-400 mb-1">Reasoning</p>
+                          <p className="text-sm text-dark-300">{r.reasoning}</p>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              ))}
+            </div>
+          </motion.div>
+
+          {/* Combined Reasoning */}
+          {tvAgentResult.combined_reasoning && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              className="card p-6"
+            >
+              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <Eye size={20} className="text-primary-400" />
+                Combined AI Reasoning
+              </h3>
+              <div className="prose prose-invert prose-sm max-w-none">
+                <p className="text-dark-300 whitespace-pre-wrap">{tvAgentResult.combined_reasoning}</p>
+              </div>
+            </motion.div>
+          )}
         </div>
       )}
     </div>

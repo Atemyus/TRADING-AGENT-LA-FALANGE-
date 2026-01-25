@@ -130,6 +130,65 @@ export interface BotStatus {
   uptime_seconds: number
 }
 
+// TradingView Agent Types
+export interface TimeframeConsensus {
+  direction: string
+  confidence: number
+  models_agree: number
+  total_models: number
+}
+
+export interface TradingViewModelResult {
+  model: string
+  model_display_name: string
+  timeframe: string
+  analysis_style: string
+  direction: string
+  confidence: number
+  indicators_used: string[]
+  drawings_made: Array<Record<string, unknown>>
+  reasoning: string
+  key_observations: string[]
+  entry_price: number | null
+  stop_loss: number | null
+  take_profit: number[]
+  break_even_trigger: number | null
+  trailing_stop_pips: number | null
+  error: string | null
+}
+
+export interface TradingViewAgentResult {
+  direction: string
+  confidence: number
+  is_strong_signal: boolean
+  models_agree: number
+  total_models: number
+  mode: string
+  timeframes_analyzed: string[]
+  models_used: string[]
+  timeframe_alignment: number
+  is_aligned: boolean
+  timeframe_consensus: Record<string, TimeframeConsensus>
+  entry_price: number | null
+  stop_loss: number | null
+  take_profit: number | null
+  break_even_trigger: number | null
+  trailing_stop_pips: number | null
+  analysis_styles_used: string[]
+  indicators_used: string[]
+  key_observations: string[]
+  combined_reasoning: string
+  vote_breakdown: Record<string, number>
+  individual_results: TradingViewModelResult[]
+}
+
+export interface TradingViewAgentStatus {
+  available: boolean
+  modes: Record<string, { timeframes: string[], models: number }>
+  tradingview_plans: Record<string, { max_indicators: number, price: string }>
+  ai_models: Array<{ key: string, name: string, style: string }>
+}
+
 // ============ API Client ============
 
 async function fetchApi<T>(
@@ -221,6 +280,34 @@ export const aiApi = {
    */
   healthCheck: async () => {
     return fetchApi('/api/v1/ai/health')
+  },
+
+  /**
+   * Run TradingView Agent analysis with real browser automation
+   * AI models interact with TradingView.com directly
+   */
+  tradingViewAgent: async (
+    symbol: string,
+    mode: 'quick' | 'standard' | 'premium' | 'ultra' = 'standard',
+    maxIndicators: number = 3,
+    headless: boolean = true
+  ): Promise<TradingViewAgentResult> => {
+    return fetchApi('/api/v1/ai/tradingview-agent', {
+      method: 'POST',
+      body: JSON.stringify({
+        symbol: symbol.replace('/', ''),
+        mode,
+        max_indicators: maxIndicators,
+        headless,
+      }),
+    })
+  },
+
+  /**
+   * Get TradingView Agent status and available configurations
+   */
+  getTradingViewAgentStatus: async (): Promise<TradingViewAgentStatus> => {
+    return fetchApi('/api/v1/ai/tradingview-agent/status')
   },
 }
 
