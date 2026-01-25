@@ -893,7 +893,7 @@ export default function AIAnalysisPage() {
                             <div className="flex flex-wrap gap-1">
                               {r.drawings_made.map((d, i) => (
                                 <span key={i} className="px-2 py-0.5 bg-primary-500/20 text-primary-300 rounded text-xs">
-                                  {(d as Record<string, unknown>).label || (d as Record<string, unknown>).type || 'Drawing'}
+                                  {String((d as Record<string, unknown>).label || (d as Record<string, unknown>).type || 'Drawing')}
                                 </span>
                               ))}
                             </div>
