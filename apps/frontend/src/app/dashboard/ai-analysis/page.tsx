@@ -598,8 +598,11 @@ export default function AIAnalysisPage() {
                 Running analysis with {aiStatus?.active_providers || 6} AI models via AIML API
               </p>
               <div className="flex justify-center gap-2">
-                {(aiStatus?.providers || AI_MODELS.map(m => ({ name: m.provider, healthy: true, model: m.model }))).map((provider, i) => {
-                  const providerName = 'name' in provider ? provider.name : provider.provider
+                {(aiStatus?.providers
+                  ? aiStatus.providers.map(p => ({ name: p.name, healthy: p.healthy, model: p.model }))
+                  : AI_MODELS.map(m => ({ name: m.provider, healthy: true, model: m.model }))
+                ).map((provider, i) => {
+                  const providerName = provider.name
                   const style = providerStyles[providerName] || providerStyles[providerName.toLowerCase()] || { bg: 'bg-dark-700', icon: '🤖' }
                   return (
                     <motion.div
