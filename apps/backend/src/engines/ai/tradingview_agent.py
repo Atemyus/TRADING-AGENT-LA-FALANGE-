@@ -83,6 +83,7 @@ class TradingViewAnalysisResult:
     analysis_style: str  # "smc", "price_action", "indicator_based", etc.
     indicators_used: List[str]
     drawings_made: List[Dict[str, Any]]  # trendlines, zones, etc.
+    timeframe: str = "15"  # Timeframe analyzed
 
     # Trading decision
     direction: str  # LONG, SHORT, HOLD
@@ -437,6 +438,30 @@ class TradingViewAIAgent:
         "essential": 5,
         "plus": 10,
         "premium": 25,
+    }
+
+    # Analysis mode configuration - timeframes and models per mode
+    MODE_CONFIG = {
+        "quick": {
+            "timeframes": ["15"],  # 15 minutes
+            "num_models": 1,
+            "description": "Fast single-timeframe analysis"
+        },
+        "standard": {
+            "timeframes": ["15", "60"],  # 15m, 1h
+            "num_models": 2,
+            "description": "Balanced multi-timeframe analysis"
+        },
+        "premium": {
+            "timeframes": ["15", "60", "240"],  # 15m, 1h, 4h
+            "num_models": 4,
+            "description": "Deep multi-timeframe analysis"
+        },
+        "ultra": {
+            "timeframes": ["5", "15", "60", "240", "D"],  # 5m, 15m, 1h, 4h, Daily
+            "num_models": 6,
+            "description": "Complete multi-timeframe analysis with all AI models"
+        },
     }
 
     def __init__(self, max_indicators: int = 3):
@@ -842,6 +867,132 @@ Be specific with price levels based on what you see on the chart.
             await asyncio.sleep(1)
 
         return results
+
+    async def analyze_with_mode(
+        self,
+        symbol: str,
+        mode: str = "standard",
+    ) -> Dict[str, Any]:
+        """
+        Run multi-timeframe analysis based on the selected mode.
+
+        Each mode uses different timeframes and number of AI models:
+        - quick: 1 timeframe (15m), 1 model
+        - standard: 2 timeframes (15m, 1h), 2 models
+        - premium: 3 timeframes (15m, 1h, 4h), 4 models
+        - ultra: 5 timeframes (5m, 15m, 1h, 4h, D), 6 models
+
+        Each AI analyzes ALL timeframes for the mode, changing TF on TradingView.
+        """
+        mode_config = self.MODE_CONFIG.get(mode, self.MODE_CONFIG["standard"])
+        timeframes = mode_config["timeframes"]
+        num_models = mode_config["num_models"]
+
+        # Select which models to use based on mode
+        model_keys = list(self.VISION_MODELS.keys())[:num_models]
+
+        all_results: List[TradingViewAnalysisResult] = []
+        timeframe_analyses: Dict[str, List[TradingViewAnalysisResult]] = {tf: [] for tf in timeframes}
+
+        print(f"\n{'='*60}")
+        print(f"TradingView AI Agent - Mode: {mode.upper()}")
+        print(f"Timeframes: {', '.join(timeframes)}")
+        print(f"AI Models: {', '.join([self.MODEL_DISPLAY_NAMES[k] for k in model_keys])}")
+        print(f"{'='*60}\n")
+
+        for model_key in model_keys:
+            model_name = self.MODEL_DISPLAY_NAMES[model_key]
+            print(f"\n--- {model_name} starting multi-timeframe analysis ---")
+
+            for tf in timeframes:
+                print(f"  [{model_name}] Analyzing {symbol} on {tf} timeframe...")
+
+                # Clean chart for fresh analysis
+                if self.browser and self.browser._initialized:
+                    await self.browser.remove_all_indicators()
+                    # Change timeframe on TradingView
+                    await self.browser.change_timeframe(tf)
+                    await asyncio.sleep(1)
+
+                # Run analysis on this timeframe
+                result = await self.analyze_with_model(model_key, symbol, tf)
+                result.timeframe = tf
+                all_results.append(result)
+                timeframe_analyses[tf].append(result)
+
+                print(f"  [{model_name}] {tf}: {result.direction} ({result.confidence}% confidence)")
+                await asyncio.sleep(0.5)
+
+        # Calculate consensus per timeframe
+        tf_consensus = {}
+        for tf, results in timeframe_analyses.items():
+            tf_consensus[tf] = self._calculate_timeframe_consensus(results)
+
+        # Calculate overall consensus
+        overall_consensus = self.calculate_consensus(all_results)
+
+        # Add multi-timeframe specific data
+        overall_consensus["mode"] = mode
+        overall_consensus["timeframes_analyzed"] = timeframes
+        overall_consensus["models_used"] = [self.MODEL_DISPLAY_NAMES[k] for k in model_keys]
+        overall_consensus["timeframe_consensus"] = tf_consensus
+        overall_consensus["all_results"] = all_results
+
+        # Multi-timeframe alignment score
+        tf_directions = [tc["direction"] for tc in tf_consensus.values() if tc["direction"] != "HOLD"]
+        if tf_directions:
+            alignment = tf_directions.count(tf_directions[0]) / len(tf_directions) * 100
+            overall_consensus["timeframe_alignment"] = round(alignment, 1)
+            overall_consensus["is_aligned"] = alignment >= 80  # 80%+ agreement across TFs
+        else:
+            overall_consensus["timeframe_alignment"] = 0
+            overall_consensus["is_aligned"] = False
+
+        print(f"\n{'='*60}")
+        print(f"Analysis Complete - {mode.upper()} Mode")
+        print(f"Direction: {overall_consensus['direction']}")
+        print(f"Confidence: {overall_consensus['confidence']}%")
+        print(f"Models Agree: {overall_consensus['models_agree']}/{overall_consensus['total_models']}")
+        print(f"Timeframe Alignment: {overall_consensus.get('timeframe_alignment', 0)}%")
+        print(f"Strong Signal: {overall_consensus['is_strong_signal']}")
+        print(f"{'='*60}\n")
+
+        return overall_consensus
+
+    def _calculate_timeframe_consensus(
+        self,
+        results: List[TradingViewAnalysisResult]
+    ) -> Dict[str, Any]:
+        """Calculate consensus for a single timeframe."""
+        valid = [r for r in results if not r.error and r.direction != "HOLD"]
+
+        if not valid:
+            return {"direction": "HOLD", "confidence": 0, "models_agree": 0}
+
+        long_votes = [r for r in valid if r.direction == "LONG"]
+        short_votes = [r for r in valid if r.direction == "SHORT"]
+
+        if len(long_votes) > len(short_votes):
+            direction = "LONG"
+            agreeing = long_votes
+        elif len(short_votes) > len(long_votes):
+            direction = "SHORT"
+            agreeing = short_votes
+        else:
+            # Tie - check confidence
+            long_conf = sum(r.confidence for r in long_votes) / len(long_votes) if long_votes else 0
+            short_conf = sum(r.confidence for r in short_votes) / len(short_votes) if short_votes else 0
+            direction = "LONG" if long_conf >= short_conf else "SHORT"
+            agreeing = long_votes if direction == "LONG" else short_votes
+
+        avg_confidence = sum(r.confidence for r in agreeing) / len(agreeing) if agreeing else 0
+
+        return {
+            "direction": direction,
+            "confidence": round(avg_confidence, 1),
+            "models_agree": len(agreeing),
+            "total_models": len(results),
+        }
 
     def calculate_consensus(
         self,

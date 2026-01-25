@@ -379,20 +379,22 @@ class AutoTrader:
                 if any(p.symbol == symbol for p in self.state.open_positions):
                     continue
 
-                # Use TradingView AI Agent (full browser control)
+                # Use TradingView AI Agent (full browser control with multi-timeframe)
                 if self.config.use_tradingview_agent and self.tradingview_agent:
-                    # Convert timeframe format (15m -> 15)
-                    tf = self.config.autonomous_timeframe.replace("m", "").replace("h", "0")
                     # Convert symbol format (EUR/USD -> EURUSD)
                     tv_symbol = symbol.replace("/", "")
+                    # Get mode as lowercase string (e.g., AnalysisMode.PREMIUM -> "premium")
+                    mode_str = self.config.analysis_mode.value.lower()
 
-                    results = await self.tradingview_agent.analyze_all_models(
+                    # Run multi-timeframe analysis on TradingView
+                    # Each AI will change timeframes directly on TradingView.com
+                    consensus = await self.tradingview_agent.analyze_with_mode(
                         symbol=tv_symbol,
-                        timeframe=tf
+                        mode=mode_str
                     )
-                    consensus = self.tradingview_agent.calculate_consensus(results)
+                    results = consensus.get("all_results", [])
 
-                    # Check if trade conditions are met
+                    # Check if trade conditions are met (including TF alignment)
                     if self._should_enter_tradingview_trade(consensus):
                         await self._execute_tradingview_trade(symbol, consensus, results)
 
@@ -451,8 +453,20 @@ class AutoTrader:
 
     def _should_enter_tradingview_trade(self, consensus: Dict[str, Any]) -> bool:
         """Check if TradingView AI agent consensus meets trading criteria."""
-        # Same logic as autonomous trade
-        return self._should_enter_autonomous_trade(consensus)
+        # Base checks from autonomous trade
+        if not self._should_enter_autonomous_trade(consensus):
+            return False
+
+        # Additional check: Multi-timeframe alignment (unique to TradingView agent)
+        # If analyzing multiple timeframes, require alignment
+        timeframes = consensus.get("timeframes_analyzed", [])
+        if len(timeframes) > 1:
+            # Require timeframe alignment for multi-TF modes
+            if not consensus.get("is_aligned", False):
+                print(f"Trade rejected: Timeframe alignment too low ({consensus.get('timeframe_alignment', 0)}%)")
+                return False
+
+        return True
 
     async def _execute_tradingview_trade(
         self,
