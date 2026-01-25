@@ -220,6 +220,9 @@ yarn-error.log*
 out/
 .vercel
 
+# TypeScript
+*.tsbuildinfo
+
 # Frontend build
 apps/frontend/.next/
 apps/frontend/out/
