@@ -288,14 +288,17 @@ export const aiApi = {
    */
   tradingViewAgent: async (
     symbol: string,
+    tvSymbol: string | null = null,
     mode: 'quick' | 'standard' | 'premium' | 'ultra' = 'standard',
     maxIndicators: number = 3,
     headless: boolean = true
   ): Promise<TradingViewAgentResult> => {
+    // Use tvSymbol if provided, otherwise convert to basic format
+    const tradingViewSymbol = tvSymbol || symbol.replace('/', '').replace('_', '')
     return fetchApi('/api/v1/ai/tradingview-agent', {
       method: 'POST',
       body: JSON.stringify({
-        symbol: symbol.replace('/', '').replace('_', ''),  // EUR_USD -> EURUSD
+        symbol: tradingViewSymbol,
         mode,
         max_indicators: maxIndicators,
         headless,

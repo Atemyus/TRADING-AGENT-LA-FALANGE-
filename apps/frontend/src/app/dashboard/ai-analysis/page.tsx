@@ -147,9 +147,14 @@ export default function AIAnalysisPage() {
     setTvAgentResult(null)
 
     try {
+      // Get the TradingView symbol format (e.g., "FX:EURUSD" or "OANDA:XAUUSD")
+      const symbolInfo = findSymbol(symbol)
+      const tvSymbol = symbolInfo?.tvSymbol || null
+
       // TradingView Agent - browser automation with multi-timeframe analysis
       const response = await aiApi.tradingViewAgent(
         symbol,
+        tvSymbol,
         mode,
         maxIndicators,
         true // headless
