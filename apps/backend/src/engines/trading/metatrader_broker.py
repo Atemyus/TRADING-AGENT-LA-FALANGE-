@@ -365,6 +365,7 @@ class MetaTraderBroker(BaseBroker):
             margin_used=Decimal(str(info.get("margin", 0))),
             margin_available=Decimal(str(info.get("freeMargin", 0))),
             unrealized_pnl=Decimal(str(info.get("equity", 0) - info.get("balance", 0))),
+            realized_pnl_today=Decimal("0"),  # MetaApi doesn't provide daily P&L directly
             currency=info.get("currency", "USD"),
             leverage=info.get("leverage", 1),
         )
