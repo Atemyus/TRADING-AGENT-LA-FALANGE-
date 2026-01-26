@@ -231,6 +231,7 @@ class PriceStreamingService:
         print(f"[PriceStreaming] _stream_from_broker started for broker: {self._broker.name if self._broker else 'None'}")
         tick_count = 0
         poll_interval = 0.5  # Poll every 500ms for real-time sync with broker
+        failed_symbols: Set[str] = set()  # Track symbols that broker doesn't have
 
         while self._streaming and self.is_broker_connected:
             try:
@@ -239,40 +240,48 @@ class PriceStreamingService:
                     await asyncio.sleep(poll_interval)
                     continue
 
-                # Use polling to get ALL prices at once - more reliable than streaming
-                try:
-                    prices = await self._broker.get_prices(symbols)
+                # Split symbols into broker-available and simulation-fallback
+                broker_symbols = [s for s in symbols if s not in failed_symbols]
+                simulated_symbols = [s for s in symbols if s in failed_symbols]
 
-                    for symbol, tick in prices.items():
-                        tick_count += 1
-
-                        # Log first few ticks and then every 50th
-                        if tick_count <= 5 or tick_count % 50 == 0:
-                            print(f"[PriceStreaming] Broker poll #{tick_count}: {tick.symbol} bid={tick.bid} ask={tick.ask}")
-
-                        # Update cache
-                        self._current_prices[tick.symbol] = tick
-
-                        # Notify subscribers immediately
-                        await self._notify_subscribers(tick)
-
-                except Exception as poll_error:
-                    print(f"[PriceStreaming] Polling error, trying streaming: {poll_error}")
-
-                    # Fallback to streaming if polling fails
+                # Get prices from broker for available symbols
+                if broker_symbols:
                     try:
-                        async for tick in self._broker.stream_prices(symbols):
-                            if not self._streaming:
-                                break
+                        prices = await self._broker.get_prices(broker_symbols)
 
+                        # Track which symbols we got prices for
+                        received_symbols = set(prices.keys())
+
+                        for symbol, tick in prices.items():
                             tick_count += 1
-                            if tick_count <= 5 or tick_count % 50 == 0:
-                                print(f"[PriceStreaming] Broker stream #{tick_count}: {tick.symbol} bid={tick.bid} ask={tick.ask}")
 
+                            # Log first few ticks and then every 100th
+                            if tick_count <= 5 or tick_count % 100 == 0:
+                                print(f"[PriceStreaming] Broker #{tick_count}: {tick.symbol} bid={tick.bid} ask={tick.ask}")
+
+                            # Update cache
                             self._current_prices[tick.symbol] = tick
+
+                            # Notify subscribers immediately
                             await self._notify_subscribers(tick)
-                    except Exception as stream_error:
-                        print(f"[PriceStreaming] Streaming also failed: {stream_error}")
+
+                        # Mark symbols that broker didn't return as failed
+                        for symbol in broker_symbols:
+                            if symbol not in received_symbols:
+                                if symbol not in failed_symbols:
+                                    print(f"[PriceStreaming] Symbol {symbol} not available from broker, using simulation")
+                                    failed_symbols.add(symbol)
+
+                    except Exception as poll_error:
+                        print(f"[PriceStreaming] Broker polling error: {poll_error}")
+                        # Don't mark all as failed, just log the error
+
+                # Generate simulated prices for symbols not available from broker
+                for symbol in simulated_symbols:
+                    tick = self._generate_simulated_tick(symbol)
+                    if tick:
+                        self._current_prices[symbol] = tick
+                        await self._notify_subscribers(tick)
 
                 # Wait before next poll cycle
                 await asyncio.sleep(poll_interval)
@@ -282,6 +291,25 @@ class PriceStreamingService:
                 import traceback
                 traceback.print_exc()
                 await asyncio.sleep(1)
+
+    def _generate_simulated_tick(self, symbol: str) -> Optional[Tick]:
+        """Generate a simulated tick for a single symbol."""
+        base = self._base_prices.get(symbol)
+        if base is None:
+            return None
+
+        fluctuation, spread = self._get_simulation_params(symbol, base)
+        new_mid = base + fluctuation
+        self._base_prices[symbol] = new_mid
+
+        half_spread = spread / 2
+
+        return Tick(
+            symbol=symbol,
+            bid=new_mid - half_spread,
+            ask=new_mid + half_spread,
+            timestamp=datetime.utcnow(),
+        )
 
     async def _stream_simulated(self):
         """Stream simulated prices when no broker is connected."""
