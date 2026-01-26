@@ -4,6 +4,9 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 
+// Production backend URL (Railway)
+const PRODUCTION_BACKEND_URL = 'wss://trading-agent-la-falange-production.up.railway.app';
+
 // Dynamically determine WebSocket URL based on current page location or API URL
 function getWebSocketUrl(): string {
   // First check environment variable
@@ -20,27 +23,24 @@ function getWebSocketUrl(): string {
 
   // If running in browser, derive from current location
   if (typeof window !== 'undefined') {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
 
-    // If we're on localhost with a specific port (like 3000 for Next.js dev),
-    // assume backend is on port 8000
+    // If we're on localhost, use local backend
     if (host.includes('localhost') || host.includes('127.0.0.1')) {
       const hostname = window.location.hostname;
       return `ws://${hostname}:8000`;
     }
 
-    // For Railway production, use the same host (frontend serves as proxy to backend)
-    // If frontend and backend are separate, this won't work - need env var
-    return `${protocol}//${host}`;
+    // For production (Railway, etc.), use the hardcoded production URL
+    return PRODUCTION_BACKEND_URL;
   }
 
-  // Fallback for SSR
-  return 'ws://localhost:8000';
+  // Fallback for SSR - use production URL
+  return PRODUCTION_BACKEND_URL;
 }
 
 // Get URL once at module load time
-let WS_URL = 'ws://localhost:8000';
+let WS_URL = PRODUCTION_BACKEND_URL;
 if (typeof window !== 'undefined') {
   WS_URL = getWebSocketUrl();
   console.log('[WebSocket] Using URL:', WS_URL);
