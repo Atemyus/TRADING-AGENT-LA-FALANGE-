@@ -88,34 +88,41 @@ class ConnectionManager:
 
         try:
             self._price_service = await get_price_streaming_service()
+            subscribed_symbols: Set[str] = set()
 
-            # Collect all subscribed symbols
-            all_symbols = set()
-            for symbols in self.price_subscriptions.values():
-                all_symbols.update(symbols)
+            print(f"[WebSocket] Starting price streaming. Broker connected: {self._price_service.is_broker_connected}")
+            print(f"[WebSocket] Data source: {self._price_service.data_source}")
 
-            if not all_symbols or "all" in all_symbols:
-                # Default symbols if none specified or "all" requested
-                all_symbols = {
-                    "EUR_USD", "GBP_USD", "USD_JPY", "AUD_USD",
-                    "XAU_USD", "US30", "NAS100"
-                }
-
-            # Subscribe to each symbol
-            for symbol in all_symbols:
-                await self._price_service.subscribe(
-                    symbol,
-                    lambda tick, s=symbol: asyncio.create_task(
-                        self._handle_tick(tick)
-                    )
-                )
-
-            # Keep running while there are subscribers
+            # Keep running while there are subscribers - dynamically add new symbols
             while any(self.price_subscriptions.values()):
+                # Collect all subscribed symbols from all clients
+                all_symbols: Set[str] = set()
+                for symbols in self.price_subscriptions.values():
+                    all_symbols.update(symbols)
+
+                # If "all" is requested, use ALL available symbols
+                if "all" in all_symbols:
+                    all_symbols = set(self._price_service._base_prices.keys())
+
+                # Subscribe to new symbols that aren't already subscribed
+                new_symbols = all_symbols - subscribed_symbols
+                if new_symbols:
+                    print(f"[WebSocket] Subscribing to {len(new_symbols)} new symbols: {list(new_symbols)[:5]}...")
+                    for symbol in new_symbols:
+                        await self._price_service.subscribe(
+                            symbol,
+                            lambda tick, s=symbol: asyncio.create_task(
+                                self._handle_tick(tick)
+                            )
+                        )
+                        subscribed_symbols.add(symbol)
+
                 await asyncio.sleep(1)
 
         except Exception as e:
             print(f"Price streaming error: {e}")
+            import traceback
+            traceback.print_exc()
 
     async def _handle_tick(self, tick):
         """Handle incoming tick and broadcast to clients."""
