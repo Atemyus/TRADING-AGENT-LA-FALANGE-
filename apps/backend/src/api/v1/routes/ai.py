@@ -584,9 +584,9 @@ async def _run_fallback_analysis(symbol: str, mode: str) -> TradingViewAgentResp
     config = mode_config.get(mode, mode_config["standard"])
     timeframes = config["timeframes"]
 
-    # AI model display names for the response
-    model_names = ["ChatGPT 5.2", "Gemini 3 Pro", "DeepSeek V3.2", "GLM 4.7", "Grok 4.1 Fast", "Qwen Max"]
-    analysis_styles = ["SMC", "Trend Following", "Price Action", "Indicator-based", "Volatility", "Hybrid"]
+    # AI model display names for the response (vision-capable first)
+    model_names = ["ChatGPT 5.2", "Gemini 3 Pro", "Grok 4.1 Fast", "Qwen3 VL", "DeepSeek V3.1", "GLM 4.5 Air"]
+    analysis_styles = ["SMC", "Trend Following", "Volatility", "Hybrid", "Price Action", "Indicator-based"]
 
     service = get_ai_service()
     all_results = []
@@ -920,11 +920,11 @@ async def get_tradingview_agent_status():
             "ultra": {"timeframes": ["5", "15", "60", "240", "D"], "models": 6},
         },
         "ai_models": [
-            {"key": "chatgpt", "name": "ChatGPT 5.2", "style": "SMC"},
-            {"key": "gemini", "name": "Gemini 3 Pro", "style": "Trend"},
-            {"key": "deepseek", "name": "DeepSeek V3.2", "style": "Price Action"},
-            {"key": "glm", "name": "GLM 4.7", "style": "Indicator-based"},
-            {"key": "grok", "name": "Grok 4.1 Fast", "style": "Volatility"},
-            {"key": "qwen", "name": "Qwen Max", "style": "Hybrid"},
+            {"key": "chatgpt", "name": "ChatGPT 5.2", "style": "SMC", "vision": True},
+            {"key": "gemini", "name": "Gemini 3 Pro", "style": "Trend", "vision": True},
+            {"key": "grok", "name": "Grok 4.1 Fast", "style": "Volatility", "vision": True},
+            {"key": "qwen", "name": "Qwen3 VL", "style": "Hybrid", "vision": True},
+            {"key": "deepseek", "name": "DeepSeek V3.1", "style": "Price Action", "vision": False},
+            {"key": "glm", "name": "GLM 4.5 Air", "style": "Indicator-based", "vision": False},
         ],
     }

@@ -69,38 +69,39 @@ class AIServiceConfig:
 # Default provider configurations - AIML API with 6 models
 # All models accessed via api.aimlapi.com with single API key
 # Model IDs verified from https://docs.aimlapi.com/api-references/model-database
+# ORDERED: Vision-capable models first (for Standard mode which uses only 4)
 DEFAULT_PROVIDERS = [
-    # ChatGPT 5.2 (OpenAI via AIML)
+    # ChatGPT 5.2 (OpenAI via AIML) - Vision: YES
     ProviderConfig(
         provider_class=AIMLProvider,
         model_name="chatgpt-5.2",
         weight=1.0,
     ),
-    # Gemini 3 Pro Preview (Google via AIML)
+    # Gemini 3 Pro Preview (Google via AIML) - Vision: YES
     ProviderConfig(
         provider_class=AIMLProvider,
         model_name="gemini-3-pro",
         weight=1.0,
     ),
-    # DeepSeek V3.2 (DeepSeek via AIML)
-    ProviderConfig(
-        provider_class=AIMLProvider,
-        model_name="deepseek-v3.2",
-        weight=1.0,
-    ),
-    # Grok 4.1 Fast (xAI via AIML)
+    # Grok 4.1 Fast (xAI via AIML) - Vision: YES
     ProviderConfig(
         provider_class=AIMLProvider,
         model_name="grok-4.1-fast",
         weight=1.0,
     ),
-    # Qwen Max (Alibaba via AIML)
+    # Qwen3 VL (Alibaba via AIML) - Vision: YES (VL = Vision-Language)
     ProviderConfig(
         provider_class=AIMLProvider,
-        model_name="qwen-max",
+        model_name="qwen3-vl",
         weight=1.0,
     ),
-    # GLM 4.5 Air (Zhipu via AIML)
+    # DeepSeek V3.1 (DeepSeek via AIML) - Vision: NO (text only)
+    ProviderConfig(
+        provider_class=AIMLProvider,
+        model_name="deepseek-v3.1",
+        weight=1.0,
+    ),
+    # GLM 4.5 Air (Zhipu via AIML) - Vision: NO (text only)
     ProviderConfig(
         provider_class=AIMLProvider,
         model_name="glm-4.5",
@@ -384,8 +385,8 @@ class AIService:
         """
         fast_providers = [
             "aiml_xai_grok-4.1-fast",
-            "aiml_deepseek_deepseek-v3.2",
-            "aiml_alibaba_qwen-max",
+            "aiml_deepseek_deepseek-v3.1",
+            "aiml_alibaba_qwen3-vl",
         ]
 
         available = [p for p in fast_providers if p in self._providers]

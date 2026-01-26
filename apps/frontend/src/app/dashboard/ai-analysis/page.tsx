@@ -57,13 +57,14 @@ const providerStyles: Record<string, { color: string; icon: string; bg: string }
 }
 
 // The 6 AI models we use via AIML API (exact model IDs)
+// ORDERED: Vision-capable models first (for Standard mode which uses only 4)
 const AI_MODELS = [
-  { provider: 'OpenAI', model: 'ChatGPT 5.2', icon: '💬' },
-  { provider: 'Google', model: 'Gemini 3 Pro', icon: '💎' },
-  { provider: 'DeepSeek', model: 'DeepSeek V3.2', icon: '🔍' },
-  { provider: 'xAI', model: 'Grok 4.1 Fast', icon: '⚡' },
-  { provider: 'Alibaba', model: 'Qwen Max', icon: '🌟' },
-  { provider: 'Zhipu', model: 'GLM 4.7', icon: '🧪' },
+  { provider: 'OpenAI', model: 'ChatGPT 5.2', icon: '💬', vision: true },
+  { provider: 'Google', model: 'Gemini 3 Pro', icon: '💎', vision: true },
+  { provider: 'xAI', model: 'Grok 4.1 Fast', icon: '⚡', vision: true },
+  { provider: 'Alibaba', model: 'Qwen3 VL', icon: '🌟', vision: true },
+  { provider: 'DeepSeek', model: 'DeepSeek V3.1', icon: '🔍', vision: false },
+  { provider: 'Zhipu', model: 'GLM 4.5 Air', icon: '🧪', vision: false },
 ]
 
 // Group symbols by category for the dropdown

@@ -120,7 +120,7 @@ const AI_PROVIDERS = [
     id: 'aiml',
     name: 'AIML API',
     icon: '🚀',
-    models: ['ChatGPT 5.2', 'Gemini 3 Pro', 'DeepSeek V3.2', 'Grok 4.1 Fast', 'Qwen Max', 'GLM 4.7'],
+    models: ['ChatGPT 5.2', 'Gemini 3 Pro', 'Grok 4.1 Fast', 'Qwen3 VL', 'DeepSeek V3.1', 'GLM 4.5 Air'],
     field: { key: 'AIML_API_KEY', label: 'API Key', placeholder: 'Your AIML API key' },
     badge: 'Recommended - 6 Models',
     description: 'Single API key for 6 top AI models via api.aimlapi.com',
@@ -743,7 +743,7 @@ function AIProvidersSettings({
         <div>
           <p className="text-sm text-primary-300 font-medium">Recommended: AIML API</p>
           <p className="text-xs text-dark-400 mt-1">
-            AIML API provides access to 6 top AI models (ChatGPT 5.2, Gemini 3 Pro, DeepSeek V3.2, Grok 4.1, Qwen Max, GLM 4.7)
+            AIML API provides access to 6 top AI models (ChatGPT 5.2, Gemini 3 Pro, Grok 4.1 Fast, Qwen3 VL, DeepSeek V3.1, GLM 4.5 Air)
             with a single API key. Get your key at <a href="https://aimlapi.com" target="_blank" rel="noopener noreferrer" className="text-primary-400 hover:underline">aimlapi.com</a>
           </p>
         </div>

@@ -783,27 +783,31 @@ class TradingViewAIAgent:
     """
 
     # AI Models that support vision - EXACT model IDs from AIML API
-    # Updated 2026-01-26
+    # Updated 2026-01-26 - ORDERED by vision capability (vision-capable first!)
+    # In Standard mode (4 models), only the first 4 are used.
+    # Vision-capable: ChatGPT, Gemini, Grok, Qwen
+    # NOT vision-capable: DeepSeek, GLM (will fail on image analysis)
     VISION_MODELS = {
-        "chatgpt": "openai/gpt-5-2",
-        "gemini": "google/gemini-3-pro-preview",
-        "deepseek": "deepseek/deepseek-thinking-v3.2-exp",
-        "glm": "zhipu/glm-4.7",
-        "grok": "x-ai/grok-4-1-fast-reasoning",
-        "qwen": "qwen-max",
+        "chatgpt": "openai/gpt-5-2",               # Vision: YES
+        "gemini": "google/gemini-3-pro-preview",   # Vision: YES
+        "grok": "x-ai/grok-4-1-fast-reasoning",    # Vision: YES
+        "qwen": "alibaba/qwen3-vl-32b-instruct",   # Vision: YES (VL = Vision-Language)
+        "deepseek": "deepseek/deepseek-chat-v3.1", # Vision: NO - text only model
+        "glm": "zhipu/glm-4.5-air",                # Vision: NO - text only model
     }
 
     MODEL_DISPLAY_NAMES = {
         "chatgpt": "ChatGPT 5.2",
         "gemini": "Gemini 3 Pro",
-        "deepseek": "DeepSeek V3.2",
-        "glm": "GLM 4.7",
         "grok": "Grok 4.1 Fast",
-        "qwen": "Qwen Max",
+        "qwen": "Qwen3 VL",
+        "deepseek": "DeepSeek V3.1",
+        "glm": "GLM 4.5 Air",
     }
 
     # Each AI model gets a different analysis style preference
     # NOTE: Max 2 indicators per model (TradingView Free plan limit)
+    # ORDERED same as VISION_MODELS (vision-capable first)
     MODEL_PREFERENCES = {
         "chatgpt": {
             "style": "smc",
@@ -815,16 +819,6 @@ class TradingViewAIAgent:
             "indicators": ["EMA", "MACD"],
             "focus": "Trend direction and strength"
         },
-        "deepseek": {
-            "style": "price_action",
-            "indicators": ["Volume", "EMA"],
-            "focus": "Candlestick patterns and structure"
-        },
-        "glm": {
-            "style": "indicator_based",
-            "indicators": ["RSI", "MACD"],
-            "focus": "Indicator divergences and signals"
-        },
         "grok": {
             "style": "volatility",
             "indicators": ["ATR", "Bollinger Bands"],
@@ -834,6 +828,16 @@ class TradingViewAIAgent:
             "style": "hybrid",
             "indicators": ["Ichimoku Cloud", "RSI"],
             "focus": "Cloud analysis with momentum"
+        },
+        "deepseek": {
+            "style": "price_action",
+            "indicators": ["Volume", "EMA"],
+            "focus": "Candlestick patterns and structure"
+        },
+        "glm": {
+            "style": "indicator_based",
+            "indicators": ["RSI", "MACD"],
+            "focus": "Indicator divergences and signals"
         },
     }
 
