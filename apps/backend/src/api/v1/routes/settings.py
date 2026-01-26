@@ -16,6 +16,7 @@ from src.core.database import get_db
 from src.core.models import AppSettings
 from src.core.config import clear_settings_cache
 from src.services.ai_service import reset_ai_service
+from src.engines.trading.broker_factory import BrokerFactory
 
 router = APIRouter()
 
@@ -323,6 +324,10 @@ async def update_broker_settings(
     settings.broker = broker
     await save_settings_to_db(db, settings)
     apply_settings_to_env(settings)
+
+    # Clear settings cache and reset broker instance to force reconnection
+    clear_settings_cache()
+    await BrokerFactory.reset_instance()
 
     return {"status": "success", "message": "Broker settings saved"}
 

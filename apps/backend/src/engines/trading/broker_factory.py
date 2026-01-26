@@ -148,6 +148,22 @@ class BrokerFactory:
             await broker.disconnect()
         cls._instances.clear()
 
+    @classmethod
+    async def reset_instance(cls, broker_type: Optional[str] = None) -> None:
+        """
+        Reset a broker instance to force reconnection with new credentials.
+
+        Args:
+            broker_type: Type of broker to reset. If None, resets all.
+        """
+        if broker_type:
+            broker_type = broker_type.lower()
+            if broker_type in cls._instances:
+                await cls._instances[broker_type].disconnect()
+                del cls._instances[broker_type]
+        else:
+            await cls.close_all()
+
 
 # Convenience function
 async def get_broker(broker_type: Optional[str] = None) -> BaseBroker:
