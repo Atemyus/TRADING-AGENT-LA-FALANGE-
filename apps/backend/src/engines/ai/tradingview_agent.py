@@ -39,9 +39,13 @@ class DrawingTool(str, Enum):
     TRENDLINE = "trendline"
     HORIZONTAL_LINE = "horizontal_line"
     HORIZONTAL_RAY = "horizontal_ray"
+    VERTICAL_LINE = "vertical_line"
     RECTANGLE = "rectangle"
     FIBONACCI = "fibonacci"
     PITCHFORK = "pitchfork"
+    SUPPLY_ZONE = "supply_zone"
+    DEMAND_ZONE = "demand_zone"
+    ORDER_BLOCK = "order_block"
     TEXT = "text"
 
 
@@ -114,7 +118,47 @@ class TradingViewAnalysisResult:
 class TradingViewBrowser:
     """
     Controls a TradingView chart via Playwright browser automation.
+
+    Uses keyboard shortcuts primarily (more reliable than clicking UI elements).
+    TradingView Keyboard Shortcuts:
+    - "/" or "." : Open symbol search
+    - "," : Change timeframe (opens timeframe menu)
+    - "Alt+I" : Open indicators dialog
+    - "Alt+T" : Trendline tool
+    - "Alt+H" : Horizontal line tool
+    - "Alt+V" : Vertical line tool
+    - "Alt+C" : Crossline tool
+    - "Alt+F" : Fibonacci retracement
+    - "Alt+P" : Pitchfork tool
+    - Numbers 1-9 : Quick timeframe change
     """
+
+    # Timeframe keyboard mappings (TradingView shortcuts)
+    TIMEFRAME_KEYS = {
+        "1": "1",      # 1 minute
+        "3": "2",      # 3 minutes
+        "5": "3",      # 5 minutes
+        "15": "4",     # 15 minutes
+        "30": "5",     # 30 minutes
+        "60": "6",     # 1 hour
+        "240": "7",    # 4 hours
+        "D": "8",      # Daily
+        "W": "9",      # Weekly
+    }
+
+    # TradingView URL timeframe format
+    TIMEFRAME_URL = {
+        "1": "1",
+        "3": "3",
+        "5": "5",
+        "15": "15",
+        "30": "30",
+        "60": "60",
+        "240": "240",
+        "D": "1D",
+        "W": "1W",
+        "M": "1M",
+    }
 
     def __init__(self):
         self.browser: Optional[Browser] = None
@@ -122,35 +166,83 @@ class TradingViewBrowser:
         self.page: Optional[Page] = None
         self._playwright = None
         self._initialized = False
+        self._current_symbol = None
+        self._current_timeframe = None
 
-        # TradingView selectors (may need updates as TV changes)
+        # Modern TradingView selectors (2024/2025)
         self.selectors = {
-            # Chart container
-            "chart": "div.chart-container",
-            "canvas": "canvas.chart-markup-table",
+            # Chart container - multiple fallback selectors
+            "chart": [
+                "div.chart-container",
+                "div[class*='chart-container']",
+                "div.layout__area--center",
+                "#chart-area",
+                "div[data-name='chart-container']",
+            ],
 
-            # Top toolbar
-            "symbol_input": "input[data-role='search']",
-            "timeframe_button": "button[data-name='date-ranges-menu']",
-            "indicators_button": "button[data-name='open-indicators-dialog']",
+            # Canvas for drawing
+            "canvas": [
+                "canvas",
+                "canvas.chart-markup-table",
+            ],
 
-            # Drawing toolbar
-            "drawing_toolbar": "div[data-name='drawings-toolbar']",
-            "trendline_tool": "div[data-name='Trend Line']",
-            "horizontal_line_tool": "div[data-name='Horizontal Line']",
-            "rectangle_tool": "div[data-name='Rectangle']",
-            "fib_tool": "div[data-name='Fib Retracement']",
+            # Symbol search
+            "symbol_search": [
+                "input[data-role='search']",
+                "input[placeholder*='Search']",
+                "input[placeholder*='Symbol']",
+            ],
 
             # Indicators dialog
-            "indicators_search": "input[placeholder='Search']",
-            "indicator_item": "div[data-name='indicator-item']",
+            "indicators_dialog": [
+                "div[data-name='indicators-dialog']",
+                "div[class*='dialog-']",
+            ],
+            "indicators_search": [
+                "input[placeholder*='Search']",
+                "input[data-role='search']",
+                "div[data-name='indicators-dialog'] input",
+            ],
+            "indicator_item": [
+                "div[data-title]",
+                "div[class*='listItem']",
+            ],
 
-            # Context menu
-            "delete_drawing": "div[data-name='remove']",
+            # Timeframe menu
+            "timeframe_menu": [
+                "button[data-name='date-ranges-menu']",
+                "div[id*='time-interval']",
+                "button[class*='timeframe']",
+            ],
         }
 
+    async def _find_element(self, selector_list: List[str], timeout: int = 5000):
+        """Try multiple selectors and return the first matching element."""
+        if isinstance(selector_list, str):
+            selector_list = [selector_list]
+
+        for selector in selector_list:
+            try:
+                element = await self.page.wait_for_selector(selector, timeout=timeout)
+                if element:
+                    return element
+            except:
+                continue
+        return None
+
+    async def _safe_click(self, selector_list: List[str], timeout: int = 5000) -> bool:
+        """Safely click an element using multiple selector fallbacks."""
+        element = await self._find_element(selector_list, timeout)
+        if element:
+            try:
+                await element.click()
+                return True
+            except:
+                pass
+        return False
+
     async def initialize(self, headless: bool = True):
-        """Initialize the browser."""
+        """Initialize the browser with optimized settings."""
         if not PLAYWRIGHT_AVAILABLE:
             raise ImportError("Playwright not installed. Run: pip install playwright && playwright install chromium")
 
@@ -165,207 +257,483 @@ class TradingViewBrowser:
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
                 '--disable-gpu',
+                '--disable-web-security',
+                '--disable-features=IsolateOrigins,site-per-process',
             ]
         )
 
         self.context = await self.browser.new_context(
             viewport={'width': 1920, 'height': 1080},
-            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            locale='en-US',
+            timezone_id='America/New_York',
         )
+
+        # Block unnecessary resources for faster loading
+        await self.context.route("**/*.{png,jpg,jpeg,gif,svg,ico}", lambda route: route.abort())
+        await self.context.route("**/ads/**", lambda route: route.abort())
+        await self.context.route("**/analytics/**", lambda route: route.abort())
 
         self.page = await self.context.new_page()
         self._initialized = True
+        print("[TradingViewBrowser] Initialized successfully")
 
     async def close(self):
-        """Close the browser."""
-        if self.page:
-            await self.page.close()
-        if self.context:
-            await self.context.close()
-        if self.browser:
-            await self.browser.close()
-        if self._playwright:
-            await self._playwright.stop()
-        self._initialized = False
+        """Close the browser and cleanup."""
+        try:
+            if self.page:
+                await self.page.close()
+            if self.context:
+                await self.context.close()
+            if self.browser:
+                await self.browser.close()
+            if self._playwright:
+                await self._playwright.stop()
+        except Exception as e:
+            print(f"[TradingViewBrowser] Error closing: {e}")
+        finally:
+            self._initialized = False
+            self._current_symbol = None
+            self._current_timeframe = None
 
     async def open_chart(self, symbol: str = "EURUSD", timeframe: str = "15") -> bool:
-        """Open TradingView chart for a symbol."""
+        """
+        Open TradingView chart for a symbol.
+        Uses URL parameters for reliable symbol/timeframe setting.
+        """
         try:
-            # Navigate to TradingView chart
-            url = f"https://www.tradingview.com/chart/?symbol={symbol}&interval={timeframe}"
-            await self.page.goto(url, wait_until="networkidle", timeout=30000)
+            # Format symbol for TradingView URL
+            formatted_symbol = symbol.replace("_", "").replace("/", "")
+            if not formatted_symbol.startswith("FX:") and len(formatted_symbol) == 6:
+                formatted_symbol = f"FX:{formatted_symbol}"
 
-            # Wait for chart to load
-            await self.page.wait_for_selector(self.selectors["chart"], timeout=15000)
-            await asyncio.sleep(2)  # Extra time for chart to render
+            # Get URL timeframe format
+            tf_url = self.TIMEFRAME_URL.get(timeframe, timeframe)
 
-            return True
+            # Build TradingView chart URL
+            url = f"https://www.tradingview.com/chart/?symbol={formatted_symbol}&interval={tf_url}"
+            print(f"[TradingViewBrowser] Opening: {url}")
+
+            # Navigate with extended timeout
+            await self.page.goto(url, wait_until="domcontentloaded", timeout=45000)
+
+            # Wait for chart to be ready - try multiple selectors
+            chart_ready = False
+            for selector in self.selectors["chart"]:
+                try:
+                    await self.page.wait_for_selector(selector, timeout=10000)
+                    chart_ready = True
+                    print(f"[TradingViewBrowser] Chart found with selector: {selector}")
+                    break
+                except:
+                    continue
+
+            if not chart_ready:
+                # Fallback: wait for any canvas element
+                try:
+                    await self.page.wait_for_selector("canvas", timeout=10000)
+                    chart_ready = True
+                    print("[TradingViewBrowser] Chart found via canvas fallback")
+                except:
+                    pass
+
+            # Extra wait for chart rendering
+            await asyncio.sleep(3)
+
+            # Dismiss any popups/modals
+            await self._dismiss_popups()
+
+            self._current_symbol = symbol
+            self._current_timeframe = timeframe
+
+            return chart_ready
+
         except Exception as e:
-            print(f"Failed to open chart: {e}")
+            print(f"[TradingViewBrowser] Failed to open chart: {e}")
             return False
+
+    async def _dismiss_popups(self):
+        """Dismiss any popups, cookie banners, or modals."""
+        try:
+            # Press Escape multiple times to close any open dialogs
+            for _ in range(3):
+                await self.page.keyboard.press("Escape")
+                await asyncio.sleep(0.2)
+
+            # Try to click common close/accept buttons
+            close_selectors = [
+                "button[aria-label='Close']",
+                "button[data-name='close']",
+                "div[data-name='close']",
+                "button:has-text('Accept')",
+                "button:has-text('OK')",
+                "button:has-text('Got it')",
+            ]
+            for selector in close_selectors:
+                try:
+                    btn = await self.page.query_selector(selector)
+                    if btn and await btn.is_visible():
+                        await btn.click()
+                        await asyncio.sleep(0.2)
+                except:
+                    continue
+        except:
+            pass
 
     async def take_screenshot(self) -> str:
         """Take a screenshot of the chart and return base64."""
         try:
-            # Try to screenshot just the chart area
-            chart_element = await self.page.query_selector(self.selectors["chart"])
-            if chart_element:
-                screenshot = await chart_element.screenshot()
-            else:
-                screenshot = await self.page.screenshot()
+            # Dismiss any popups first
+            await self._dismiss_popups()
+            await asyncio.sleep(0.3)
 
+            # Try to screenshot the chart container
+            for selector in self.selectors["chart"]:
+                try:
+                    chart_element = await self.page.query_selector(selector)
+                    if chart_element:
+                        # Check if element is visible
+                        box = await chart_element.bounding_box()
+                        if box and box['width'] > 100 and box['height'] > 100:
+                            screenshot = await chart_element.screenshot()
+                            print(f"[TradingViewBrowser] Screenshot taken ({len(screenshot)} bytes)")
+                            return base64.b64encode(screenshot).decode('utf-8')
+                except:
+                    continue
+
+            # Fallback: full page screenshot
+            screenshot = await self.page.screenshot()
+            print(f"[TradingViewBrowser] Full page screenshot taken ({len(screenshot)} bytes)")
             return base64.b64encode(screenshot).decode('utf-8')
+
         except Exception as e:
-            print(f"Screenshot failed: {e}")
+            print(f"[TradingViewBrowser] Screenshot failed: {e}")
             return ""
 
     async def change_timeframe(self, timeframe: str) -> bool:
-        """Change the chart timeframe."""
+        """
+        Change the chart timeframe.
+        Uses URL navigation (most reliable method).
+        """
         try:
-            # Click timeframe button
-            await self.page.click(self.selectors["timeframe_button"])
-            await asyncio.sleep(0.5)
+            # Method 1: Navigate to new URL with updated timeframe (most reliable)
+            if self._current_symbol:
+                symbol = self._current_symbol.replace("_", "").replace("/", "")
+                if not symbol.startswith("FX:") and len(symbol) == 6:
+                    symbol = f"FX:{symbol}"
 
-            # Select timeframe from dropdown
-            await self.page.click(f"div[data-value='{timeframe}']")
-            await asyncio.sleep(1)
+                tf_url = self.TIMEFRAME_URL.get(timeframe, timeframe)
+                url = f"https://www.tradingview.com/chart/?symbol={symbol}&interval={tf_url}"
 
-            return True
+                await self.page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                await asyncio.sleep(2)
+                await self._dismiss_popups()
+
+                self._current_timeframe = timeframe
+                print(f"[TradingViewBrowser] Timeframe changed to {timeframe} via URL")
+                return True
+
+            # Method 2: Try keyboard shortcut
+            tf_key = self.TIMEFRAME_KEYS.get(timeframe)
+            if tf_key:
+                await self.page.keyboard.press(tf_key)
+                await asyncio.sleep(1.5)
+                self._current_timeframe = timeframe
+                print(f"[TradingViewBrowser] Timeframe changed to {timeframe} via keyboard")
+                return True
+
+            return False
+
         except Exception as e:
-            print(f"Failed to change timeframe: {e}")
+            print(f"[TradingViewBrowser] Failed to change timeframe: {e}")
             return False
 
     async def add_indicator(self, indicator_name: str, params: Dict[str, Any] = None) -> bool:
-        """Add an indicator to the chart."""
+        """
+        Add an indicator to the chart.
+        Uses "/" search shortcut (most reliable).
+        """
         try:
-            # Open indicators dialog
-            await self.page.click(self.selectors["indicators_button"])
-            await asyncio.sleep(0.5)
+            print(f"[TradingViewBrowser] Adding indicator: {indicator_name}")
 
-            # Search for indicator
-            search_input = await self.page.wait_for_selector(self.selectors["indicators_search"])
-            await search_input.fill(indicator_name)
-            await asyncio.sleep(0.5)
+            # Method 1: Use "/" shortcut to open search, then type indicator name
+            await self.page.keyboard.press("/")
+            await asyncio.sleep(0.8)
 
-            # Click first result
-            first_result = await self.page.wait_for_selector(f"div[data-title*='{indicator_name}']")
-            if first_result:
-                await first_result.click()
-                await asyncio.sleep(0.5)
+            # Type the indicator name
+            await self.page.keyboard.type(indicator_name, delay=50)
+            await asyncio.sleep(1)
 
-            # Close dialog by pressing Escape
+            # Press Enter to select first result
+            await self.page.keyboard.press("Enter")
+            await asyncio.sleep(0.8)
+
+            # Press Escape to close dialog
             await self.page.keyboard.press("Escape")
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.3)
 
+            print(f"[TradingViewBrowser] Indicator {indicator_name} added")
             return True
+
         except Exception as e:
-            print(f"Failed to add indicator {indicator_name}: {e}")
+            print(f"[TradingViewBrowser] Failed to add indicator {indicator_name}: {e}")
+            # Try to recover by pressing Escape
+            try:
+                await self.page.keyboard.press("Escape")
+            except:
+                pass
             return False
 
     async def remove_all_indicators(self) -> bool:
         """Remove all indicators from the chart."""
         try:
-            # Use keyboard shortcut to remove all indicators
-            # This varies by TradingView version
-            await self.page.keyboard.press("Control+A")
-            await asyncio.sleep(0.2)
-            await self.page.keyboard.press("Delete")
-            await asyncio.sleep(0.5)
-            return True
-        except Exception as e:
-            print(f"Failed to remove indicators: {e}")
+            # TradingView doesn't have a "remove all" shortcut
+            # Best approach: reload the chart without indicators
+            # Or use right-click menu on each indicator
+
+            # For now, just reload the clean chart
+            if self._current_symbol and self._current_timeframe:
+                await self.open_chart(self._current_symbol, self._current_timeframe)
+                print("[TradingViewBrowser] Chart reloaded (indicators cleared)")
+                return True
             return False
 
+        except Exception as e:
+            print(f"[TradingViewBrowser] Failed to remove indicators: {e}")
+            return False
+
+    async def _get_chart_bounds(self) -> Optional[Dict[str, float]]:
+        """Get the bounding box of the chart area."""
+        for selector in self.selectors["chart"]:
+            try:
+                element = await self.page.query_selector(selector)
+                if element:
+                    box = await element.bounding_box()
+                    if box and box['width'] > 100:
+                        return box
+            except:
+                continue
+
+        # Fallback: use viewport dimensions with margins
+        return {
+            'x': 100,
+            'y': 100,
+            'width': 1720,  # 1920 - 200 margin
+            'height': 800,
+        }
+
     async def draw_trendline(self, start_x: int, start_y: int, end_x: int, end_y: int) -> bool:
-        """Draw a trendline on the chart."""
+        """
+        Draw a trendline on the chart.
+        Uses Alt+T shortcut to activate trendline tool.
+        """
         try:
-            # Select trendline tool
-            await self.page.click(self.selectors["trendline_tool"])
-            await asyncio.sleep(0.3)
+            print(f"[TradingViewBrowser] Drawing trendline from ({start_x},{start_y}) to ({end_x},{end_y})")
+
+            # Activate trendline tool with keyboard shortcut
+            await self.page.keyboard.press("Alt+t")
+            await asyncio.sleep(0.5)
 
             # Draw the line
             await self.page.mouse.move(start_x, start_y)
+            await asyncio.sleep(0.1)
             await self.page.mouse.down()
-            await self.page.mouse.move(end_x, end_y)
+            await asyncio.sleep(0.1)
+            await self.page.mouse.move(end_x, end_y, steps=10)
+            await asyncio.sleep(0.1)
             await self.page.mouse.up()
             await asyncio.sleep(0.3)
 
+            # Deselect tool
+            await self.page.keyboard.press("Escape")
+
+            print("[TradingViewBrowser] Trendline drawn successfully")
             return True
+
         except Exception as e:
-            print(f"Failed to draw trendline: {e}")
+            print(f"[TradingViewBrowser] Failed to draw trendline: {e}")
             return False
 
     async def draw_horizontal_line(self, y: int) -> bool:
-        """Draw a horizontal line at a specific Y position."""
+        """
+        Draw a horizontal line at a specific Y position.
+        Uses Alt+H shortcut to activate horizontal line tool.
+        """
         try:
-            # Select horizontal line tool
-            await self.page.click(self.selectors["horizontal_line_tool"])
-            await asyncio.sleep(0.3)
+            print(f"[TradingViewBrowser] Drawing horizontal line at y={y}")
+
+            # Get chart center X
+            bounds = await self._get_chart_bounds()
+            center_x = int(bounds['x'] + bounds['width'] / 2) if bounds else 960
+
+            # Activate horizontal line tool
+            await self.page.keyboard.press("Alt+h")
+            await asyncio.sleep(0.5)
 
             # Click to place the line
-            await self.page.mouse.click(960, y)  # Center of 1920 width
+            await self.page.mouse.click(center_x, y)
             await asyncio.sleep(0.3)
 
+            # Deselect
+            await self.page.keyboard.press("Escape")
+
+            print("[TradingViewBrowser] Horizontal line drawn successfully")
             return True
+
         except Exception as e:
-            print(f"Failed to draw horizontal line: {e}")
+            print(f"[TradingViewBrowser] Failed to draw horizontal line: {e}")
             return False
 
     async def draw_rectangle(self, x1: int, y1: int, x2: int, y2: int) -> bool:
-        """Draw a rectangle zone on the chart."""
+        """
+        Draw a rectangle zone on the chart.
+        Uses keyboard navigation to find rectangle tool.
+        """
         try:
-            # Select rectangle tool
-            await self.page.click(self.selectors["rectangle_tool"])
-            await asyncio.sleep(0.3)
+            print(f"[TradingViewBrowser] Drawing rectangle from ({x1},{y1}) to ({x2},{y2})")
+
+            # TradingView rectangle shortcut - try multiple approaches
+            # First try direct shortcut
+            await self.page.keyboard.press("Alt+Shift+r")
+            await asyncio.sleep(0.5)
 
             # Draw the rectangle
             await self.page.mouse.move(x1, y1)
+            await asyncio.sleep(0.1)
             await self.page.mouse.down()
-            await self.page.mouse.move(x2, y2)
+            await asyncio.sleep(0.1)
+            await self.page.mouse.move(x2, y2, steps=10)
+            await asyncio.sleep(0.1)
             await self.page.mouse.up()
             await asyncio.sleep(0.3)
 
+            # Deselect
+            await self.page.keyboard.press("Escape")
+
+            print("[TradingViewBrowser] Rectangle drawn successfully")
             return True
+
         except Exception as e:
-            print(f"Failed to draw rectangle: {e}")
+            print(f"[TradingViewBrowser] Failed to draw rectangle: {e}")
             return False
+
+    async def draw_fibonacci(self, start_x: int, start_y: int, end_x: int, end_y: int) -> bool:
+        """
+        Draw Fibonacci retracement on the chart.
+        Uses Alt+F shortcut to activate Fibonacci tool.
+        """
+        try:
+            print(f"[TradingViewBrowser] Drawing Fibonacci from ({start_x},{start_y}) to ({end_x},{end_y})")
+
+            # Activate Fibonacci tool
+            await self.page.keyboard.press("Alt+f")
+            await asyncio.sleep(0.5)
+
+            # Draw from swing high to swing low (or vice versa)
+            await self.page.mouse.move(start_x, start_y)
+            await asyncio.sleep(0.1)
+            await self.page.mouse.down()
+            await asyncio.sleep(0.1)
+            await self.page.mouse.move(end_x, end_y, steps=10)
+            await asyncio.sleep(0.1)
+            await self.page.mouse.up()
+            await asyncio.sleep(0.3)
+
+            # Deselect
+            await self.page.keyboard.press("Escape")
+
+            print("[TradingViewBrowser] Fibonacci drawn successfully")
+            return True
+
+        except Exception as e:
+            print(f"[TradingViewBrowser] Failed to draw Fibonacci: {e}")
+            return False
+
+    async def draw_pitchfork(self, x1: int, y1: int, x2: int, y2: int, x3: int, y3: int) -> bool:
+        """
+        Draw a Pitchfork (Andrew's Pitchfork) on the chart.
+        Requires 3 points: pivot, then two reaction points.
+        """
+        try:
+            print(f"[TradingViewBrowser] Drawing Pitchfork with 3 points")
+
+            # Activate Pitchfork tool
+            await self.page.keyboard.press("Alt+Shift+p")
+            await asyncio.sleep(0.5)
+
+            # Click first point (pivot)
+            await self.page.mouse.click(x1, y1)
+            await asyncio.sleep(0.3)
+
+            # Click second point
+            await self.page.mouse.click(x2, y2)
+            await asyncio.sleep(0.3)
+
+            # Click third point
+            await self.page.mouse.click(x3, y3)
+            await asyncio.sleep(0.3)
+
+            # Deselect
+            await self.page.keyboard.press("Escape")
+
+            print("[TradingViewBrowser] Pitchfork drawn successfully")
+            return True
+
+        except Exception as e:
+            print(f"[TradingViewBrowser] Failed to draw Pitchfork: {e}")
+            return False
+
+    async def draw_supply_demand_zone(self, x1: int, y1: int, x2: int, y2: int, zone_type: str = "supply") -> bool:
+        """
+        Draw a supply or demand zone (colored rectangle).
+        zone_type: "supply" (red/bearish) or "demand" (green/bullish)
+        """
+        # This is essentially a rectangle with specific coloring
+        # TradingView applies colors via the properties dialog
+        return await self.draw_rectangle(x1, y1, x2, y2)
 
     async def zoom(self, direction: str = "in", steps: int = 1) -> bool:
         """Zoom in or out on the chart."""
         try:
             for _ in range(steps):
                 if direction == "in":
-                    await self.page.keyboard.press("Control+=")
+                    await self.page.keyboard.down("Control")
+                    await self.page.mouse.wheel(0, -100)
+                    await self.page.keyboard.up("Control")
                 else:
-                    await self.page.keyboard.press("Control+-")
+                    await self.page.keyboard.down("Control")
+                    await self.page.mouse.wheel(0, 100)
+                    await self.page.keyboard.up("Control")
                 await asyncio.sleep(0.2)
             return True
         except Exception as e:
-            print(f"Failed to zoom: {e}")
+            print(f"[TradingViewBrowser] Failed to zoom: {e}")
             return False
 
     async def scroll_chart(self, direction: str = "left", pixels: int = 200) -> bool:
-        """Scroll the chart left or right."""
+        """Scroll the chart left (back in time) or right (forward)."""
         try:
-            chart = await self.page.query_selector(self.selectors["chart"])
-            if chart:
-                box = await chart.bounding_box()
-                center_x = box['x'] + box['width'] / 2
-                center_y = box['y'] + box['height'] / 2
+            bounds = await self._get_chart_bounds()
+            if bounds:
+                center_x = bounds['x'] + bounds['width'] / 2
+                center_y = bounds['y'] + bounds['height'] / 2
 
                 await self.page.mouse.move(center_x, center_y)
+
+                # Horizontal scroll
                 delta = -pixels if direction == "left" else pixels
                 await self.page.mouse.wheel(delta, 0)
                 await asyncio.sleep(0.3)
+
             return True
         except Exception as e:
-            print(f"Failed to scroll: {e}")
+            print(f"[TradingViewBrowser] Failed to scroll: {e}")
             return False
 
     async def get_price_at_position(self, x: int, y: int) -> Optional[float]:
-        """Get the price level at a specific Y position."""
-        # This would require parsing the price scale which is complex
-        # For now, return None and let AI estimate from visual
+        """Get the price level at a specific Y position (approximation)."""
+        # This is complex as it requires parsing the price scale
+        # For now, return None - AI will estimate from visual context
         return None
 
 
@@ -566,18 +934,39 @@ class TradingViewAIAgent:
 
             # Step 7: Execute the drawings
             for drawing in drawings:
-                if drawing["type"] == "trendline":
-                    success = await self.browser.draw_trendline(
-                        drawing["start_x"], drawing["start_y"],
-                        drawing["end_x"], drawing["end_y"]
-                    )
-                elif drawing["type"] == "horizontal_line":
-                    success = await self.browser.draw_horizontal_line(drawing["y"])
-                elif drawing["type"] == "rectangle":
-                    success = await self.browser.draw_rectangle(
-                        drawing["x1"], drawing["y1"],
-                        drawing["x2"], drawing["y2"]
-                    )
+                success = False
+                drawing_type = drawing.get("type", "")
+
+                try:
+                    if drawing_type == "trendline":
+                        success = await self.browser.draw_trendline(
+                            drawing["start_x"], drawing["start_y"],
+                            drawing["end_x"], drawing["end_y"]
+                        )
+                    elif drawing_type == "horizontal_line":
+                        success = await self.browser.draw_horizontal_line(drawing["y"])
+                    elif drawing_type == "rectangle":
+                        success = await self.browser.draw_rectangle(
+                            drawing["x1"], drawing["y1"],
+                            drawing["x2"], drawing["y2"]
+                        )
+                    elif drawing_type == "fibonacci":
+                        success = await self.browser.draw_fibonacci(
+                            drawing["start_x"], drawing["start_y"],
+                            drawing["end_x"], drawing["end_y"]
+                        )
+                    elif drawing_type == "pitchfork":
+                        success = await self.browser.draw_pitchfork(
+                            drawing["x1"], drawing["y1"],
+                            drawing["x2"], drawing["y2"],
+                            drawing["x3"], drawing["y3"]
+                        )
+                    else:
+                        print(f"[TradingViewAgent] Unknown drawing type: {drawing_type}")
+                        continue
+                except KeyError as e:
+                    print(f"[TradingViewAgent] Missing key for {drawing_type}: {e}")
+                    continue
 
                 if success:
                     result.drawings_made.append(drawing)
@@ -697,33 +1086,44 @@ Respond with ONLY a JSON array of indicator names (max {max_ind}), e.g.:
         symbol: str,
         preferences: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
-        """Ask AI what to draw on the chart (trendlines, S/R, zones)."""
+        """Ask AI what to draw on the chart (trendlines, S/R, zones, fibonacci, pitchfork)."""
 
         prompt = f"""You are analyzing a {symbol} chart with indicators.
 
 Your analysis style: {preferences.get('style', 'mixed')}
 Your focus: {preferences.get('focus', 'general analysis')}
 
-The chart is 1920x1080 pixels. Look at the chart and identify:
-1. Key trendlines (connect swing highs or swing lows)
-2. Important support/resistance levels (horizontal lines)
-3. Significant zones (rectangles for order blocks, supply/demand)
+The chart is 1920x1080 pixels. The main chart area is approximately:
+- X: 100 to 1800 (left to right, older to newer prices)
+- Y: 100 to 900 (top is higher price, bottom is lower price)
 
-Respond with ONLY a JSON array of drawings. Each drawing should have:
-- type: "trendline" | "horizontal_line" | "rectangle"
-- For trendline: start_x, start_y, end_x, end_y (in pixels)
-- For horizontal_line: y (in pixels, where 0 is top, 540 is middle, 1080 is bottom)
-- For rectangle: x1, y1, x2, y2 (in pixels)
-- label: description of what this drawing represents
+Look at the chart and identify key technical levels and patterns to draw:
+1. Trendlines (connect swing highs or swing lows)
+2. Horizontal support/resistance levels
+3. Zones (rectangles for order blocks, supply/demand, consolidation)
+4. Fibonacci retracements (from swing high to swing low or vice versa)
+5. Pitchfork channels (if you see a clear 3-point channel pattern)
+
+AVAILABLE DRAWING TYPES:
+- "trendline": Connect two points (start_x, start_y, end_x, end_y)
+- "horizontal_line": Draw at specific price level (y position)
+- "rectangle": Draw a zone (x1, y1, x2, y2)
+- "fibonacci": Fibonacci retracement (start_x, start_y, end_x, end_y)
+- "pitchfork": Andrew's Pitchfork - 3 points (x1, y1, x2, y2, x3, y3)
+
+Respond with ONLY a JSON array of drawings:
 
 Example:
 [
-  {{"type": "trendline", "start_x": 200, "start_y": 400, "end_x": 800, "end_y": 300, "label": "Uptrend line"}},
-  {{"type": "horizontal_line", "y": 350, "label": "Resistance at high"}},
-  {{"type": "rectangle", "x1": 600, "y1": 400, "x2": 700, "y2": 450, "label": "Bullish Order Block"}}
+  {{"type": "trendline", "start_x": 200, "start_y": 400, "end_x": 800, "end_y": 300, "label": "Bullish trendline"}},
+  {{"type": "horizontal_line", "y": 350, "label": "Key resistance level"}},
+  {{"type": "rectangle", "x1": 600, "y1": 400, "x2": 750, "y2": 480, "label": "Bullish Order Block"}},
+  {{"type": "fibonacci", "start_x": 300, "start_y": 200, "end_x": 700, "end_y": 600, "label": "Fib retracement from swing high"}},
+  {{"type": "pitchfork", "x1": 200, "y1": 500, "x2": 400, "y2": 300, "x3": 600, "y3": 450, "label": "Ascending pitchfork channel"}}
 ]
 
-Identify 2-5 key drawings. Only respond with JSON, no other text.
+Draw 3-5 key technical elements that support your analysis. Be precise with coordinates.
+Only respond with the JSON array, no other text.
 """
 
         try:
