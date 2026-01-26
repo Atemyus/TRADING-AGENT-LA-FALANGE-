@@ -247,7 +247,15 @@ class PriceStreamingService:
                 # Get prices from broker for available symbols
                 if broker_symbols:
                     try:
+                        # Log every 10 cycles
+                        if tick_count % 100 == 0:
+                            print(f"[PriceStreaming] Polling {len(broker_symbols)} symbols from broker...")
+
                         prices = await self._broker.get_prices(broker_symbols)
+
+                        # Log result
+                        if tick_count == 0 or tick_count % 100 == 0:
+                            print(f"[PriceStreaming] Broker returned {len(prices)} prices")
 
                         # Track which symbols we got prices for
                         received_symbols = set(prices.keys())
@@ -272,9 +280,18 @@ class PriceStreamingService:
                                     print(f"[PriceStreaming] Symbol {symbol} not available from broker, using simulation")
                                     failed_symbols.add(symbol)
 
+                        # If broker returned NO prices at all, something is wrong
+                        if len(prices) == 0 and len(broker_symbols) > 0:
+                            print(f"[PriceStreaming] WARNING: Broker returned 0 prices for {len(broker_symbols)} symbols!")
+                            # Mark all as failed to use simulation
+                            for symbol in broker_symbols:
+                                if symbol not in failed_symbols:
+                                    failed_symbols.add(symbol)
+
                     except Exception as poll_error:
                         print(f"[PriceStreaming] Broker polling error: {poll_error}")
-                        # Don't mark all as failed, just log the error
+                        import traceback
+                        traceback.print_exc()
 
                 # Generate simulated prices for symbols not available from broker
                 for symbol in simulated_symbols:

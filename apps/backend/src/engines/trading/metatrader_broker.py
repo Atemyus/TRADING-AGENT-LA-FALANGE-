@@ -654,12 +654,21 @@ class MetaTraderBroker(BaseBroker):
             await self.connect()
 
         prices = {}
+        errors = []
         for symbol in symbols:
             try:
                 tick = await self.get_current_price(symbol)
                 prices[symbol] = tick
-            except Exception:
-                pass
+            except Exception as e:
+                errors.append(f"{symbol}: {str(e)[:50]}")
+
+        # Log errors for first few symbols only (to avoid spam)
+        if errors and len(prices) == 0:
+            print(f"[MetaTrader] get_prices failed for ALL {len(errors)} symbols!")
+            print(f"[MetaTrader] First 3 errors: {errors[:3]}")
+        elif errors:
+            print(f"[MetaTrader] get_prices: {len(prices)} OK, {len(errors)} failed")
+
         return prices
 
     async def get_instruments(self) -> List[Instrument]:
