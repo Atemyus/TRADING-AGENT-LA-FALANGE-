@@ -522,6 +522,9 @@ class TradingViewModelResult(BaseModel):
 
 class TradingViewAgentResponse(BaseModel):
     """Response from TradingView Agent analysis."""
+    # Data source transparency - ALWAYS "tradingview_browser" (real data only)
+    data_source: str = "tradingview_browser"
+
     # Overall consensus
     direction: str
     confidence: float
@@ -745,10 +748,11 @@ async def analyze_with_tradingview_agent(request: TradingViewAgentRequest):
     """
     Run AI analysis using TradingView Agent with real browser automation.
 
-    Falls back to standard AI analysis if TradingView Agent is unavailable.
+    IMPORTANT: This endpoint uses ONLY real data from TradingView.
+    NO fallback to simulated data - if TradingView is unavailable, returns error.
 
     This endpoint:
-    1. Opens TradingView.com in a real browser (or uses fallback)
+    1. Opens TradingView.com in a real browser (Playwright)
     2. Each AI model autonomously:
        - Changes timeframes on TradingView
        - Adds its preferred indicators
@@ -762,15 +766,32 @@ async def analyze_with_tradingview_agent(request: TradingViewAgentRequest):
     - standard: 2 timeframes (15m, 1h), 2 AI models
     - premium: 3 timeframes (15m, 1h, 4h), 4 AI models
     - ultra: 5 timeframes (5m, 15m, 1h, 4h, D), 6 AI models
+
+    Returns:
+        TradingViewAgentResponse with data_source="tradingview_browser"
+
+    Raises:
+        503 Service Unavailable: If Playwright/TradingView Agent not available
+        500 Internal Server Error: If analysis fails
     """
     import logging
     logger = logging.getLogger(__name__)
 
-    # Try TradingView Agent first, fallback to standard analysis if unavailable
-    use_fallback = not TRADINGVIEW_AGENT_AVAILABLE
+    # CRITICAL: No fallback - require real TradingView data only
+    if not TRADINGVIEW_AGENT_AVAILABLE:
+        logger.error("TradingView Agent not available - Playwright not installed")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": "TradingView Agent not available",
+                "reason": "Playwright browser automation is not installed",
+                "solution": "Install Playwright with: pip install playwright && playwright install chromium",
+                "data_source": "none",
+                "fallback_used": False
+            }
+        )
 
-    if not use_fallback:
-        try:
+    try:
             # Get or create the TradingView agent
             agent = await get_tradingview_agent(
                 headless=request.headless,
@@ -788,10 +809,18 @@ async def analyze_with_tradingview_agent(request: TradingViewAgentRequest):
             valid_results = [r for r in all_results if not r.error and r.confidence > 0]
 
             if not valid_results:
-                # All results failed, use fallback
-                logger.warning("TradingView Agent returned no valid results, using fallback")
-                use_fallback = True
-                raise ValueError("No valid results from TradingView Agent")
+                # All results failed - NO fallback, return error
+                logger.error("TradingView Agent returned no valid results - all models failed")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail={
+                        "error": "TradingView analysis failed",
+                        "reason": "All AI models failed to analyze the chart",
+                        "data_source": "none",
+                        "fallback_used": False,
+                        "suggestion": "Try again or check TradingView.com availability"
+                    }
+                )
 
             # Build timeframe consensus response
             tf_consensus = {}
@@ -826,6 +855,7 @@ async def analyze_with_tradingview_agent(request: TradingViewAgentRequest):
                 ))
 
             return TradingViewAgentResponse(
+                data_source="tradingview_browser",  # ALWAYS real data from TradingView
                 direction=consensus.get("direction", "HOLD"),
                 confidence=consensus.get("confidence", 0),
                 is_strong_signal=consensus.get("is_strong_signal", False),
@@ -850,30 +880,38 @@ async def analyze_with_tradingview_agent(request: TradingViewAgentRequest):
                 individual_results=individual_results,
             )
 
-        except Exception as e:
-            logger.warning(f"TradingView Agent failed, using fallback: {e}")
-            use_fallback = True
-
-    # Use fallback analysis
-    if use_fallback:
-        logger.info("Using fallback AI analysis (no browser automation)")
-        try:
-            return await _run_fallback_analysis(request.symbol, request.mode)
-        except Exception as e:
-            logger.error(f"Fallback analysis also failed: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Analysis failed: {str(e)}"
-            )
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as e:
+        # NO FALLBACK - return clear error
+        logger.error(f"TradingView Agent failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "TradingView analysis failed",
+                "reason": str(e),
+                "data_source": "none",
+                "fallback_used": False,
+                "suggestion": "Check TradingView.com availability and try again"
+            }
+        )
 
 
 @router.get("/tradingview-agent/status")
 async def get_tradingview_agent_status():
     """
     Get TradingView Agent availability and configuration.
+
+    IMPORTANT: This endpoint uses ONLY real data from TradingView.
+    No fallback to simulated data is available.
     """
     return {
         "available": TRADINGVIEW_AGENT_AVAILABLE,
+        "data_source": "tradingview_browser" if TRADINGVIEW_AGENT_AVAILABLE else "none",
+        "fallback_available": False,  # NO FALLBACK - real data only
+        "requires_playwright": True,
+        "error_if_unavailable": "503 Service Unavailable" if not TRADINGVIEW_AGENT_AVAILABLE else None,
         "modes": {
             "quick": {"timeframes": ["15"], "models": 1},
             "standard": {"timeframes": ["15", "60"], "models": 2},
