@@ -11,19 +11,11 @@ Setup:
 """
 
 import asyncio
-import ssl
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 import httpx
-
-# Try to use certifi for SSL certificates if available
-try:
-    import certifi
-    SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
-except ImportError:
-    SSL_CONTEXT = True  # Use default SSL verification
 
 from src.core.config import settings
 from src.engines.trading.base_broker import (
@@ -191,14 +183,15 @@ class MetaTraderBroker(BaseBroker):
     async def _ensure_client(self) -> None:
         """Ensure HTTP client is initialized."""
         if self._client is None:
-            # Configure SSL - try with verification first, fall back to disabled if needed
+            # Disable SSL verification for cloud environments (Railway, etc.)
+            # MetaApi is a trusted external service
             self._client = httpx.AsyncClient(
                 timeout=30.0,
                 headers={
                     "auth-token": self.access_token,
                     "Content-Type": "application/json",
                 },
-                verify=SSL_CONTEXT,
+                verify=False,
             )
 
     async def _request(
