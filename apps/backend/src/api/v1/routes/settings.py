@@ -400,13 +400,12 @@ async def test_broker_connection(db: AsyncSession = Depends(get_db)):
             if not broker.metaapi_token or not broker.metaapi_account_id:
                 raise HTTPException(status_code=400, detail="MetaApi credentials not configured")
 
-            # Test MetaApi connection
+            # Test MetaApi connection with SSL verification disabled for cloud environments
             import httpx
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(verify=False, timeout=15.0) as client:
                 response = await client.get(
                     f"https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai/users/current/accounts/{broker.metaapi_account_id}",
                     headers={"auth-token": broker.metaapi_token},
-                    timeout=10.0
                 )
                 if response.status_code == 200:
                     account_info = response.json()
@@ -415,9 +414,18 @@ async def test_broker_connection(db: AsyncSession = Depends(get_db)):
                         "message": "Connected to MetaTrader successfully",
                         "account_name": account_info.get("name", "Unknown"),
                         "platform": account_info.get("platform", broker.metaapi_platform),
+                        "state": account_info.get("state", "Unknown"),
                     }
+                elif response.status_code == 404:
+                    error_data = response.json() if response.text else {}
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Account not found. Check your MetaApi Account ID. Error: {error_data.get('message', 'Unknown')}"
+                    )
+                elif response.status_code == 401:
+                    raise HTTPException(status_code=400, detail="Invalid MetaApi Access Token")
                 else:
-                    raise HTTPException(status_code=400, detail="Invalid MetaApi credentials")
+                    raise HTTPException(status_code=400, detail=f"MetaApi error ({response.status_code}): {response.text}")
 
         elif broker.broker_type == "oanda":
             if not broker.oanda_api_key or not broker.oanda_account_id:
@@ -426,11 +434,10 @@ async def test_broker_connection(db: AsyncSession = Depends(get_db)):
             # Test OANDA connection
             import httpx
             base_url = "https://api-fxpractice.oanda.com" if broker.oanda_environment == "practice" else "https://api-fxtrade.oanda.com"
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(verify=False, timeout=15.0) as client:
                 response = await client.get(
                     f"{base_url}/v3/accounts/{broker.oanda_account_id}/summary",
                     headers={"Authorization": f"Bearer {broker.oanda_api_key}"},
-                    timeout=10.0
                 )
                 if response.status_code == 200:
                     return {"status": "success", "message": "Connected to OANDA successfully"}
