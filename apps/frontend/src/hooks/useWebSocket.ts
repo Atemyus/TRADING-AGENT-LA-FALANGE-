@@ -7,21 +7,9 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 // Production backend URL (Railway)
 const PRODUCTION_BACKEND_URL = 'wss://trading-agent-la-falange-production.up.railway.app';
 
-// Dynamically determine WebSocket URL based on current page location or API URL
+// Dynamically determine WebSocket URL based on current page location
 function getWebSocketUrl(): string {
-  // First check environment variable
-  if (process.env.NEXT_PUBLIC_WS_URL) {
-    return process.env.NEXT_PUBLIC_WS_URL;
-  }
-
-  // Check if API URL is set and derive WS URL from it
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-    // Convert http(s) to ws(s)
-    return apiUrl.replace(/^http/, 'ws');
-  }
-
-  // If running in browser, derive from current location
+  // If running in browser, check the current location
   if (typeof window !== 'undefined') {
     const host = window.location.host;
 
@@ -31,7 +19,8 @@ function getWebSocketUrl(): string {
       return `ws://${hostname}:8000`;
     }
 
-    // For production (Railway, etc.), use the hardcoded production URL
+    // For production (Railway, etc.), ALWAYS use the hardcoded production URL
+    // Don't rely on env vars as Next.js bakes in defaults at build time
     return PRODUCTION_BACKEND_URL;
   }
 
