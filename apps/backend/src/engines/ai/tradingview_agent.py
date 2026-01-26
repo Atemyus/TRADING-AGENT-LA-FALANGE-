@@ -1361,6 +1361,17 @@ Be specific with price levels based on what you see on the chart.
                     result.key_observations = analysis.get("key_observations", [])
                     result.reasoning = analysis.get("reasoning", "")
 
+        except httpx.HTTPStatusError as e:
+            error_detail = ""
+            try:
+                error_body = e.response.json()
+                error_detail = f" - {error_body.get('error', {}).get('message', str(error_body))}"
+            except:
+                error_detail = f" - {e.response.text[:200]}"
+            result.error = f"HTTP {e.response.status_code}{error_detail}"
+            print(f"Error analyzing with {display_name}: HTTP {e.response.status_code}{error_detail}")
+            print(f"  Model ID used: {model_id}")
+            print(f"  This model may not support vision/images")
         except Exception as e:
             result.error = str(e)
             print(f"Error analyzing with {display_name}: {e}")
@@ -1424,21 +1435,69 @@ Be specific with price levels based on what you see on the chart.
 
         print(f"\n{'='*60}")
         print(f"TradingView AI Agent - Mode: {mode.upper()} (Parallel)")
+        print(f"Symbol: {symbol}")
         print(f"Timeframes: {', '.join(timeframes)}")
         print(f"AI Models: {', '.join([self.MODEL_DISPLAY_NAMES[k] for k in model_keys])}")
+        print(f"Max Indicators: {self.max_indicators} (TradingView Free plan)")
         print(f"{'='*60}\n")
 
+        # CRITICAL: Open the chart FIRST before any analysis
+        if self.browser and self.browser._initialized:
+            first_tf = timeframes[0]
+            print(f"[TradingViewAgent] Opening chart for {symbol} on {first_tf} timeframe...")
+            chart_opened = await self.browser.open_chart(symbol, first_tf)
+            if not chart_opened:
+                print(f"[TradingViewAgent] ERROR: Failed to open chart for {symbol}")
+                return {
+                    "direction": "HOLD",
+                    "confidence": 0,
+                    "is_strong_signal": False,
+                    "models_agree": 0,
+                    "total_models": 0,
+                    "error": "Failed to open TradingView chart"
+                }
+            print(f"[TradingViewAgent] Chart opened successfully!")
+        else:
+            print(f"[TradingViewAgent] ERROR: Browser not initialized!")
+            return {
+                "direction": "HOLD",
+                "confidence": 0,
+                "is_strong_signal": False,
+                "models_agree": 0,
+                "total_models": 0,
+                "error": "Browser not initialized"
+            }
+
         # Process each timeframe with all models in parallel
-        for tf in timeframes:
+        for tf_index, tf in enumerate(timeframes):
             print(f"\n--- Analyzing {symbol} on {tf} timeframe with {len(model_keys)} models in parallel ---")
 
             # Prepare chart for this timeframe
             screenshot = None
             if self.browser and self.browser._initialized:
-                await self.browser.remove_all_indicators()
-                await self.browser.change_timeframe(tf)
-                await asyncio.sleep(1.5)  # Wait for chart to load
+                # Only change timeframe if not the first one (already set in open_chart)
+                if tf_index > 0:
+                    print(f"[TradingViewAgent] Changing to {tf} timeframe...")
+                    await self.browser.change_timeframe(tf)
+                    await asyncio.sleep(2)  # Wait for chart to fully update
+
+                # Add indicators for better analysis (respecting TradingView Free limit)
+                indicators_to_add = ["EMA", "RSI"][:self.max_indicators]
+                print(f"[TradingViewAgent] Adding indicators: {indicators_to_add}")
+                for indicator in indicators_to_add:
+                    success = await self.browser.add_indicator(indicator)
+                    if success:
+                        print(f"  [+] Added {indicator}")
+                    else:
+                        print(f"  [!] Failed to add {indicator}")
+
+                await asyncio.sleep(1)  # Wait for indicators to render
                 screenshot = await self.browser.take_screenshot()
+
+                # Remove indicators for next timeframe (clean slate)
+                if tf_index < len(timeframes) - 1:
+                    print(f"[TradingViewAgent] Clearing indicators for next timeframe...")
+                    await self.browser.remove_all_indicators()
 
             if not screenshot:
                 print(f"  [WARNING] Could not capture screenshot for {tf} timeframe")
