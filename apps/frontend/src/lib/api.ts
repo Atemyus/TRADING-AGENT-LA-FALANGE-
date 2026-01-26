@@ -317,7 +317,7 @@ export const aiApi = {
     symbol: string,
     tvSymbol: string | null = null,
     mode: 'quick' | 'standard' | 'premium' | 'ultra' = 'standard',
-    maxIndicators: number = 3,
+    maxIndicators: number = 2,  // TradingView Free plan limit
     headless: boolean = true
   ): Promise<TradingViewAgentResult> => {
     // Use tvSymbol if provided, otherwise convert to basic format

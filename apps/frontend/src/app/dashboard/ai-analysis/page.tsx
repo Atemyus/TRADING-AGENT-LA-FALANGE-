@@ -82,12 +82,8 @@ const MODES = [
   { value: 'ultra', label: 'Ultra', description: '5 TF, 6 models', icon: Layers },
 ]
 
-const TRADINGVIEW_PLANS = [
-  { value: 3, label: 'Basic (Free)', description: '3 indicators' },
-  { value: 5, label: 'Essential', description: '5 indicators' },
-  { value: 10, label: 'Plus', description: '10 indicators' },
-  { value: 25, label: 'Premium', description: '25 indicators' },
-]
+// TradingView Free plan limit: 2 indicators
+const MAX_INDICATORS_FREE_PLAN = 2
 
 export default function AIAnalysisPage() {
   const [symbol, setSymbol] = useState('EUR_USD')
@@ -108,7 +104,7 @@ export default function AIAnalysisPage() {
 
   // TradingView Agent State
   const [tvAgentResult, setTvAgentResult] = useState<TradingViewAgentResult | null>(null)
-  const [maxIndicators, setMaxIndicators] = useState(3)
+  const [maxIndicators] = useState(MAX_INDICATORS_FREE_PLAN)  // Fixed to Free plan limit
   const [expandedTvResult, setExpandedTvResult] = useState<string | null>(null)
 
   const selectedSymbol = findSymbol(symbol)
@@ -275,18 +271,12 @@ export default function AIAnalysisPage() {
             </select>
           </div>
 
-          {/* TradingView Plan */}
+          {/* TradingView Free Plan Info */}
           <div>
             <label className="block text-sm font-medium mb-2">TradingView Plan</label>
-            <select
-              value={maxIndicators}
-              onChange={(e) => setMaxIndicators(parseInt(e.target.value))}
-              className="input"
-            >
-              {TRADINGVIEW_PLANS.map(p => (
-                <option key={p.value} value={p.value}>{p.label} - {p.description}</option>
-              ))}
-            </select>
+            <div className="input bg-dark-800/50 cursor-not-allowed">
+              Free Plan - Max {MAX_INDICATORS_FREE_PLAN} indicators
+            </div>
           </div>
 
           {/* Mode Selection */}

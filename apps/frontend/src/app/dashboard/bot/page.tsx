@@ -180,7 +180,7 @@ export default function BotControlPage() {
     discord_enabled: false,
     // TradingView AI Agent - full browser control (always enabled)
     tradingview_headless: true,
-    tradingview_max_indicators: 3,  // TradingView Basic plan limit
+    tradingview_max_indicators: 2,  // TradingView Free plan limit
   };
 
   const fetchStatus = useCallback(async () => {
@@ -779,21 +779,14 @@ export default function BotControlPage() {
                 </div>
               </div>
               <div className="mt-3 pt-3 border-t border-purple-500/30 space-y-4">
-                {/* TradingView Plan / Max Indicators */}
+                {/* TradingView Free Plan Info */}
                 <div>
                   <label className="block text-xs text-slate-400 mb-2">
-                    TradingView Plan (Max Indicators: {currentConfig.tradingview_max_indicators})
+                    TradingView Free Plan - Max 2 Indicators
                   </label>
-                  <select
-                    value={currentConfig.tradingview_max_indicators}
-                    onChange={(e) => handleConfigUpdate({ tradingview_max_indicators: parseInt(e.target.value) })}
-                    className="select-input text-sm"
-                  >
-                    <option value={3}>Basic (Free) - 3 indicators</option>
-                    <option value={5}>Essential - 5 indicators</option>
-                    <option value={10}>Plus - 10 indicators</option>
-                    <option value={25}>Premium - 25 indicators</option>
-                  </select>
+                  <div className="bg-slate-700 rounded-lg px-3 py-2 text-sm text-slate-300">
+                    Ogni AI può aggiungere fino a 2 indicatori sul grafico (limite piano Free)
+                  </div>
                 </div>
 
                 {/* Headless Mode */}
