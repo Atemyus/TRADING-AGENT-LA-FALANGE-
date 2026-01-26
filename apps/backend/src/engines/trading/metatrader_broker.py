@@ -734,20 +734,31 @@ class MetaTraderBroker(BaseBroker):
         Stream live prices.
 
         Note: MetaApi uses WebSocket for real-time prices.
-        This implementation polls for simplicity.
-        For production, use their WebSocket streaming API.
+        This implementation polls in parallel for better performance.
         """
         if not self._connected:
             await self.connect()
 
         while True:
-            for symbol in symbols:
+            # Fetch all prices in PARALLEL instead of sequentially
+            async def safe_get_price(symbol: str) -> Optional[Tick]:
                 try:
-                    tick = await self.get_current_price(symbol)
-                    yield tick
+                    return await self.get_current_price(symbol)
                 except Exception:
-                    pass
-            await asyncio.sleep(1)  # Poll every second
+                    return None
+
+            # Create tasks for all symbols
+            tasks = [safe_get_price(symbol) for symbol in symbols]
+
+            # Execute all in parallel
+            results = await asyncio.gather(*tasks)
+
+            # Yield all valid ticks
+            for tick in results:
+                if tick is not None:
+                    yield tick
+
+            await asyncio.sleep(0.5)  # Poll every 500ms for smoother updates
 
     async def get_symbols(self) -> List[Dict[str, Any]]:
         """Get available trading symbols."""
