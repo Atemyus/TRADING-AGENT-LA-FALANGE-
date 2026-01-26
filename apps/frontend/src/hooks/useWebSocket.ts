@@ -4,11 +4,18 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 
-// Dynamically determine WebSocket URL based on current page location
+// Dynamically determine WebSocket URL based on current page location or API URL
 function getWebSocketUrl(): string {
   // First check environment variable
   if (process.env.NEXT_PUBLIC_WS_URL) {
     return process.env.NEXT_PUBLIC_WS_URL;
+  }
+
+  // Check if API URL is set and derive WS URL from it
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    // Convert http(s) to ws(s)
+    return apiUrl.replace(/^http/, 'ws');
   }
 
   // If running in browser, derive from current location
@@ -23,7 +30,8 @@ function getWebSocketUrl(): string {
       return `ws://${hostname}:8000`;
     }
 
-    // For production (Railway, etc.), use same host with appropriate protocol
+    // For Railway production, use the same host (frontend serves as proxy to backend)
+    // If frontend and backend are separate, this won't work - need env var
     return `${protocol}//${host}`;
   }
 
@@ -31,7 +39,12 @@ function getWebSocketUrl(): string {
   return 'ws://localhost:8000';
 }
 
-const WS_URL = getWebSocketUrl();
+// Get URL once at module load time
+let WS_URL = 'ws://localhost:8000';
+if (typeof window !== 'undefined') {
+  WS_URL = getWebSocketUrl();
+  console.log('[WebSocket] Using URL:', WS_URL);
+}
 
 type MessageHandler = (data: unknown) => void;
 
@@ -71,7 +84,9 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     }
 
     try {
-      const ws = new WebSocket(`${WS_URL}/api/v1/ws/stream`);
+      const wsUrl = `${WS_URL}/api/v1/ws/stream`;
+      console.log('[WebSocket] Connecting to:', wsUrl);
+      const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
         setIsConnected(true);
