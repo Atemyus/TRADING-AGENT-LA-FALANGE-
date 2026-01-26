@@ -401,6 +401,7 @@ class TradingViewAIAgent:
     }
 
     # Each AI model gets a different analysis style preference
+    # NOTE: Max 2 indicators per model (TradingView Free plan limit)
     MODEL_PREFERENCES = {
         "chatgpt": {
             "style": "smc",
@@ -409,22 +410,22 @@ class TradingViewAIAgent:
         },
         "gemini": {
             "style": "trend",
-            "indicators": ["EMA", "ADX", "MACD"],
+            "indicators": ["EMA", "MACD"],
             "focus": "Trend direction and strength"
         },
         "deepseek": {
             "style": "price_action",
-            "indicators": ["Volume"],
+            "indicators": ["Volume", "EMA"],
             "focus": "Candlestick patterns and structure"
         },
         "glm": {
             "style": "indicator_based",
-            "indicators": ["RSI", "MACD", "Bollinger Bands"],
+            "indicators": ["RSI", "MACD"],
             "focus": "Indicator divergences and signals"
         },
         "grok": {
             "style": "volatility",
-            "indicators": ["ATR", "Bollinger Bands", "VWAP"],
+            "indicators": ["ATR", "Bollinger Bands"],
             "focus": "Volatility breakouts and mean reversion"
         },
         "qwen": {
@@ -434,13 +435,8 @@ class TradingViewAIAgent:
         },
     }
 
-    # TradingView indicator limits by plan
-    TRADINGVIEW_PLANS = {
-        "basic": 3,      # Free plan
-        "essential": 5,
-        "plus": 10,
-        "premium": 25,
-    }
+    # TradingView Free plan allows max 2 indicators
+    MAX_INDICATORS_FREE_PLAN = 2
 
     # Analysis mode configuration - timeframes and models per mode
     MODE_CONFIG = {
@@ -466,13 +462,13 @@ class TradingViewAIAgent:
         },
     }
 
-    def __init__(self, max_indicators: int = 3):
+    def __init__(self, max_indicators: int = 2):
         """
         Initialize TradingView AI Agent.
 
         Args:
             max_indicators: Maximum indicators allowed by TradingView plan.
-                           Default 3 (Basic/Free plan).
+                           Default 2 (Free plan limit).
         """
         self.browser: Optional[TradingViewBrowser] = None
         self.api_key = settings.AIML_API_KEY
@@ -1200,14 +1196,14 @@ _tv_agent: Optional[TradingViewAIAgent] = None
 
 async def get_tradingview_agent(
     headless: bool = True,
-    max_indicators: int = 3
+    max_indicators: int = 2
 ) -> TradingViewAIAgent:
     """
     Get or create the TradingView AI agent singleton.
 
     Args:
         headless: Run browser in headless mode
-        max_indicators: Max indicators allowed by TradingView plan (default 3 for free)
+        max_indicators: Max indicators allowed by TradingView Free plan (default 2)
     """
     global _tv_agent
     if _tv_agent is None:

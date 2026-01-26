@@ -481,10 +481,10 @@ class TradingViewAgentRequest(BaseModel):
         description="Analysis mode: quick (1 TF), standard (2 TF), premium (3 TF), ultra (5 TF)"
     )
     max_indicators: int = Field(
-        default=3,
+        default=2,
         ge=1,
-        le=25,
-        description="Max indicators per TradingView plan (3=Basic, 5=Essential, 10=Plus, 25=Premium)"
+        le=2,
+        description="Max indicators for TradingView Free plan (limit: 2)"
     )
     headless: bool = Field(
         default=True,
@@ -912,17 +912,12 @@ async def get_tradingview_agent_status():
         "fallback_available": False,  # NO FALLBACK - real data only
         "requires_playwright": True,
         "error_if_unavailable": "503 Service Unavailable" if not TRADINGVIEW_AGENT_AVAILABLE else None,
+        "max_indicators": 2,  # TradingView Free plan limit
         "modes": {
             "quick": {"timeframes": ["15"], "models": 1},
             "standard": {"timeframes": ["15", "60"], "models": 2},
             "premium": {"timeframes": ["15", "60", "240"], "models": 4},
             "ultra": {"timeframes": ["5", "15", "60", "240", "D"], "models": 6},
-        },
-        "tradingview_plans": {
-            "basic": {"max_indicators": 3, "price": "Free"},
-            "essential": {"max_indicators": 5, "price": "$12.95/mo"},
-            "plus": {"max_indicators": 10, "price": "$24.95/mo"},
-            "premium": {"max_indicators": 25, "price": "$49.95/mo"},
         },
         "ai_models": [
             {"key": "chatgpt", "name": "ChatGPT 5.2", "style": "SMC"},
