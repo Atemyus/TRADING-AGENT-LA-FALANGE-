@@ -18,6 +18,7 @@ from src.core.config import clear_settings_cache
 from src.services.ai_service import reset_ai_service
 from src.engines.trading.broker_factory import BrokerFactory
 from src.services.trading_service import reset_trading_service
+from src.services.price_streaming_service import reset_price_streaming_service
 
 router = APIRouter()
 
@@ -326,10 +327,11 @@ async def update_broker_settings(
     await save_settings_to_db(db, settings)
     apply_settings_to_env(settings)
 
-    # Clear settings cache and reset broker/trading service to force reconnection
+    # Clear settings cache and reset all services to force reconnection with new broker
     clear_settings_cache()
     await BrokerFactory.reset_instance()
     await reset_trading_service()
+    reset_price_streaming_service()  # Reset to pick up new broker for real-time prices
 
     return {"status": "success", "message": "Broker settings saved"}
 
