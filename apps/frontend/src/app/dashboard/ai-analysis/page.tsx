@@ -997,7 +997,8 @@ export default function AIAnalysisPage() {
               <div className="p-6 space-y-6">
                 {tvAgentResult.combined_reasoning.split('\n\n').map((section, idx) => {
                   // Parse sections that start with **ModelName**
-                  const modelMatch = section.match(/^\*\*(.+?)\*\*\s*\((\d+m?)\):\s*(.+)$/s)
+                  // Using [\s\S]* instead of .* with 's' flag for ES5 compatibility
+                  const modelMatch = section.match(/^\*\*(.+?)\*\*\s*\((\d+m?)\):\s*([\s\S]+)$/)
                   if (modelMatch) {
                     const [, modelName, timeframe, reasoning] = modelMatch
                     const modelIdx = tvAgentResult.models_used.findIndex(m => m === modelName)
