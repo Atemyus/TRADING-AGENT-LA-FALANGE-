@@ -21,12 +21,14 @@ from src.core.config import settings
 from src.engines.trading.base_broker import (
     AccountInfo,
     BaseBroker,
+    Instrument,
     OrderRequest,
     OrderResult,
     OrderSide,
     OrderStatus,
     OrderType,
     Position,
+    PositionSide,
     Tick,
 )
 
@@ -169,6 +171,7 @@ class MetaTraderBroker(BaseBroker):
             access_token: MetaApi access token
             account_id: MetaApi account ID (not MT4/MT5 login)
         """
+        super().__init__()
         self.access_token = access_token or getattr(settings, 'METAAPI_ACCESS_TOKEN', None)
         self.account_id = account_id or getattr(settings, 'METAAPI_ACCOUNT_ID', None)
         self._client: Optional[httpx.AsyncClient] = None
@@ -318,9 +321,14 @@ class MetaTraderBroker(BaseBroker):
         return self._connected
 
     @property
-    def broker_name(self) -> str:
-        """Get broker name."""
+    def name(self) -> str:
+        """Broker name identifier."""
         return "metatrader"
+
+    @property
+    def supported_markets(self) -> List[str]:
+        """List of supported market types."""
+        return ["forex", "indices", "commodities", "metals", "futures"]
 
     async def get_account_info(self) -> AccountInfo:
         """Get account information."""
@@ -358,7 +366,7 @@ class MetaTraderBroker(BaseBroker):
             positions.append(Position(
                 position_id=str(pos.get("id")),
                 symbol=pos.get("symbol", ""),
-                side=OrderSide.BUY if pos.get("type") == "POSITION_TYPE_BUY" else OrderSide.SELL,
+                side=PositionSide.LONG if pos.get("type") == "POSITION_TYPE_BUY" else PositionSide.SHORT,
                 size=Decimal(str(abs(pos.get("volume", 0)))),
                 entry_price=Decimal(str(pos.get("openPrice", 0))),
                 current_price=Decimal(str(pos.get("currentPrice", 0))),
@@ -495,7 +503,7 @@ class MetaTraderBroker(BaseBroker):
             return OrderResult(
                 order_id=str(result.get("orderId", "")),
                 symbol=symbol,
-                side=OrderSide.SELL if position.side == OrderSide.BUY else OrderSide.BUY,
+                side=OrderSide.SELL if position.side == PositionSide.LONG else OrderSide.BUY,
                 order_type=OrderType.MARKET,
                 status=OrderStatus.FILLED,
                 size=close_size,
@@ -507,7 +515,7 @@ class MetaTraderBroker(BaseBroker):
             return OrderResult(
                 order_id="",
                 symbol=symbol,
-                side=OrderSide.SELL if position.side == OrderSide.BUY else OrderSide.BUY,
+                side=OrderSide.SELL if position.side == PositionSide.LONG else OrderSide.BUY,
                 order_type=OrderType.MARKET,
                 status=OrderStatus.REJECTED,
                 size=close_size,
@@ -567,8 +575,8 @@ class MetaTraderBroker(BaseBroker):
         except Exception:
             return False
 
-    async def get_pending_orders(self) -> List[OrderResult]:
-        """Get all pending orders."""
+    async def get_open_orders(self, symbol: Optional[str] = None) -> List[OrderResult]:
+        """Get all open/pending orders."""
         if not self._connected:
             await self.connect()
 
@@ -579,6 +587,14 @@ class MetaTraderBroker(BaseBroker):
 
         orders = []
         for order in orders_data:
+            order_symbol = order.get("symbol", "")
+
+            # Filter by symbol if specified
+            if symbol:
+                broker_symbol = self._resolve_symbol(symbol)
+                if order_symbol.upper() != broker_symbol.upper():
+                    continue
+
             side = OrderSide.BUY if "BUY" in order.get("type", "") else OrderSide.SELL
 
             order_type = OrderType.MARKET
@@ -589,7 +605,8 @@ class MetaTraderBroker(BaseBroker):
 
             orders.append(OrderResult(
                 order_id=str(order.get("id")),
-                symbol=order.get("symbol", ""),
+                client_order_id=order.get("clientId"),
+                symbol=order_symbol,
                 side=side,
                 order_type=order_type,
                 status=OrderStatus.PENDING,
@@ -600,8 +617,76 @@ class MetaTraderBroker(BaseBroker):
 
         return orders
 
-    async def get_price(self, symbol: str) -> Optional[Tick]:
-        """Get current price for a symbol."""
+    async def get_order(self, order_id: str) -> Optional[OrderResult]:
+        """Get order by ID."""
+        if not self._connected:
+            await self.connect()
+
+        # Get all pending orders and search for the one with matching ID
+        orders = await self.get_open_orders()
+        for order in orders:
+            if order.order_id == order_id:
+                return order
+        return None
+
+    async def get_prices(self, symbols: List[str]) -> Dict[str, Tick]:
+        """Get current prices for multiple symbols."""
+        if not self._connected:
+            await self.connect()
+
+        prices = {}
+        for symbol in symbols:
+            try:
+                tick = await self.get_current_price(symbol)
+                prices[symbol] = tick
+            except Exception:
+                pass
+        return prices
+
+    async def get_instruments(self) -> List[Instrument]:
+        """Get list of available trading instruments."""
+        if not self._connected:
+            await self.connect()
+
+        symbols_data = await self.get_symbols()
+        instruments = []
+
+        for sym_data in symbols_data:
+            if isinstance(sym_data, dict):
+                symbol = sym_data.get("symbol", "")
+                description = sym_data.get("description", symbol)
+                digits = sym_data.get("digits", 5)
+
+                # Determine instrument type from symbol
+                instrument_type = "forex"
+                if any(x in symbol.upper() for x in ["XAU", "XAG", "GOLD", "SILVER"]):
+                    instrument_type = "metals"
+                elif any(x in symbol.upper() for x in ["OIL", "WTI", "BRENT", "GAS"]):
+                    instrument_type = "commodities"
+                elif any(x in symbol.upper() for x in ["US30", "US500", "NAS", "DAX", "FTSE", "JP225"]):
+                    instrument_type = "indices"
+
+                instruments.append(Instrument(
+                    symbol=symbol,
+                    name=description,
+                    instrument_type=instrument_type,
+                    pip_location=-digits,
+                    min_size=Decimal(str(sym_data.get("volumeMin", 0.01))),
+                    max_size=Decimal(str(sym_data.get("volumeMax", 100))) if sym_data.get("volumeMax") else None,
+                    size_increment=Decimal(str(sym_data.get("volumeStep", 0.01))),
+                ))
+            else:
+                # Simple string symbol
+                instruments.append(Instrument(
+                    symbol=str(sym_data),
+                    name=str(sym_data),
+                    instrument_type="forex",
+                ))
+
+        return instruments
+
+    async def get_current_price(self, symbol: str) -> Tick:
+        """Get current bid/ask price for symbol."""
         if not self._connected:
             await self.connect()
 
@@ -619,8 +704,8 @@ class MetaTraderBroker(BaseBroker):
                 ask=Decimal(str(price_data.get("ask", 0))),
                 timestamp=datetime.now(),
             )
-        except Exception:
-            return None
+        except Exception as e:
+            raise Exception(f"Failed to get price for {symbol}: {e}")
 
     async def stream_prices(
         self,
@@ -639,9 +724,8 @@ class MetaTraderBroker(BaseBroker):
         while True:
             for symbol in symbols:
                 try:
-                    tick = await self.get_price(symbol)
-                    if tick:
-                        yield tick
+                    tick = await self.get_current_price(symbol)
+                    yield tick
                 except Exception:
                     pass
             await asyncio.sleep(1)  # Poll every second
