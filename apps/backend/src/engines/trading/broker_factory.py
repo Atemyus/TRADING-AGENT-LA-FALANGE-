@@ -3,11 +3,14 @@ Broker Factory
 
 Factory for creating broker instances based on configuration.
 Supports multiple brokers: OANDA, MetaTrader, IG, Interactive Brokers, Alpaca.
+
+NOTE: This factory reads from os.environ directly (not Pydantic settings)
+to support dynamic credential updates without server restart.
 """
 
+import os
 from typing import Optional
 
-from src.core.config import settings
 from src.engines.trading.base_broker import BaseBroker
 from src.engines.trading.oanda_broker import OANDABroker
 from src.engines.trading.metatrader_broker import MetaTraderBroker
@@ -25,6 +28,8 @@ class BrokerFactory:
     Usage:
         broker = BrokerFactory.create("oanda")
         await broker.connect()
+
+    NOTE: Reads from os.environ directly to support dynamic credential updates.
     """
 
     _instances: dict = {}
@@ -32,13 +37,16 @@ class BrokerFactory:
     @classmethod
     def is_configured(cls, broker_type: Optional[str] = None) -> bool:
         """Check if a broker is properly configured with credentials."""
-        broker_type = (broker_type or settings.BROKER_TYPE).lower()
+        # Read from os.environ directly to get dynamically updated values
+        broker_type = (broker_type or os.environ.get("BROKER_TYPE", "none")).lower()
 
         if broker_type == "oanda":
-            return bool(settings.OANDA_API_KEY and settings.OANDA_ACCOUNT_ID)
+            api_key = os.environ.get("OANDA_API_KEY", "")
+            account_id = os.environ.get("OANDA_ACCOUNT_ID", "")
+            return bool(api_key and account_id)
         elif broker_type in ("metatrader", "mt4", "mt5"):
-            token = getattr(settings, 'METAAPI_ACCESS_TOKEN', None)
-            account = getattr(settings, 'METAAPI_ACCOUNT_ID', None)
+            token = os.environ.get("METAAPI_ACCESS_TOKEN", "")
+            account = os.environ.get("METAAPI_ACCOUNT_ID", "")
             return bool(token and account)
         elif broker_type == "none":
             return False
@@ -56,7 +64,7 @@ class BrokerFactory:
 
         Args:
             broker_type: Type of broker (oanda, metatrader, ig, ib, alpaca)
-                        If not specified, uses BROKER_TYPE from settings
+                        If not specified, uses BROKER_TYPE from environment
             **kwargs: Additional arguments passed to broker constructor
 
         Returns:
@@ -65,16 +73,20 @@ class BrokerFactory:
         Raises:
             NoBrokerConfiguredError: If broker credentials are not configured
             ValueError: If broker type is not supported
+
+        NOTE: Reads from os.environ directly to support dynamic credential updates.
         """
-        broker_type = (broker_type or settings.BROKER_TYPE).lower()
+        # Read from os.environ directly to get dynamically updated values
+        broker_type = (broker_type or os.environ.get("BROKER_TYPE", "none")).lower()
 
         # Check if broker type is "none" or not configured
         if broker_type == "none":
             raise NoBrokerConfiguredError("No broker configured. Configure broker in Settings.")
 
         if broker_type == "oanda":
-            api_key = kwargs.get("api_key", settings.OANDA_API_KEY)
-            account_id = kwargs.get("account_id", settings.OANDA_ACCOUNT_ID)
+            api_key = kwargs.get("api_key", os.environ.get("OANDA_API_KEY", ""))
+            account_id = kwargs.get("account_id", os.environ.get("OANDA_ACCOUNT_ID", ""))
+            environment = kwargs.get("environment", os.environ.get("OANDA_ENVIRONMENT", "practice"))
 
             if not api_key or not account_id:
                 raise NoBrokerConfiguredError(
@@ -84,12 +96,12 @@ class BrokerFactory:
             return OANDABroker(
                 api_key=api_key,
                 account_id=account_id,
-                environment=kwargs.get("environment", settings.OANDA_ENVIRONMENT),
+                environment=environment,
             )
 
         elif broker_type in ("metatrader", "mt4", "mt5"):
-            token = kwargs.get("access_token", getattr(settings, 'METAAPI_ACCESS_TOKEN', None))
-            account = kwargs.get("account_id", getattr(settings, 'METAAPI_ACCOUNT_ID', None))
+            token = kwargs.get("access_token", os.environ.get("METAAPI_ACCESS_TOKEN", ""))
+            account = kwargs.get("account_id", os.environ.get("METAAPI_ACCOUNT_ID", ""))
 
             if not token or not account:
                 raise NoBrokerConfiguredError(
@@ -132,7 +144,8 @@ class BrokerFactory:
         Raises:
             NoBrokerConfiguredError: If broker is not configured
         """
-        broker_type = (broker_type or settings.BROKER_TYPE).lower()
+        # Read from os.environ directly to get dynamically updated values
+        broker_type = (broker_type or os.environ.get("BROKER_TYPE", "none")).lower()
 
         if broker_type not in cls._instances:
             broker = cls.create(broker_type, **kwargs)
