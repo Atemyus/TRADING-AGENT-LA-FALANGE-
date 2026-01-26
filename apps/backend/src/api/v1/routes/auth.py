@@ -32,4 +32,4 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 async def get_current_user(token: str = Depends(oauth2_scheme)):
     """Get current authenticated user."""
     # TODO: Implement user retrieval
-    return {"username": "demo_user", "email": "demo@falange.trading"}
+    return {"username": "demo_user", "email": "demo@prometheus.trading"}

@@ -4,7 +4,7 @@ services:
   # PostgreSQL with TimescaleDB extension for time-series data
   postgres:
     image: timescale/timescaledb:latest-pg15
-    container_name: falange_postgres
+    container_name: prometheus_postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -24,7 +24,7 @@ services:
   # Redis for caching and message queue
   redis:
     image: redis:7-alpine
-    container_name: falange_redis
+    container_name: prometheus_redis
     restart: unless-stopped
     command: redis-server --appendonly yes
     ports:
@@ -42,7 +42,7 @@ services:
     build:
       context: ../apps/backend
       dockerfile: Dockerfile
-    container_name: falange_backend
+    container_name: prometheus_backend
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -66,7 +66,7 @@ services:
     build:
       context: ../apps/frontend
       dockerfile: Dockerfile
-    container_name: falange_frontend
+    container_name: prometheus_frontend
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -86,7 +86,7 @@ services:
     build:
       context: ../apps/backend
       dockerfile: Dockerfile
-    container_name: falange_celery_worker
+    container_name: prometheus_celery_worker
     restart: unless-stopped
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/trading_db
@@ -105,7 +105,7 @@ services:
     build:
       context: ../apps/backend
       dockerfile: Dockerfile
-    container_name: falange_celery_beat
+    container_name: prometheus_celery_beat
     restart: unless-stopped
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/trading_db
@@ -125,4 +125,4 @@ volumes:
 
 networks:
   default:
-    name: falange_network
+    name: prometheus_network

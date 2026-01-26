@@ -71,41 +71,100 @@ class MarketContext:
 
     def to_prompt_string(self) -> str:
         """Convert context to a string for AI prompt."""
+        # Check if we have full technical analysis attached
+        if hasattr(self, '_full_analysis') and self._full_analysis is not None:
+            return self._full_analysis.to_prompt_string()
+
+        # Fallback to basic format if no full analysis
         lines = [
+            "=" * 50,
+            "MARKET DATA SNAPSHOT",
+            "=" * 50,
+            "",
             f"Symbol: {self.symbol}",
             f"Timeframe: {self.timeframe}",
             f"Current Price: {self.current_price}",
-            f"Bid/Ask: {self.bid}/{self.ask} (Spread: {self.spread})",
+            f"Bid: {self.bid} | Ask: {self.ask} | Spread: {self.spread} pips",
+            f"Timestamp: {self.timestamp.strftime('%Y-%m-%d %H:%M:%S')} UTC",
             "",
-            "=== TECHNICAL INDICATORS ===",
         ]
 
-        for name, value in self.indicators.items():
-            if isinstance(value, dict):
-                lines.append(f"{name}:")
-                for k, v in value.items():
-                    lines.append(f"  - {k}: {v}")
-            else:
-                lines.append(f"{name}: {value}")
+        # Technical Indicators Section
+        lines.append("=" * 50)
+        lines.append("TECHNICAL INDICATORS")
+        lines.append("=" * 50)
 
-        lines.extend([
-            "",
-            f"Support Levels: {self.support_levels}",
-            f"Resistance Levels: {self.resistance_levels}",
-        ])
+        if self.indicators:
+            for name, value in self.indicators.items():
+                if isinstance(value, dict):
+                    lines.append(f"\n{name.upper()}:")
+                    for k, v in value.items():
+                        lines.append(f"  {k}: {v}")
+                else:
+                    lines.append(f"{name}: {value}")
+        else:
+            lines.append("No indicators provided - analyze based on price action")
+            lines.append("Consider: trend direction, swing highs/lows, recent momentum")
 
-        if self.news_sentiment:
-            lines.append(f"News Sentiment: {self.news_sentiment}")
-        if self.market_session:
-            lines.append(f"Market Session: {self.market_session}")
-        if self.volatility:
-            lines.append(f"Volatility: {self.volatility}")
+        # Key Levels Section
+        lines.append("")
+        lines.append("=" * 50)
+        lines.append("KEY PRICE LEVELS")
+        lines.append("=" * 50)
 
+        if self.support_levels:
+            lines.append(f"Support Levels: {', '.join(str(s) for s in self.support_levels)}")
+        else:
+            lines.append("Support: Not defined - identify from recent swing lows")
+
+        if self.resistance_levels:
+            lines.append(f"Resistance Levels: {', '.join(str(r) for r in self.resistance_levels)}")
+        else:
+            lines.append("Resistance: Not defined - identify from recent swing highs")
+
+        # Market Context Section
+        lines.append("")
+        lines.append("=" * 50)
+        lines.append("MARKET CONTEXT")
+        lines.append("=" * 50)
+
+        lines.append(f"Session: {self.market_session or 'Unknown - consider current time'}")
+        lines.append(f"Volatility: {self.volatility or 'Normal'}")
+
+        if self.news_sentiment is not None:
+            sentiment_text = "Bullish" if self.news_sentiment > 0.2 else "Bearish" if self.news_sentiment < -0.2 else "Neutral"
+            lines.append(f"News Sentiment: {self.news_sentiment:.2f} ({sentiment_text})")
+
+        if self.economic_events:
+            lines.append("\nUpcoming Economic Events:")
+            for event in self.economic_events[:3]:
+                lines.append(f"  {event}")
+
+        # Candle Data if available
+        if self.candles:
+            lines.append("")
+            lines.append("=" * 50)
+            lines.append(f"RECENT PRICE ACTION (Last {min(len(self.candles), 10)} candles)")
+            lines.append("=" * 50)
+            for candle in self.candles[-10:]:
+                lines.append(f"  O:{candle.get('open')} H:{candle.get('high')} L:{candle.get('low')} C:{candle.get('close')}")
+
+        # Open Positions if any
         if self.open_positions:
             lines.append("")
-            lines.append("=== OPEN POSITIONS ===")
+            lines.append("=" * 50)
+            lines.append("OPEN POSITIONS")
+            lines.append("=" * 50)
             for pos in self.open_positions:
                 lines.append(f"  {pos}")
+
+        lines.append("")
+        lines.append("=" * 50)
+        lines.append("ANALYSIS INSTRUCTIONS")
+        lines.append("=" * 50)
+        lines.append("Based on the above data, provide your complete technical analysis.")
+        lines.append("If data is limited, use price action analysis and market structure concepts.")
+        lines.append("Always provide specific entry, stop-loss, and take-profit levels.")
 
         return "\n".join(lines)
 

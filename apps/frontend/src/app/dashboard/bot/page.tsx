@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
+import dynamic from "next/dynamic";
 import {
   Play,
   Pause,
@@ -21,6 +22,43 @@ import {
   XCircle,
   Eye,
 } from "lucide-react";
+import { botApi } from "@/lib/api";
+
+// Dynamic import for TradingView widget
+const TradingViewWidget = dynamic(
+  () => import("@/components/charts/TradingViewWidget"),
+  { ssr: false, loading: () => <div className="h-[300px] bg-slate-900 rounded-xl animate-pulse" /> }
+);
+
+// Reusable Toggle Component
+function Toggle({
+  enabled,
+  onChange,
+  disabled = false,
+}: {
+  enabled: boolean;
+  onChange: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={enabled}
+      onClick={onChange}
+      disabled={disabled}
+      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-900 ${
+        enabled ? "bg-indigo-600" : "bg-slate-600"
+      } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+    >
+      <span
+        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+          enabled ? "translate-x-5" : "translate-x-0"
+        }`}
+      />
+    </button>
+  );
+}
 
 interface BotStatus {
   status: string;
@@ -66,6 +104,9 @@ interface BotConfig {
   trade_on_weekends: boolean;
   telegram_enabled: boolean;
   discord_enabled: boolean;
+  // TradingView AI Agent (always enabled - the only analysis method)
+  tradingview_headless: boolean;
+  tradingview_max_indicators: number;
 }
 
 const AVAILABLE_SYMBOLS = [
@@ -97,6 +138,7 @@ export default function BotControlPage() {
   const [isActioning, setIsActioning] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [previewSymbol, setPreviewSymbol] = useState<string>("EUR/USD");
 
   // Demo data for visualization
   const demoStatus: BotStatus = {
@@ -136,17 +178,35 @@ export default function BotControlPage() {
     trade_on_weekends: false,
     telegram_enabled: false,
     discord_enabled: false,
+    // TradingView AI Agent - full browser control (always enabled)
+    tradingview_headless: true,
+    tradingview_max_indicators: 3,  // TradingView Basic plan limit
   };
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch("/api/v1/bot/status");
-      if (res.ok) {
-        const data = await res.json();
-        setStatus(data);
-      } else {
-        setStatus(demoStatus);
-      }
+      const data = await botApi.getStatus();
+      // Map the API response to match our BotStatus interface
+      setStatus({
+        status: data.is_running ? 'running' : 'stopped',
+        started_at: null,
+        last_analysis_at: data.last_analysis || null,
+        config: {
+          symbols: [data.current_symbol || 'EUR/USD'],
+          analysis_mode: data.mode || 'standard',
+          min_confidence: 75,
+          risk_per_trade: 1,
+          max_positions: 3,
+        },
+        statistics: {
+          analyses_today: 0,
+          trades_today: data.trades_today || 0,
+          daily_pnl: parseFloat(data.pnl_today) || 0,
+          open_positions: 0,
+        },
+        open_positions: [],
+        recent_errors: [],
+      });
     } catch {
       setStatus(demoStatus);
     }
@@ -154,13 +214,8 @@ export default function BotControlPage() {
 
   const fetchConfig = useCallback(async () => {
     try {
-      const res = await fetch("/api/v1/bot/config");
-      if (res.ok) {
-        const data = await res.json();
-        setConfig(data);
-      } else {
-        setConfig(demoConfig);
-      }
+      const data = await botApi.getConfig() as BotConfig;
+      setConfig(data);
     } catch {
       setConfig(demoConfig);
     }
@@ -181,15 +236,23 @@ export default function BotControlPage() {
     setError(null);
 
     try {
-      const res = await fetch(`/api/v1/bot/${action}`, { method: "POST" });
-      if (res.ok) {
-        await fetchStatus();
-      } else {
-        const data = await res.json();
-        setError(data.detail || `Failed to ${action} bot`);
+      switch (action) {
+        case "start":
+          await botApi.start();
+          break;
+        case "stop":
+          await botApi.stop();
+          break;
+        case "pause":
+          await botApi.pause();
+          break;
+        case "resume":
+          await botApi.resume();
+          break;
       }
+      await fetchStatus();
     } catch (e) {
-      setError(`Failed to ${action} bot`);
+      setError(e instanceof Error ? e.message : `Failed to ${action} bot`);
     }
 
     setIsActioning(false);
@@ -197,15 +260,8 @@ export default function BotControlPage() {
 
   const handleConfigUpdate = async (updates: Partial<BotConfig>) => {
     try {
-      const res = await fetch("/api/v1/bot/config", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updates),
-      });
-
-      if (res.ok) {
-        await fetchConfig();
-      }
+      await botApi.updateConfig(updates);
+      await fetchConfig();
     } catch (e) {
       console.error("Failed to update config:", e);
     }
@@ -311,9 +367,15 @@ export default function BotControlPage() {
               </span>
             </div>
             <div>
-              <h2 className="text-xl font-semibold capitalize">
-                Bot {currentStatus.status}
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-xl font-semibold capitalize">
+                  Bot {currentStatus.status}
+                </h2>
+                <span className="px-2 py-0.5 bg-purple-500/20 text-purple-300 text-xs rounded-full flex items-center gap-1">
+                  <BarChart3 size={12} />
+                  TradingView Agent
+                </span>
+              </div>
               {currentStatus.started_at && (
                 <p className="text-sm text-slate-400">
                   Started: {new Date(currentStatus.started_at).toLocaleString()}
@@ -426,6 +488,40 @@ export default function BotControlPage() {
         </div>
       </div>
 
+      {/* Chart Preview */}
+      <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <BarChart3 size={20} />
+            Chart Preview
+          </h3>
+          <div className="flex items-center gap-2">
+            {currentConfig.symbols.map((symbol) => (
+              <button
+                key={symbol}
+                onClick={() => setPreviewSymbol(symbol)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  previewSymbol === symbol
+                    ? "bg-indigo-600 text-white"
+                    : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+                }`}
+              >
+                {symbol}
+              </button>
+            ))}
+          </div>
+        </div>
+        <TradingViewWidget
+          symbol={previewSymbol}
+          interval="15"
+          height={350}
+          theme="dark"
+          allowSymbolChange={false}
+          showToolbar={true}
+          showDrawingTools={false}
+        />
+      </div>
+
       {/* Configuration Panel */}
       {showConfig && (
         <motion.div
@@ -496,7 +592,7 @@ export default function BotControlPage() {
               </label>
               <div className="space-y-4">
                 <div>
-                  <label className="text-xs text-slate-400">
+                  <label className="text-xs text-slate-400 block mb-1">
                     Risk per Trade: {currentConfig.risk_per_trade_percent}%
                   </label>
                   <input
@@ -510,11 +606,11 @@ export default function BotControlPage() {
                         risk_per_trade_percent: parseFloat(e.target.value),
                       })
                     }
-                    className="w-full"
+                    className="range-input"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-slate-400">
+                  <label className="text-xs text-slate-400 block mb-1">
                     Max Daily Loss: {currentConfig.max_daily_loss_percent}%
                   </label>
                   <input
@@ -528,11 +624,11 @@ export default function BotControlPage() {
                         max_daily_loss_percent: parseFloat(e.target.value),
                       })
                     }
-                    className="w-full"
+                    className="range-input"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-slate-400">
+                  <label className="text-xs text-slate-400 block mb-1">
                     Max Open Positions: {currentConfig.max_open_positions}
                   </label>
                   <input
@@ -546,7 +642,7 @@ export default function BotControlPage() {
                         max_open_positions: parseInt(e.target.value),
                       })
                     }
-                    className="w-full"
+                    className="range-input"
                   />
                 </div>
               </div>
@@ -559,7 +655,7 @@ export default function BotControlPage() {
               </label>
               <div className="space-y-4">
                 <div>
-                  <label className="text-xs text-slate-400">
+                  <label className="text-xs text-slate-400 block mb-1">
                     Min Confidence: {currentConfig.min_confidence}%
                   </label>
                   <input
@@ -573,11 +669,11 @@ export default function BotControlPage() {
                         min_confidence: parseFloat(e.target.value),
                       })
                     }
-                    className="w-full"
+                    className="range-input"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-slate-400">
+                  <label className="text-xs text-slate-400 block mb-1">
                     Min Models Agree: {currentConfig.min_models_agree}
                   </label>
                   <input
@@ -591,11 +687,11 @@ export default function BotControlPage() {
                         min_models_agree: parseInt(e.target.value),
                       })
                     }
-                    className="w-full"
+                    className="range-input"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-slate-400">
+                  <label className="text-xs text-slate-400 block mb-1">
                     Min Confluence: {currentConfig.min_confluence}%
                   </label>
                   <input
@@ -609,7 +705,7 @@ export default function BotControlPage() {
                         min_confluence: parseFloat(e.target.value),
                       })
                     }
-                    className="w-full"
+                    className="range-input"
                   />
                 </div>
               </div>
@@ -622,7 +718,7 @@ export default function BotControlPage() {
               </label>
               <div className="flex items-center gap-4">
                 <div className="flex-1">
-                  <label className="text-xs text-slate-400">Start</label>
+                  <label className="text-xs text-slate-400 block mb-1">Start</label>
                   <select
                     value={currentConfig.trading_start_hour}
                     onChange={(e) =>
@@ -630,7 +726,7 @@ export default function BotControlPage() {
                         trading_start_hour: parseInt(e.target.value),
                       })
                     }
-                    className="input w-full"
+                    className="select-input"
                   >
                     {Array.from({ length: 24 }, (_, i) => (
                       <option key={i} value={i}>
@@ -640,7 +736,7 @@ export default function BotControlPage() {
                   </select>
                 </div>
                 <div className="flex-1">
-                  <label className="text-xs text-slate-400">End</label>
+                  <label className="text-xs text-slate-400 block mb-1">End</label>
                   <select
                     value={currentConfig.trading_end_hour}
                     onChange={(e) =>
@@ -648,7 +744,7 @@ export default function BotControlPage() {
                         trading_end_hour: parseInt(e.target.value),
                       })
                     }
-                    className="input w-full"
+                    className="select-input"
                   >
                     {Array.from({ length: 24 }, (_, i) => (
                       <option key={i} value={i}>
@@ -658,17 +754,66 @@ export default function BotControlPage() {
                   </select>
                 </div>
               </div>
-              <label className="flex items-center gap-2 mt-3">
-                <input
-                  type="checkbox"
-                  checked={currentConfig.trade_on_weekends}
-                  onChange={(e) =>
-                    handleConfigUpdate({ trade_on_weekends: e.target.checked })
+              <div className="flex items-center gap-3 mt-3">
+                <Toggle
+                  enabled={currentConfig.trade_on_weekends}
+                  onChange={() =>
+                    handleConfigUpdate({ trade_on_weekends: !currentConfig.trade_on_weekends })
                   }
-                  className="rounded"
                 />
                 <span className="text-sm">Trade on weekends</span>
-              </label>
+              </div>
+            </div>
+
+            {/* TradingView AI Agent - Always Enabled */}
+            <div className="md:col-span-2 p-4 bg-purple-500/10 border border-purple-500/30 rounded-lg">
+              <div className="flex items-center gap-3 mb-3">
+                <BarChart3 size={20} className="text-purple-400" />
+                <div>
+                  <label className="block text-sm font-medium">
+                    TradingView AI Agent
+                  </label>
+                  <p className="text-xs text-slate-400">
+                    AI controls real TradingView charts via browser automation
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 pt-3 border-t border-purple-500/30 space-y-4">
+                {/* TradingView Plan / Max Indicators */}
+                <div>
+                  <label className="block text-xs text-slate-400 mb-2">
+                    TradingView Plan (Max Indicators: {currentConfig.tradingview_max_indicators})
+                  </label>
+                  <select
+                    value={currentConfig.tradingview_max_indicators}
+                    onChange={(e) => handleConfigUpdate({ tradingview_max_indicators: parseInt(e.target.value) })}
+                    className="select-input text-sm"
+                  >
+                    <option value={3}>Basic (Free) - 3 indicators</option>
+                    <option value={5}>Essential - 5 indicators</option>
+                    <option value={10}>Plus - 10 indicators</option>
+                    <option value={25}>Premium - 25 indicators</option>
+                  </select>
+                </div>
+
+                {/* Headless Mode */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-sm">Headless Mode</span>
+                    <p className="text-xs text-slate-500">Run browser in background (faster)</p>
+                  </div>
+                  <Toggle
+                    enabled={currentConfig.tradingview_headless}
+                    onChange={() =>
+                      handleConfigUpdate({ tradingview_headless: !currentConfig.tradingview_headless })
+                    }
+                  />
+                </div>
+
+                <p className="text-xs text-slate-500 mt-2">
+                  AI can add indicators, draw zones/trendlines, and take screenshots on TradingView.com
+                </p>
+              </div>
             </div>
 
             {/* Notifications */}
@@ -677,28 +822,24 @@ export default function BotControlPage() {
                 Notifications
               </label>
               <div className="space-y-3">
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={currentConfig.telegram_enabled}
-                    onChange={(e) =>
-                      handleConfigUpdate({ telegram_enabled: e.target.checked })
+                <div className="flex items-center gap-3">
+                  <Toggle
+                    enabled={currentConfig.telegram_enabled}
+                    onChange={() =>
+                      handleConfigUpdate({ telegram_enabled: !currentConfig.telegram_enabled })
                     }
-                    className="rounded"
                   />
                   <span className="text-sm">Telegram notifications</span>
-                </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={currentConfig.discord_enabled}
-                    onChange={(e) =>
-                      handleConfigUpdate({ discord_enabled: e.target.checked })
+                </div>
+                <div className="flex items-center gap-3">
+                  <Toggle
+                    enabled={currentConfig.discord_enabled}
+                    onChange={() =>
+                      handleConfigUpdate({ discord_enabled: !currentConfig.discord_enabled })
                     }
-                    className="rounded"
                   />
                   <span className="text-sm">Discord notifications</span>
-                </label>
+                </div>
               </div>
             </div>
           </div>

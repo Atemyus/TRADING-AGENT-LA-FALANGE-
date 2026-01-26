@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'La Falange | Trading Platform',
+  title: 'Prometheus | AI Trading Platform',
   description: 'AI-Powered CFD/Futures Trading Platform',
   icons: {
     icon: '/favicon.ico',

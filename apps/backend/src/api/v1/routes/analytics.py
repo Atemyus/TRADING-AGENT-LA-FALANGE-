@@ -107,10 +107,25 @@ class AnalysisResponse(BaseModel):
 @router.get("/account", response_model=AccountSummary)
 async def get_account_summary():
     """Get current account summary."""
+    import os
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # Debug: Log environment variables
+    broker_type = os.environ.get("BROKER_TYPE", "not set")
+    metaapi_token = os.environ.get("METAAPI_ACCESS_TOKEN", "not set")
+    metaapi_account = os.environ.get("METAAPI_ACCOUNT_ID", "not set")
+    logger.info(f"DEBUG: BROKER_TYPE={broker_type}")
+    logger.info(f"DEBUG: METAAPI_ACCESS_TOKEN={'set' if metaapi_token != 'not set' else 'not set'}")
+    logger.info(f"DEBUG: METAAPI_ACCOUNT_ID={'set' if metaapi_account != 'not set' else 'not set'}")
+
     try:
         service = await get_trading_service()
+        logger.info("DEBUG: Trading service obtained successfully")
 
         account = await service.get_account_summary()
+        logger.info(f"DEBUG: Account summary obtained: {account.get('account_id', 'unknown')}")
+
         positions = await service.get_positions()
         orders = await service.get_open_orders()
 
@@ -129,11 +144,13 @@ async def get_account_summary():
             pending_orders=len(orders),
         )
     except NoBrokerConfiguredError as e:
+        logger.error(f"DEBUG: NoBrokerConfiguredError: {e}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(e),
         )
     except Exception as e:
+        logger.error(f"DEBUG: Exception in get_account_summary: {type(e).__name__}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e),
@@ -181,7 +198,7 @@ async def get_daily_performance(
 async def get_equity_curve(
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
-    resolution: str = Query("1h", regex="^(1m|5m|15m|1h|4h|1d)$"),
+    resolution: str = Query("1h", pattern="^(1m|5m|15m|1h|4h|1d)$"),
 ):
     """Get equity curve data."""
     # TODO: Calculate from database
@@ -191,7 +208,7 @@ async def get_equity_curve(
 @router.get("/indicators/{symbol}", response_model=IndicatorData)
 async def get_indicators(
     symbol: str,
-    timeframe: str = Query("M15", regex="^(M1|M5|M15|M30|H1|H4|D)$"),
+    timeframe: str = Query("M15", pattern="^(M1|M5|M15|M30|H1|H4|D)$"),
 ):
     """Get technical indicators for a symbol."""
     market_data = await get_market_data_service()
@@ -229,7 +246,7 @@ async def get_indicators(
 @router.get("/analysis/{symbol}", response_model=AnalysisResponse)
 async def get_analysis(
     symbol: str,
-    timeframe: str = Query("M15", regex="^(M1|M5|M15|M30|H1|H4|D)$"),
+    timeframe: str = Query("M15", pattern="^(M1|M5|M15|M30|H1|H4|D)$"),
 ):
     """Get full technical analysis for a symbol."""
     market_data = await get_market_data_service()

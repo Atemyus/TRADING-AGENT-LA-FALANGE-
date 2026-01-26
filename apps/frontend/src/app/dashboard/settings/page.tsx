@@ -19,6 +19,39 @@ import {
 } from 'lucide-react'
 import { settingsApi, type BrokerSettingsData } from '@/lib/api'
 
+// Reusable Toggle Component
+function Toggle({
+  enabled,
+  onChange,
+  color = 'primary',
+}: {
+  enabled: boolean
+  onChange: () => void
+  color?: 'primary' | 'green'
+}) {
+  const bgColor = enabled
+    ? color === 'green'
+      ? 'bg-neon-green'
+      : 'bg-primary-500'
+    : 'bg-dark-600'
+
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={enabled}
+      onClick={onChange}
+      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-dark-900 ${bgColor}`}
+    >
+      <span
+        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+          enabled ? 'translate-x-5' : 'translate-x-0'
+        }`}
+      />
+    </button>
+  )
+}
+
 // Broker configurations
 const BROKERS = [
   {
@@ -84,11 +117,21 @@ const BROKERS = [
 // AI Provider configurations
 const AI_PROVIDERS = [
   {
+    id: 'aiml',
+    name: 'AIML API',
+    icon: '🚀',
+    models: ['ChatGPT 5.2', 'Gemini 3 Pro', 'DeepSeek V3.2', 'Grok 4.1 Fast', 'Qwen Max', 'GLM 4.7'],
+    field: { key: 'AIML_API_KEY', label: 'API Key', placeholder: 'Your AIML API key' },
+    badge: 'Recommended - 6 Models',
+    description: 'Single API key for 6 top AI models via api.aimlapi.com',
+  },
+  {
     id: 'openai',
     name: 'OpenAI',
     icon: '🤖',
     models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'],
     field: { key: 'OPENAI_API_KEY', label: 'API Key', placeholder: 'sk-...' },
+    description: 'Fallback provider',
   },
   {
     id: 'anthropic',
@@ -96,6 +139,7 @@ const AI_PROVIDERS = [
     icon: '🧠',
     models: ['claude-3-5-sonnet', 'claude-3-haiku'],
     field: { key: 'ANTHROPIC_API_KEY', label: 'API Key', placeholder: 'sk-ant-...' },
+    description: 'Fallback provider',
   },
   {
     id: 'google',
@@ -103,6 +147,7 @@ const AI_PROVIDERS = [
     icon: '💎',
     models: ['gemini-1.5-flash', 'gemini-1.5-pro'],
     field: { key: 'GOOGLE_API_KEY', label: 'API Key', placeholder: 'AI...' },
+    description: 'Fallback provider',
   },
   {
     id: 'groq',
@@ -111,6 +156,7 @@ const AI_PROVIDERS = [
     models: ['llama-3.3-70b', 'llama-3.1-8b', 'mixtral-8x7b'],
     field: { key: 'GROQ_API_KEY', label: 'API Key', placeholder: 'gsk_...' },
     badge: 'Ultra Fast',
+    description: 'Fallback provider',
   },
   {
     id: 'mistral',
@@ -118,6 +164,7 @@ const AI_PROVIDERS = [
     icon: '🌪️',
     models: ['mistral-large', 'mistral-small'],
     field: { key: 'MISTRAL_API_KEY', label: 'API Key', placeholder: 'Your Mistral key' },
+    description: 'Fallback provider',
   },
   {
     id: 'ollama',
@@ -126,6 +173,7 @@ const AI_PROVIDERS = [
     models: ['llama3.1:8b', 'qwen2.5:14b', 'mistral:7b'],
     field: { key: 'OLLAMA_BASE_URL', label: 'Base URL', placeholder: 'http://localhost:11434' },
     badge: 'Free & Local',
+    description: 'Local inference - no API key needed',
   },
 ]
 
@@ -258,6 +306,96 @@ export default function SettingsPage() {
     }
   }
 
+  const handleSaveAI = async () => {
+    setSaving(true)
+    setSaveMessage('')
+
+    try {
+      // Build AI settings from provider settings
+      const aiData: Record<string, string | undefined> = {}
+
+      // Map provider IDs to API key names
+      const keyMapping: Record<string, string> = {
+        aiml: 'aiml_api_key',
+        openai: 'openai_api_key',
+        anthropic: 'anthropic_api_key',
+        google: 'google_api_key',
+        groq: 'groq_api_key',
+        mistral: 'mistral_api_key',
+      }
+
+      for (const [providerId, settings] of Object.entries(aiProviders)) {
+        if (settings.enabled && settings.key) {
+          const keyName = keyMapping[providerId]
+          if (keyName) {
+            aiData[keyName] = settings.key
+          }
+        }
+      }
+
+      const result = await settingsApi.updateAI(aiData)
+      setSaveMessage(result.message || 'AI settings saved successfully!')
+    } catch (error) {
+      setSaveMessage(error instanceof Error ? error.message : 'Failed to save AI settings')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleSaveRisk = async (riskData: {
+    maxPositions: number
+    maxDailyTrades: number
+    maxDailyLossPercent: number
+    riskPerTrade: number
+    defaultLeverage: number
+    enableTrading: boolean
+  }) => {
+    setSaving(true)
+    setSaveMessage('')
+
+    try {
+      const result = await settingsApi.updateRisk({
+        max_positions: riskData.maxPositions,
+        max_daily_trades: riskData.maxDailyTrades,
+        max_daily_loss_percent: riskData.maxDailyLossPercent,
+        risk_per_trade: riskData.riskPerTrade,
+        default_leverage: riskData.defaultLeverage,
+        trading_enabled: riskData.enableTrading,
+      })
+      setSaveMessage(result.message || 'Risk settings saved successfully!')
+    } catch (error) {
+      setSaveMessage(error instanceof Error ? error.message : 'Failed to save risk settings')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleSaveNotifications = async (notifData: {
+    telegramEnabled: boolean
+    telegramBotToken: string
+    telegramChatId: string
+    discordEnabled: boolean
+    discordWebhook: string
+  }) => {
+    setSaving(true)
+    setSaveMessage('')
+
+    try {
+      const result = await settingsApi.updateNotifications({
+        telegram_enabled: notifData.telegramEnabled,
+        telegram_bot_token: notifData.telegramBotToken || undefined,
+        telegram_chat_id: notifData.telegramChatId || undefined,
+        discord_enabled: notifData.discordEnabled,
+        discord_webhook: notifData.discordWebhook || undefined,
+      })
+      setSaveMessage(result.message || 'Notification settings saved successfully!')
+    } catch (error) {
+      setSaveMessage(error instanceof Error ? error.message : 'Failed to save notification settings')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const handleSave = async () => {
     await handleSaveBroker()
   }
@@ -339,17 +477,18 @@ export default function SettingsPage() {
                 providers={AI_PROVIDERS}
                 providerSettings={aiProviders}
                 setProviderSettings={setAiProviders}
-                onSave={handleSave}
+                onSave={handleSaveAI}
                 saving={saving}
+                saveMessage={saveMessage}
               />
             )}
 
             {activeSection === 'risk' && (
-              <RiskSettings key="risk" onSave={handleSave} saving={saving} />
+              <RiskSettings key="risk" onSave={handleSaveRisk} saving={saving} saveMessage={saveMessage} />
             )}
 
             {activeSection === 'notifications' && (
-              <NotificationSettings key="notifications" onSave={handleSave} saving={saving} />
+              <NotificationSettings key="notifications" onSave={handleSaveNotifications} saving={saving} saveMessage={saveMessage} />
             )}
           </AnimatePresence>
         </motion.div>
@@ -521,7 +660,14 @@ function BrokerSettings({
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="mt-2 text-sm text-neon-green"
+              className={`mt-2 text-sm ${
+                saveMessage.toLowerCase().includes('error') ||
+                saveMessage.toLowerCase().includes('failed') ||
+                saveMessage.toLowerCase().includes('cannot') ||
+                saveMessage.toLowerCase().includes('unavailable')
+                  ? 'text-red-400'
+                  : 'text-neon-green'
+              }`}
             >
               {saveMessage}
             </motion.div>
@@ -563,12 +709,14 @@ function AIProvidersSettings({
   setProviderSettings,
   onSave,
   saving,
+  saveMessage,
 }: {
   providers: typeof AI_PROVIDERS
   providerSettings: Record<string, { enabled: boolean; key: string }>
   setProviderSettings: (settings: Record<string, { enabled: boolean; key: string }>) => void
   onSave: () => void
   saving: boolean
+  saveMessage?: string
 }) {
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({})
 
@@ -589,10 +737,22 @@ function AIProvidersSettings({
       exit={{ opacity: 0, y: -20 }}
       className="space-y-6"
     >
+      {/* Info Banner for AIML */}
+      <div className="p-4 bg-primary-500/10 border border-primary-500/30 rounded-xl flex items-start gap-3">
+        <Info size={20} className="text-primary-400 flex-shrink-0 mt-0.5" />
+        <div>
+          <p className="text-sm text-primary-300 font-medium">Recommended: AIML API</p>
+          <p className="text-xs text-dark-400 mt-1">
+            AIML API provides access to 6 top AI models (ChatGPT 5.2, Gemini 3 Pro, DeepSeek V3.2, Grok 4.1, Qwen Max, GLM 4.7)
+            with a single API key. Get your key at <a href="https://aimlapi.com" target="_blank" rel="noopener noreferrer" className="text-primary-400 hover:underline">aimlapi.com</a>
+          </p>
+        </div>
+      </div>
+
       <div className="card p-6">
         <h2 className="text-xl font-semibold mb-2">AI Providers</h2>
         <p className="text-dark-400 mb-6">
-          Configure which AI models to use for market analysis. Enable at least one provider.
+          Configure which AI models to use for market analysis. Enable AIML API for best results.
         </p>
 
         <div className="space-y-4">
@@ -601,7 +761,9 @@ function AIProvidersSettings({
               key={provider.id}
               className={`p-4 rounded-xl border transition-all ${
                 providerSettings[provider.id]?.enabled
-                  ? 'border-primary-500/50 bg-primary-500/5'
+                  ? provider.id === 'aiml'
+                    ? 'border-neon-green/50 bg-neon-green/5'
+                    : 'border-primary-500/50 bg-primary-500/5'
                   : 'border-dark-700 bg-dark-800/50'
               }`}
             >
@@ -612,28 +774,25 @@ function AIProvidersSettings({
                     <div className="flex items-center gap-2">
                       <span className="font-semibold">{provider.name}</span>
                       {provider.badge && (
-                        <span className="text-xs px-2 py-0.5 bg-neon-green/20 text-neon-green rounded-full">
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${
+                          provider.id === 'aiml'
+                            ? 'bg-neon-green/20 text-neon-green'
+                            : 'bg-primary-500/20 text-primary-400'
+                        }`}>
                           {provider.badge}
                         </span>
                       )}
                     </div>
                     <p className="text-xs text-dark-400">
-                      Models: {provider.models.join(', ')}
+                      {provider.description || `Models: ${provider.models.join(', ')}`}
                     </p>
                   </div>
                 </div>
-                <button
-                  onClick={() => toggleProvider(provider.id)}
-                  className={`relative w-12 h-6 rounded-full transition-colors ${
-                    providerSettings[provider.id]?.enabled ? 'bg-primary-500' : 'bg-dark-600'
-                  }`}
-                >
-                  <span
-                    className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
-                      providerSettings[provider.id]?.enabled ? 'translate-x-7' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
+                <Toggle
+                  enabled={providerSettings[provider.id]?.enabled || false}
+                  onChange={() => toggleProvider(provider.id)}
+                  color={provider.id === 'aiml' ? 'green' : 'primary'}
+                />
               </div>
 
               {providerSettings[provider.id]?.enabled && (
@@ -642,6 +801,11 @@ function AIProvidersSettings({
                   animate={{ opacity: 1, height: 'auto' }}
                   className="mt-3"
                 >
+                  {provider.id === 'aiml' && (
+                    <p className="text-xs text-dark-400 mb-2">
+                      Models: {provider.models.join(', ')}
+                    </p>
+                  )}
                   <label className="block text-sm font-medium mb-2">{provider.field.label}</label>
                   <div className="relative">
                     <input
@@ -673,6 +837,24 @@ function AIProvidersSettings({
           ))}
         </div>
 
+        {/* Save Status */}
+        {saveMessage && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className={`mt-4 text-sm ${
+              saveMessage.toLowerCase().includes('error') ||
+              saveMessage.toLowerCase().includes('failed') ||
+              saveMessage.toLowerCase().includes('cannot') ||
+              saveMessage.toLowerCase().includes('unavailable')
+                ? 'text-red-400'
+                : 'text-neon-green'
+            }`}
+          >
+            {saveMessage}
+          </motion.div>
+        )}
+
         <div className="mt-6">
           <button
             onClick={onSave}
@@ -689,7 +871,22 @@ function AIProvidersSettings({
 }
 
 // Risk Settings Component
-function RiskSettings({ onSave, saving }: { onSave: () => void; saving: boolean }) {
+function RiskSettings({
+  onSave,
+  saving,
+  saveMessage,
+}: {
+  onSave: (data: {
+    maxPositions: number
+    maxDailyTrades: number
+    maxDailyLossPercent: number
+    riskPerTrade: number
+    defaultLeverage: number
+    enableTrading: boolean
+  }) => void
+  saving: boolean
+  saveMessage?: string
+}) {
   const [settings, setSettings] = useState({
     maxPositions: 5,
     maxDailyTrades: 50,
@@ -714,7 +911,7 @@ function RiskSettings({ onSave, saving }: { onSave: () => void; saving: boolean 
           <input
             type="number"
             value={settings.maxPositions}
-            onChange={(e) => setSettings({ ...settings, maxPositions: parseInt(e.target.value) })}
+            onChange={(e) => setSettings({ ...settings, maxPositions: parseInt(e.target.value) || 0 })}
             className="input"
           />
         </div>
@@ -723,7 +920,7 @@ function RiskSettings({ onSave, saving }: { onSave: () => void; saving: boolean 
           <input
             type="number"
             value={settings.maxDailyTrades}
-            onChange={(e) => setSettings({ ...settings, maxDailyTrades: parseInt(e.target.value) })}
+            onChange={(e) => setSettings({ ...settings, maxDailyTrades: parseInt(e.target.value) || 0 })}
             className="input"
           />
         </div>
@@ -732,7 +929,7 @@ function RiskSettings({ onSave, saving }: { onSave: () => void; saving: boolean 
           <input
             type="number"
             value={settings.maxDailyLossPercent}
-            onChange={(e) => setSettings({ ...settings, maxDailyLossPercent: parseFloat(e.target.value) })}
+            onChange={(e) => setSettings({ ...settings, maxDailyLossPercent: parseFloat(e.target.value) || 0 })}
             className="input"
           />
         </div>
@@ -741,7 +938,7 @@ function RiskSettings({ onSave, saving }: { onSave: () => void; saving: boolean 
           <input
             type="number"
             value={settings.riskPerTrade}
-            onChange={(e) => setSettings({ ...settings, riskPerTrade: parseFloat(e.target.value) })}
+            onChange={(e) => setSettings({ ...settings, riskPerTrade: parseFloat(e.target.value) || 0 })}
             className="input"
           />
         </div>
@@ -750,29 +947,40 @@ function RiskSettings({ onSave, saving }: { onSave: () => void; saving: boolean 
           <input
             type="number"
             value={settings.defaultLeverage}
-            onChange={(e) => setSettings({ ...settings, defaultLeverage: parseInt(e.target.value) })}
+            onChange={(e) => setSettings({ ...settings, defaultLeverage: parseInt(e.target.value) || 1 })}
             className="input"
           />
         </div>
         <div className="flex items-center gap-3 self-end">
-          <button
-            onClick={() => setSettings({ ...settings, enableTrading: !settings.enableTrading })}
-            className={`relative w-12 h-6 rounded-full transition-colors ${
-              settings.enableTrading ? 'bg-neon-green' : 'bg-dark-600'
-            }`}
-          >
-            <span
-              className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
-                settings.enableTrading ? 'translate-x-7' : 'translate-x-1'
-              }`}
-            />
-          </button>
+          <Toggle
+            enabled={settings.enableTrading}
+            onChange={() => setSettings({ ...settings, enableTrading: !settings.enableTrading })}
+            color="green"
+          />
           <label className="text-sm font-medium">Enable Live Trading</label>
         </div>
       </div>
 
+      {/* Save Status */}
+      {saveMessage && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className={`mt-4 text-sm ${
+            saveMessage.toLowerCase().includes('error') ||
+            saveMessage.toLowerCase().includes('failed') ||
+            saveMessage.toLowerCase().includes('cannot') ||
+            saveMessage.toLowerCase().includes('unavailable')
+              ? 'text-red-400'
+              : 'text-neon-green'
+          }`}
+        >
+          {saveMessage}
+        </motion.div>
+      )}
+
       <div className="mt-6">
-        <button onClick={onSave} disabled={saving} className="btn-primary flex items-center gap-2">
+        <button onClick={() => onSave(settings)} disabled={saving} className="btn-primary flex items-center gap-2">
           {saving ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
           Save Risk Settings
         </button>
@@ -782,15 +990,27 @@ function RiskSettings({ onSave, saving }: { onSave: () => void; saving: boolean 
 }
 
 // Notification Settings Component
-function NotificationSettings({ onSave, saving }: { onSave: () => void; saving: boolean }) {
+function NotificationSettings({
+  onSave,
+  saving,
+  saveMessage,
+}: {
+  onSave: (data: {
+    telegramEnabled: boolean
+    telegramBotToken: string
+    telegramChatId: string
+    discordEnabled: boolean
+    discordWebhook: string
+  }) => void
+  saving: boolean
+  saveMessage?: string
+}) {
   const [settings, setSettings] = useState({
     telegramEnabled: false,
     telegramBotToken: '',
     telegramChatId: '',
     discordEnabled: false,
     discordWebhook: '',
-    emailEnabled: false,
-    email: '',
   })
 
   return (
@@ -810,18 +1030,10 @@ function NotificationSettings({ onSave, saving }: { onSave: () => void; saving: 
               <p className="text-sm text-dark-400">Get notifications via Telegram bot</p>
             </div>
           </div>
-          <button
-            onClick={() => setSettings({ ...settings, telegramEnabled: !settings.telegramEnabled })}
-            className={`relative w-12 h-6 rounded-full transition-colors ${
-              settings.telegramEnabled ? 'bg-primary-500' : 'bg-dark-600'
-            }`}
-          >
-            <span
-              className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
-                settings.telegramEnabled ? 'translate-x-7' : 'translate-x-1'
-              }`}
-            />
-          </button>
+          <Toggle
+            enabled={settings.telegramEnabled}
+            onChange={() => setSettings({ ...settings, telegramEnabled: !settings.telegramEnabled })}
+          />
         </div>
         {settings.telegramEnabled && (
           <motion.div
@@ -863,18 +1075,10 @@ function NotificationSettings({ onSave, saving }: { onSave: () => void; saving: 
               <p className="text-sm text-dark-400">Get notifications via Discord webhook</p>
             </div>
           </div>
-          <button
-            onClick={() => setSettings({ ...settings, discordEnabled: !settings.discordEnabled })}
-            className={`relative w-12 h-6 rounded-full transition-colors ${
-              settings.discordEnabled ? 'bg-primary-500' : 'bg-dark-600'
-            }`}
-          >
-            <span
-              className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
-                settings.discordEnabled ? 'translate-x-7' : 'translate-x-1'
-              }`}
-            />
-          </button>
+          <Toggle
+            enabled={settings.discordEnabled}
+            onChange={() => setSettings({ ...settings, discordEnabled: !settings.discordEnabled })}
+          />
         </div>
         {settings.discordEnabled && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
@@ -890,7 +1094,25 @@ function NotificationSettings({ onSave, saving }: { onSave: () => void; saving: 
         )}
       </div>
 
-      <button onClick={onSave} disabled={saving} className="btn-primary flex items-center gap-2">
+      {/* Save Status */}
+      {saveMessage && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className={`text-sm ${
+            saveMessage.toLowerCase().includes('error') ||
+            saveMessage.toLowerCase().includes('failed') ||
+            saveMessage.toLowerCase().includes('cannot') ||
+            saveMessage.toLowerCase().includes('unavailable')
+              ? 'text-red-400'
+              : 'text-neon-green'
+          }`}
+        >
+          {saveMessage}
+        </motion.div>
+      )}
+
+      <button onClick={() => onSave(settings)} disabled={saving} className="btn-primary flex items-center gap-2">
         {saving ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
         Save Notification Settings
       </button>

@@ -3,7 +3,34 @@
  * Connects to real backend endpoints for live data
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+// Dynamically determine API URL based on current page location
+function getApiBaseUrl(): string {
+  // First check environment variable
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+
+  // If running in browser, derive from current location
+  if (typeof window !== 'undefined') {
+    const protocol = window.location.protocol;
+    const host = window.location.host;
+
+    // If we're on localhost with a specific port (like 3000 for Next.js dev),
+    // assume backend is on port 8000
+    if (host.includes('localhost') || host.includes('127.0.0.1')) {
+      const hostname = window.location.hostname;
+      return `http://${hostname}:8000`;
+    }
+
+    // For production (Railway, etc.), use same host
+    return `${protocol}//${host}`;
+  }
+
+  // Fallback for SSR
+  return 'http://localhost:8000';
+}
+
+const API_BASE_URL = getApiBaseUrl()
 
 // ============ Types ============
 
@@ -130,6 +157,65 @@ export interface BotStatus {
   uptime_seconds: number
 }
 
+// TradingView Agent Types
+export interface TimeframeConsensus {
+  direction: string
+  confidence: number
+  models_agree: number
+  total_models: number
+}
+
+export interface TradingViewModelResult {
+  model: string
+  model_display_name: string
+  timeframe: string
+  analysis_style: string
+  direction: string
+  confidence: number
+  indicators_used: string[]
+  drawings_made: Array<Record<string, unknown>>
+  reasoning: string
+  key_observations: string[]
+  entry_price: number | null
+  stop_loss: number | null
+  take_profit: number[]
+  break_even_trigger: number | null
+  trailing_stop_pips: number | null
+  error: string | null
+}
+
+export interface TradingViewAgentResult {
+  direction: string
+  confidence: number
+  is_strong_signal: boolean
+  models_agree: number
+  total_models: number
+  mode: string
+  timeframes_analyzed: string[]
+  models_used: string[]
+  timeframe_alignment: number
+  is_aligned: boolean
+  timeframe_consensus: Record<string, TimeframeConsensus>
+  entry_price: number | null
+  stop_loss: number | null
+  take_profit: number | null
+  break_even_trigger: number | null
+  trailing_stop_pips: number | null
+  analysis_styles_used: string[]
+  indicators_used: string[]
+  key_observations: string[]
+  combined_reasoning: string
+  vote_breakdown: Record<string, number>
+  individual_results: TradingViewModelResult[]
+}
+
+export interface TradingViewAgentStatus {
+  available: boolean
+  modes: Record<string, { timeframes: string[], models: number }>
+  tradingview_plans: Record<string, { max_indicators: number, price: string }>
+  ai_models: Array<{ key: string, name: string, style: string }>
+}
+
 // ============ API Client ============
 
 async function fetchApi<T>(
@@ -138,17 +224,40 @@ async function fetchApi<T>(
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`
 
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-  })
+  let response: Response
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    })
+  } catch (networkError) {
+    // Network error (server down, CORS, etc.)
+    throw new Error('Cannot connect to server. Please check if the backend is running.')
+  }
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
-    throw new Error(error.detail || `API error: ${response.status}`)
+    // Handle HTTP errors
+    let errorMessage = `Server error: ${response.status}`
+
+    if (response.status === 503) {
+      errorMessage = 'Server is temporarily unavailable. Please try again later.'
+    } else if (response.status === 502) {
+      errorMessage = 'Server is starting up. Please wait a moment and try again.'
+    } else if (response.status === 500) {
+      errorMessage = 'Internal server error. Please check the backend logs.'
+    } else {
+      try {
+        const error = await response.json()
+        errorMessage = error.detail || error.message || errorMessage
+      } catch {
+        // Response is not JSON, use default message
+      }
+    }
+
+    throw new Error(errorMessage)
   }
 
   return response.json()
@@ -198,6 +307,37 @@ export const aiApi = {
    */
   healthCheck: async () => {
     return fetchApi('/api/v1/ai/health')
+  },
+
+  /**
+   * Run TradingView Agent analysis with real browser automation
+   * AI models interact with TradingView.com directly
+   */
+  tradingViewAgent: async (
+    symbol: string,
+    tvSymbol: string | null = null,
+    mode: 'quick' | 'standard' | 'premium' | 'ultra' = 'standard',
+    maxIndicators: number = 3,
+    headless: boolean = true
+  ): Promise<TradingViewAgentResult> => {
+    // Use tvSymbol if provided, otherwise convert to basic format
+    const tradingViewSymbol = tvSymbol || symbol.replace('/', '').replace('_', '')
+    return fetchApi('/api/v1/ai/tradingview-agent', {
+      method: 'POST',
+      body: JSON.stringify({
+        symbol: tradingViewSymbol,
+        mode,
+        max_indicators: maxIndicators,
+        headless,
+      }),
+    })
+  },
+
+  /**
+   * Get TradingView Agent status and available configurations
+   */
+  getTradingViewAgentStatus: async (): Promise<TradingViewAgentStatus> => {
+    return fetchApi('/api/v1/ai/tradingview-agent/status')
   },
 }
 
@@ -344,6 +484,24 @@ export const botApi = {
    */
   stop: async () => {
     return fetchApi('/api/v1/bot/stop', {
+      method: 'POST',
+    })
+  },
+
+  /**
+   * Pause the trading bot
+   */
+  pause: async () => {
+    return fetchApi('/api/v1/bot/pause', {
+      method: 'POST',
+    })
+  },
+
+  /**
+   * Resume the trading bot
+   */
+  resume: async () => {
+    return fetchApi('/api/v1/bot/resume', {
       method: 'POST',
     })
   },

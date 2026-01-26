@@ -21,12 +21,14 @@ from src.core.config import settings
 from src.engines.trading.base_broker import (
     AccountInfo,
     BaseBroker,
+    Instrument,
     OrderRequest,
     OrderResult,
     OrderSide,
     OrderStatus,
     OrderType,
     Position,
+    PositionSide,
     Tick,
 )
 
@@ -47,8 +49,115 @@ class MetaTraderBroker(BaseBroker):
     - And many more...
     """
 
-    BASE_URL = "https://mt-client-api-v1.agiliumtrade.agiliumtrade.ai"
+    # Provisioning API is global, Client API depends on account region
     PROVISIONING_URL = "https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai"
+
+    # Common symbol variations across brokers
+    SYMBOL_ALIASES = {
+        # ============ FOREX MAJORS ============
+        'EUR_USD': ['EURUSD', 'EURUSDm', 'EURUSD.', 'EURUSD-ECN', 'EURUSDpro', 'EURUSD.ecn'],
+        'GBP_USD': ['GBPUSD', 'GBPUSDm', 'GBPUSD.', 'GBPUSD-ECN', 'GBPUSDpro'],
+        'USD_JPY': ['USDJPY', 'USDJPYm', 'USDJPY.', 'USDJPY-ECN', 'USDJPYpro'],
+        'USD_CHF': ['USDCHF', 'USDCHFm', 'USDCHF.', 'USDCHF-ECN', 'USDCHFpro'],
+        'AUD_USD': ['AUDUSD', 'AUDUSDm', 'AUDUSD.', 'AUDUSD-ECN', 'AUDUSDpro'],
+        'USD_CAD': ['USDCAD', 'USDCADm', 'USDCAD.', 'USDCAD-ECN', 'USDCADpro'],
+        'NZD_USD': ['NZDUSD', 'NZDUSDm', 'NZDUSD.', 'NZDUSD-ECN', 'NZDUSDpro'],
+
+        # ============ FOREX CROSS PAIRS ============
+        'EUR_GBP': ['EURGBP', 'EURGBPm', 'EURGBP.', 'EURGBP-ECN'],
+        'EUR_JPY': ['EURJPY', 'EURJPYm', 'EURJPY.', 'EURJPY-ECN'],
+        'GBP_JPY': ['GBPJPY', 'GBPJPYm', 'GBPJPY.', 'GBPJPY-ECN'],
+        'EUR_CHF': ['EURCHF', 'EURCHFm', 'EURCHF.', 'EURCHF-ECN'],
+        'EUR_AUD': ['EURAUD', 'EURAUDm', 'EURAUD.', 'EURAUD-ECN'],
+        'EUR_CAD': ['EURCAD', 'EURCADm', 'EURCAD.', 'EURCAD-ECN'],
+        'GBP_CHF': ['GBPCHF', 'GBPCHFm', 'GBPCHF.', 'GBPCHF-ECN'],
+        'GBP_AUD': ['GBPAUD', 'GBPAUDm', 'GBPAUD.', 'GBPAUD-ECN'],
+        'AUD_JPY': ['AUDJPY', 'AUDJPYm', 'AUDJPY.', 'AUDJPY-ECN'],
+        'AUD_CAD': ['AUDCAD', 'AUDCADm', 'AUDCAD.', 'AUDCAD-ECN'],
+        'AUD_NZD': ['AUDNZD', 'AUDNZDm', 'AUDNZD.', 'AUDNZD-ECN'],
+        'CAD_JPY': ['CADJPY', 'CADJPYm', 'CADJPY.', 'CADJPY-ECN'],
+        'NZD_JPY': ['NZDJPY', 'NZDJPYm', 'NZDJPY.', 'NZDJPY-ECN'],
+        'CHF_JPY': ['CHFJPY', 'CHFJPYm', 'CHFJPY.', 'CHFJPY-ECN'],
+
+        # ============ FOREX EXOTIC PAIRS ============
+        'EUR_TRY': ['EURTRY', 'EURTRYm', 'EURTRY.', 'EURTRY-ECN'],
+        'USD_TRY': ['USDTRY', 'USDTRYm', 'USDTRY.', 'USDTRY-ECN'],
+        'USD_MXN': ['USDMXN', 'USDMXNm', 'USDMXN.', 'USDMXN-ECN'],
+        'USD_ZAR': ['USDZAR', 'USDZARm', 'USDZAR.', 'USDZAR-ECN'],
+        'USD_SGD': ['USDSGD', 'USDSGDm', 'USDSGD.', 'USDSGD-ECN'],
+        'USD_HKD': ['USDHKD', 'USDHKDm', 'USDHKD.', 'USDHKD-ECN'],
+        'USD_NOK': ['USDNOK', 'USDNOKm', 'USDNOK.', 'USDNOK-ECN'],
+        'USD_SEK': ['USDSEK', 'USDSEKm', 'USDSEK.', 'USDSEK-ECN'],
+        'USD_DKK': ['USDDKK', 'USDDKKm', 'USDDKK.', 'USDDKK-ECN'],
+        'USD_PLN': ['USDPLN', 'USDPLNm', 'USDPLN.', 'USDPLN-ECN'],
+
+        # ============ METALS ============
+        'XAU_USD': ['XAUUSD', 'XAUUSDm', 'GOLD', 'GOLDm', 'GOLD.', 'XAUUSD.', 'XAUUSD-ECN'],
+        'XAG_USD': ['XAGUSD', 'XAGUSDm', 'SILVER', 'SILVERm', 'SILVER.', 'XAGUSD.'],
+        'XPT_USD': ['XPTUSD', 'XPTUSDm', 'PLATINUM', 'XPTUSD.', 'PLATINUMm'],
+        'XPD_USD': ['XPDUSD', 'XPDUSDm', 'PALLADIUM', 'XPDUSD.', 'PALLADIUMm'],
+        'XCU_USD': ['XCUUSD', 'COPPER', 'COPPERm', 'COPPER.', 'HG', 'HGm'],
+
+        # ============ ENERGY / OIL ============
+        'WTI_USD': ['USOUSD', 'USOUSDm', 'WTIUSD', 'WTI', 'USOIL', 'USOILm', 'XTIUSD', 'CL', 'CLm'],
+        'BRENT_USD': ['UKOUSD', 'UKOUSDm', 'BRENT', 'BRENTm', 'UKOIL', 'UKOILm', 'XBRUSD'],
+        'NATGAS_USD': ['NATGAS', 'NATGASm', 'NATGAS.', 'NGAS', 'NGASm', 'NG', 'NGm', 'XNGUSD'],
+
+        # ============ AGRICULTURAL COMMODITIES ============
+        'WHEAT_USD': ['WHEAT', 'WHEATm', 'WHEAT.', 'ZW', 'ZWm'],
+        'CORN_USD': ['CORN', 'CORNm', 'CORN.', 'ZC', 'ZCm'],
+        'SOYBEAN_USD': ['SOYBEAN', 'SOYBEANm', 'SOYBEAN.', 'SOYA', 'SOYAm', 'ZS', 'ZSm'],
+        'COFFEE_USD': ['COFFEE', 'COFFEEm', 'COFFEE.', 'KC', 'KCm'],
+        'SUGAR_USD': ['SUGAR', 'SUGARm', 'SUGAR.', 'SB', 'SBm'],
+        'COCOA_USD': ['COCOA', 'COCOAm', 'COCOA.', 'CC', 'CCm'],
+        'COTTON_USD': ['COTTON', 'COTTONm', 'COTTON.', 'CT', 'CTm'],
+
+        # ============ US INDICES ============
+        'US30': ['US30', 'US30m', 'US30.', 'DJ30', 'DJI30', 'DOW30', 'DJIA'],
+        'US500': ['US500', 'US500m', 'US500.', 'SPX500', 'SP500', 'SPX', 'SPXm'],
+        'NAS100': ['NAS100', 'NAS100m', 'NAS100.', 'USTEC', 'NDX100', 'NASDAQ', 'NDX', 'NDXm'],
+        'US2000': ['US2000', 'US2000m', 'US2000.', 'RUSSELL', 'RUT', 'RUTm', 'RTY'],
+
+        # ============ EUROPEAN INDICES ============
+        'DE40': ['DE40', 'DE40m', 'DE40.', 'GER40', 'GER30', 'DAX40', 'DAX', 'DAXm'],
+        'UK100': ['UK100', 'UK100m', 'UK100.', 'FTSE100', 'FTSE', 'FTSEm'],
+        'FR40': ['FR40', 'FR40m', 'FR40.', 'FRA40', 'CAC40', 'CAC', 'CACm'],
+        'EU50': ['EU50', 'EU50m', 'EU50.', 'EUSTX50', 'STOXX50', 'SX5E'],
+        'ES35': ['ES35', 'ES35m', 'ES35.', 'ESP35', 'IBEX35', 'IBEX', 'IBEXm'],
+        'IT40': ['IT40', 'IT40m', 'IT40.', 'ITA40', 'FTMIB', 'MIB', 'MIBm'],
+
+        # ============ ASIAN INDICES ============
+        'JP225': ['JP225', 'JP225m', 'JP225.', 'JPN225', 'NIKKEI', 'NI225', 'NIKKEIm'],
+        'HK50': ['HK50', 'HK50m', 'HK50.', 'HSI', 'HSIm', 'HANGSENG'],
+        'AU200': ['AU200', 'AU200m', 'AU200.', 'AUS200', 'ASX200', 'ASX', 'ASXm'],
+        'CN50': ['CN50', 'CN50m', 'CN50.', 'CHINA50', 'CHINAA50', 'A50', 'A50m'],
+
+        # ============ OTHER INDICES ============
+        'VIX': ['VIX', 'VIXm', 'VIX.', 'VOLATILITY', 'UVXY'],
+
+        # ============ INDEX FUTURES ============
+        'ES1': ['ES', 'ESm', 'ES1', 'ES1!', 'SP500FUT'],
+        'NQ1': ['NQ', 'NQm', 'NQ1', 'NQ1!', 'NASDAQFUT'],
+        'YM1': ['YM', 'YMm', 'YM1', 'YM1!', 'DOWFUT'],
+        'RTY1': ['RTY', 'RTYm', 'RTY1', 'RTY1!', 'RUSSELLFUT'],
+
+        # ============ METAL FUTURES ============
+        'GC1': ['GC', 'GCm', 'GC1', 'GC1!', 'GOLDFUT'],
+        'SI1': ['SI', 'SIm', 'SI1', 'SI1!', 'SILVERFUT'],
+
+        # ============ ENERGY FUTURES ============
+        'CL1': ['CL', 'CLm', 'CL1', 'CL1!', 'CRUDEOIL', 'OILFUT'],
+        'NG1': ['NG', 'NGm', 'NG1', 'NG1!', 'NATGASFUT'],
+
+        # ============ CURRENCY FUTURES ============
+        '6E1': ['6E', '6Em', '6E1', '6E1!', 'EUROFUT'],
+        '6B1': ['6B', '6Bm', '6B1', '6B1!', 'GBPFUT'],
+        '6J1': ['6J', '6Jm', '6J1', '6J1!', 'JPYFUT'],
+
+        # ============ BOND FUTURES ============
+        'ZB1': ['ZB', 'ZBm', 'ZB1', 'ZB1!', 'TBOND'],
+        'ZN1': ['ZN', 'ZNm', 'ZN1', 'ZN1!', 'TNOTE'],
+    }
 
     def __init__(
         self,
@@ -62,21 +171,28 @@ class MetaTraderBroker(BaseBroker):
             access_token: MetaApi access token
             account_id: MetaApi account ID (not MT4/MT5 login)
         """
+        super().__init__()
         self.access_token = access_token or getattr(settings, 'METAAPI_ACCESS_TOKEN', None)
         self.account_id = account_id or getattr(settings, 'METAAPI_ACCOUNT_ID', None)
         self._client: Optional[httpx.AsyncClient] = None
         self._account_info: Optional[Dict[str, Any]] = None
         self._connected = False
+        self._symbol_map: Dict[str, str] = {}  # Maps our symbols to broker symbols
+        self._broker_symbols: List[str] = []  # List of available broker symbols
+        self._client_api_url: Optional[str] = None  # Set during connect based on region
 
     async def _ensure_client(self) -> None:
         """Ensure HTTP client is initialized."""
         if self._client is None:
+            # Disable SSL verification for cloud environments (Railway, etc.)
+            # MetaApi is a trusted external service
             self._client = httpx.AsyncClient(
                 timeout=30.0,
                 headers={
                     "auth-token": self.access_token,
                     "Content-Type": "application/json",
                 },
+                verify=False,
             )
 
     async def _request(
@@ -89,7 +205,9 @@ class MetaTraderBroker(BaseBroker):
         """Make API request."""
         await self._ensure_client()
 
-        url = f"{base_url or self.BASE_URL}{endpoint}"
+        # Use provided base_url, or the client API URL (set during connect), or fallback
+        effective_base_url = base_url or self._client_api_url or "https://mt-client-api-v1.vint-hill.agiliumtrade.ai"
+        url = f"{effective_base_url}{endpoint}"
         response = await self._client.request(method, url, **kwargs)
 
         if response.status_code >= 400:
@@ -100,6 +218,59 @@ class MetaTraderBroker(BaseBroker):
             return {}
 
         return response.json()
+
+    def _resolve_symbol(self, symbol: str) -> str:
+        """
+        Resolve our internal symbol to broker's symbol format.
+
+        Examples:
+            EUR_USD -> EURUSD (or EURUSDm, EURUSD., etc. depending on broker)
+            XAU_USD -> GOLD (or XAUUSD, GOLDm, etc.)
+        """
+        # If already mapped, return the mapped symbol
+        if symbol in self._symbol_map:
+            return self._symbol_map[symbol]
+
+        # Try to find a match in available broker symbols
+        if self._broker_symbols:
+            # Normalize our symbol (remove underscore)
+            base_symbol = symbol.replace('_', '')
+
+            # First, check exact match (case insensitive)
+            for broker_sym in self._broker_symbols:
+                if broker_sym.upper() == base_symbol.upper():
+                    self._symbol_map[symbol] = broker_sym
+                    return broker_sym
+
+            # Check known aliases
+            aliases = self.SYMBOL_ALIASES.get(symbol, [])
+            for alias in aliases:
+                for broker_sym in self._broker_symbols:
+                    if broker_sym.upper() == alias.upper():
+                        self._symbol_map[symbol] = broker_sym
+                        return broker_sym
+
+            # Fuzzy match - symbol starts with base symbol
+            for broker_sym in self._broker_symbols:
+                if broker_sym.upper().startswith(base_symbol.upper()):
+                    self._symbol_map[symbol] = broker_sym
+                    return broker_sym
+
+        # Fallback: return without underscore
+        return symbol.replace('_', '')
+
+    async def _build_symbol_map(self) -> None:
+        """Build symbol mapping from broker's available symbols."""
+        try:
+            symbols = await self.get_symbols()
+            self._broker_symbols = [s.get('symbol', s) if isinstance(s, dict) else s for s in symbols]
+
+            # Pre-map common symbols
+            for our_symbol in self.SYMBOL_ALIASES.keys():
+                self._resolve_symbol(our_symbol)
+
+        except Exception as e:
+            print(f"Warning: Could not build symbol map: {e}")
 
     async def connect(self) -> None:
         """Connect to MetaTrader account via MetaApi."""
@@ -112,12 +283,16 @@ class MetaTraderBroker(BaseBroker):
 
         # Get account info to verify connection
         try:
-            # First, ensure account is deployed
+            # First, get account details including region
             account = await self._request(
                 "GET",
                 f"/users/current/accounts/{self.account_id}",
                 base_url=self.PROVISIONING_URL,
             )
+
+            # Get the region from account info to construct correct client API URL
+            region = account.get("region", "vint-hill")
+            self._client_api_url = f"https://mt-client-api-v1.{region}.agiliumtrade.ai"
 
             if account.get("state") != "DEPLOYED":
                 # Deploy the account if not deployed
@@ -129,13 +304,24 @@ class MetaTraderBroker(BaseBroker):
                 # Wait for deployment
                 await asyncio.sleep(5)
 
-            # Get account information
+                # Re-fetch account info after deployment
+                account = await self._request(
+                    "GET",
+                    f"/users/current/accounts/{self.account_id}",
+                    base_url=self.PROVISIONING_URL,
+                )
+
+            # Get account information from client API
             self._account_info = await self._request(
                 "GET",
                 f"/users/current/accounts/{self.account_id}/account-information",
+                base_url=self._client_api_url,
             )
 
             self._connected = True
+
+            # Build symbol mapping after connection
+            await self._build_symbol_map()
 
         except Exception as e:
             raise Exception(f"Failed to connect to MetaTrader: {e}")
@@ -153,9 +339,14 @@ class MetaTraderBroker(BaseBroker):
         return self._connected
 
     @property
-    def broker_name(self) -> str:
-        """Get broker name."""
+    def name(self) -> str:
+        """Broker name identifier."""
         return "metatrader"
+
+    @property
+    def supported_markets(self) -> List[str]:
+        """List of supported market types."""
+        return ["forex", "indices", "commodities", "metals", "futures"]
 
     async def get_account_info(self) -> AccountInfo:
         """Get account information."""
@@ -174,6 +365,7 @@ class MetaTraderBroker(BaseBroker):
             margin_used=Decimal(str(info.get("margin", 0))),
             margin_available=Decimal(str(info.get("freeMargin", 0))),
             unrealized_pnl=Decimal(str(info.get("equity", 0) - info.get("balance", 0))),
+            realized_pnl_today=Decimal("0"),  # MetaApi doesn't provide daily P&L directly
             currency=info.get("currency", "USD"),
             leverage=info.get("leverage", 1),
         )
@@ -193,7 +385,7 @@ class MetaTraderBroker(BaseBroker):
             positions.append(Position(
                 position_id=str(pos.get("id")),
                 symbol=pos.get("symbol", ""),
-                side=OrderSide.BUY if pos.get("type") == "POSITION_TYPE_BUY" else OrderSide.SELL,
+                side=PositionSide.LONG if pos.get("type") == "POSITION_TYPE_BUY" else PositionSide.SHORT,
                 size=Decimal(str(abs(pos.get("volume", 0)))),
                 entry_price=Decimal(str(pos.get("openPrice", 0))),
                 current_price=Decimal(str(pos.get("currentPrice", 0))),
@@ -208,9 +400,11 @@ class MetaTraderBroker(BaseBroker):
 
     async def get_position(self, symbol: str) -> Optional[Position]:
         """Get position for a specific symbol."""
+        broker_symbol = self._resolve_symbol(symbol)
         positions = await self.get_positions()
         for pos in positions:
-            if pos.symbol == symbol:
+            # Compare with both original and broker symbol format
+            if pos.symbol == broker_symbol or pos.symbol.upper() == broker_symbol.upper():
                 return pos
         return None
 
@@ -233,9 +427,10 @@ class MetaTraderBroker(BaseBroker):
             else:
                 action_type = "ORDER_TYPE_SELL_STOP"
 
-        # Build order payload
+        # Build order payload - resolve symbol to broker format
+        broker_symbol = self._resolve_symbol(order.symbol)
         payload = {
-            "symbol": order.symbol,
+            "symbol": broker_symbol,
             "actionType": action_type,
             "volume": float(order.size),
         }
@@ -327,7 +522,7 @@ class MetaTraderBroker(BaseBroker):
             return OrderResult(
                 order_id=str(result.get("orderId", "")),
                 symbol=symbol,
-                side=OrderSide.SELL if position.side == OrderSide.BUY else OrderSide.BUY,
+                side=OrderSide.SELL if position.side == PositionSide.LONG else OrderSide.BUY,
                 order_type=OrderType.MARKET,
                 status=OrderStatus.FILLED,
                 size=close_size,
@@ -339,7 +534,7 @@ class MetaTraderBroker(BaseBroker):
             return OrderResult(
                 order_id="",
                 symbol=symbol,
-                side=OrderSide.SELL if position.side == OrderSide.BUY else OrderSide.BUY,
+                side=OrderSide.SELL if position.side == PositionSide.LONG else OrderSide.BUY,
                 order_type=OrderType.MARKET,
                 status=OrderStatus.REJECTED,
                 size=close_size,
@@ -399,8 +594,8 @@ class MetaTraderBroker(BaseBroker):
         except Exception:
             return False
 
-    async def get_pending_orders(self) -> List[OrderResult]:
-        """Get all pending orders."""
+    async def get_open_orders(self, symbol: Optional[str] = None) -> List[OrderResult]:
+        """Get all open/pending orders."""
         if not self._connected:
             await self.connect()
 
@@ -411,6 +606,14 @@ class MetaTraderBroker(BaseBroker):
 
         orders = []
         for order in orders_data:
+            order_symbol = order.get("symbol", "")
+
+            # Filter by symbol if specified
+            if symbol:
+                broker_symbol = self._resolve_symbol(symbol)
+                if order_symbol.upper() != broker_symbol.upper():
+                    continue
+
             side = OrderSide.BUY if "BUY" in order.get("type", "") else OrderSide.SELL
 
             order_type = OrderType.MARKET
@@ -421,7 +624,8 @@ class MetaTraderBroker(BaseBroker):
 
             orders.append(OrderResult(
                 order_id=str(order.get("id")),
-                symbol=order.get("symbol", ""),
+                client_order_id=order.get("clientId"),
+                symbol=order_symbol,
                 side=side,
                 order_type=order_type,
                 status=OrderStatus.PENDING,
@@ -432,25 +636,95 @@ class MetaTraderBroker(BaseBroker):
 
         return orders
 
-    async def get_price(self, symbol: str) -> Optional[Tick]:
-        """Get current price for a symbol."""
+    async def get_order(self, order_id: str) -> Optional[OrderResult]:
+        """Get order by ID."""
         if not self._connected:
             await self.connect()
+
+        # Get all pending orders and search for the one with matching ID
+        orders = await self.get_open_orders()
+        for order in orders:
+            if order.order_id == order_id:
+                return order
+        return None
+
+    async def get_prices(self, symbols: List[str]) -> Dict[str, Tick]:
+        """Get current prices for multiple symbols."""
+        if not self._connected:
+            await self.connect()
+
+        prices = {}
+        for symbol in symbols:
+            try:
+                tick = await self.get_current_price(symbol)
+                prices[symbol] = tick
+            except Exception:
+                pass
+        return prices
+
+    async def get_instruments(self) -> List[Instrument]:
+        """Get list of available trading instruments."""
+        if not self._connected:
+            await self.connect()
+
+        symbols_data = await self.get_symbols()
+        instruments = []
+
+        for sym_data in symbols_data:
+            if isinstance(sym_data, dict):
+                symbol = sym_data.get("symbol", "")
+                description = sym_data.get("description", symbol)
+                digits = sym_data.get("digits", 5)
+
+                # Determine instrument type from symbol
+                instrument_type = "forex"
+                if any(x in symbol.upper() for x in ["XAU", "XAG", "GOLD", "SILVER"]):
+                    instrument_type = "metals"
+                elif any(x in symbol.upper() for x in ["OIL", "WTI", "BRENT", "GAS"]):
+                    instrument_type = "commodities"
+                elif any(x in symbol.upper() for x in ["US30", "US500", "NAS", "DAX", "FTSE", "JP225"]):
+                    instrument_type = "indices"
+
+                instruments.append(Instrument(
+                    symbol=symbol,
+                    name=description,
+                    instrument_type=instrument_type,
+                    pip_location=-digits,
+                    min_size=Decimal(str(sym_data.get("volumeMin", 0.01))),
+                    max_size=Decimal(str(sym_data.get("volumeMax", 100))) if sym_data.get("volumeMax") else None,
+                    size_increment=Decimal(str(sym_data.get("volumeStep", 0.01))),
+                ))
+            else:
+                # Simple string symbol
+                instruments.append(Instrument(
+                    symbol=str(sym_data),
+                    name=str(sym_data),
+                    instrument_type="forex",
+                ))
+
+        return instruments
+
+    async def get_current_price(self, symbol: str) -> Tick:
+        """Get current bid/ask price for symbol."""
+        if not self._connected:
+            await self.connect()
+
+        broker_symbol = self._resolve_symbol(symbol)
 
         try:
             price_data = await self._request(
                 "GET",
-                f"/users/current/accounts/{self.account_id}/symbols/{symbol}/current-price",
+                f"/users/current/accounts/{self.account_id}/symbols/{broker_symbol}/current-price",
             )
 
             return Tick(
-                symbol=symbol,
+                symbol=symbol,  # Return original symbol for consistency
                 bid=Decimal(str(price_data.get("bid", 0))),
                 ask=Decimal(str(price_data.get("ask", 0))),
                 timestamp=datetime.now(),
             )
-        except Exception:
-            return None
+        except Exception as e:
+            raise Exception(f"Failed to get price for {symbol}: {e}")
 
     async def stream_prices(
         self,
@@ -469,9 +743,8 @@ class MetaTraderBroker(BaseBroker):
         while True:
             for symbol in symbols:
                 try:
-                    tick = await self.get_price(symbol)
-                    if tick:
-                        yield tick
+                    tick = await self.get_current_price(symbol)
+                    yield tick
                 except Exception:
                     pass
             await asyncio.sleep(1)  # Poll every second
@@ -509,9 +782,11 @@ class MetaTraderBroker(BaseBroker):
         }
         mt_timeframe = tf_map.get(timeframe, "1h")
 
+        broker_symbol = self._resolve_symbol(symbol)
+
         candles = await self._request(
             "GET",
-            f"/users/current/accounts/{self.account_id}/historical-market-data/symbols/{symbol}/timeframes/{mt_timeframe}/candles",
+            f"/users/current/accounts/{self.account_id}/historical-market-data/symbols/{broker_symbol}/timeframes/{mt_timeframe}/candles",
             params={"limit": count},
         )
 

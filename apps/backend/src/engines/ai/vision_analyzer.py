@@ -25,21 +25,22 @@ from src.core.config import settings
 
 class VisionModel(str, Enum):
     """Available vision-capable AI models via AIML API."""
-    CHATGPT_5_2 = "gpt-5.2"
-    GEMINI_3_PRO = "gemini-3-pro"
-    DEEPSEEK_V3_2 = "deepseek-v3.2"
-    GLM_4_7 = "glm-4.7"
-    GROK_4_1 = "grok-4.1"
+    # Correct AIML API model IDs (updated 2026-01-23)
+    CHATGPT_5_2 = "openai/gpt-5-2-chat-latest"
+    GEMINI_3_PRO = "google/gemini-3-pro-preview"
+    DEEPSEEK_V3_2 = "deepseek/deepseek-non-thinking-v3.2-exp"
+    GLM_4_5 = "zhipu/glm-4.5-air"
+    GROK_4_1 = "x-ai/grok-4-1-fast-reasoning"
     QWEN_MAX = "qwen-max"
 
 
 # Human-readable model names for display
 MODEL_DISPLAY_NAMES = {
     VisionModel.CHATGPT_5_2: "ChatGPT 5.2",
-    VisionModel.GEMINI_3_PRO: "Gemini 3 Pro",
+    VisionModel.GEMINI_3_PRO: "Gemini 3 Pro Preview",
     VisionModel.DEEPSEEK_V3_2: "DeepSeek V3.2",
-    VisionModel.GLM_4_7: "GLM 4.7",
-    VisionModel.GROK_4_1: "Grok 4.1",
+    VisionModel.GLM_4_5: "GLM 4.5 Air",
+    VisionModel.GROK_4_1: "Grok 4.1 Fast",
     VisionModel.QWEN_MAX: "Qwen Max",
 }
 
@@ -71,10 +72,35 @@ class VisionAnalyzer:
     Analyzes chart images using multiple vision-capable AI models via AIML API.
     """
 
-    SYSTEM_PROMPT = """You are an expert technical analyst specializing in forex, CFD, and futures trading.
-Analyze the provided chart(s) carefully and provide a structured trading recommendation.
+    SYSTEM_PROMPT = """You are an elite institutional trader and technical analyst specializing in forex, indices, commodities, and crypto.
+You are looking at a TradingView chart screenshot. Analyze EVERYTHING visible on the chart.
 
-Your response MUST include these fields in this exact format:
+## WHAT TO ANALYZE ON THE CHART
+
+### 1. VISIBLE INDICATORS (Read their values from the chart)
+- Moving Averages (EMA/SMA): Note crossovers, price position relative to MAs
+- RSI: Overbought (>70), Oversold (<30), divergences
+- MACD: Signal line crossovers, histogram momentum
+- Bollinger Bands: Squeeze, breakouts, band walks
+- Stochastic: %K/%D crossovers, overbought/oversold
+- Volume: Confirm moves with volume spikes
+- Any other indicators visible on the chart
+
+### 2. SMART MONEY CONCEPTS (SMC)
+- Order Blocks: Bullish OB (last red candle before up move), Bearish OB (last green candle before down move)
+- Fair Value Gaps (FVG/Imbalance): Gaps between candle wicks that price may fill
+- Break of Structure (BOS): When price breaks previous swing high/low
+- Change of Character (CHoCH): First sign of trend reversal
+- Liquidity Pools: Equal highs/lows, trendlines, stop hunt zones
+- Premium/Discount Zones: Price above/below 50% of range
+
+### 3. PRICE ACTION & PATTERNS
+- Candlestick patterns (engulfing, pin bars, doji, etc.)
+- Chart patterns (triangles, channels, head & shoulders, etc.)
+- Support and resistance levels
+- Trend structure (HH/HL for uptrend, LH/LL for downtrend)
+
+## RESPONSE FORMAT (MUST FOLLOW EXACTLY)
 
 **DIRECTION**: [LONG/SHORT/HOLD]
 **CONFIDENCE**: [0-100]%
@@ -91,6 +117,15 @@ Your response MUST include these fields in this exact format:
 - Support: [price1], [price2]
 - Resistance: [price1], [price2]
 
+**INDICATORS_ANALYSIS**:
+- [List each visible indicator and its current reading/signal]
+
+**SMC_ANALYSIS**:
+- Order Blocks: [locations if visible]
+- FVG/Imbalance: [any gaps to fill]
+- Structure: [BOS/CHoCH if any]
+- Liquidity: [where stops may be hunted]
+
 **PATTERNS_DETECTED**: [list patterns found]
 
 **TREND_ANALYSIS**:
@@ -98,14 +133,9 @@ Your response MUST include these fields in this exact format:
 - Medium-term: [BULLISH/BEARISH/NEUTRAL]
 - Long-term: [BULLISH/BEARISH/NEUTRAL]
 
-**REASONING**: [Brief explanation of your analysis]
+**REASONING**: [Your institutional-grade analysis explaining why this trade setup makes sense]
 
-Be precise with price levels. Base your analysis on:
-1. Price action and candlestick patterns
-2. Support and resistance levels
-3. Trend direction across timeframes
-4. Chart patterns (triangles, channels, head & shoulders, etc.)
-5. Key psychological levels"""
+IMPORTANT: Be PRECISE with price levels. Read them directly from the chart. Reference specific indicator values and SMC zones you can see."""
 
     def __init__(self):
         self.api_key = settings.AIML_API_KEY
@@ -213,6 +243,7 @@ Be precise with price levels. Base your analysis on:
         images_base64: Dict[str, str],
         prompt: str,
         models: Optional[List[VisionModel]] = None,
+        max_models: int = 6,
     ) -> List[VisionAnalysisResult]:
         """
         Run analysis on all specified vision models in parallel via AIML API.
@@ -221,12 +252,17 @@ Be precise with price levels. Base your analysis on:
             images_base64: Dict mapping timeframe to base64 chart image
             prompt: Analysis prompt
             models: List of models to use. Defaults to all 6 models.
+            max_models: Maximum number of models to use (for faster modes)
 
         Returns:
             List of analysis results from each model
         """
         if models is None:
             models = list(VisionModel)
+
+        # Limit models based on max_models parameter
+        if max_models < len(models):
+            models = models[:max_models]
 
         # Run all models in parallel
         tasks = [

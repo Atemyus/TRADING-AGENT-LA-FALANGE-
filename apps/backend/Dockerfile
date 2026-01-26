@@ -1,4 +1,4 @@
-# La Falange Trading Platform - Backend Dockerfile
+# Prometheus Trading Platform - Backend Dockerfile
 
 FROM python:3.11-slim
 

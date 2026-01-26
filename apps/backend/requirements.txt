@@ -1,4 +1,4 @@
-# La Falange Trading Platform - Backend Dependencies
+# Prometheus Trading Platform - Backend Dependencies
 
 # Core Framework
 fastapi>=0.109.0
@@ -22,6 +22,7 @@ celery>=5.3.0
 httpx>=0.26.0
 aiohttp>=3.9.0
 websockets>=12.0
+certifi>=2024.0.0
 
 # Data Processing
 pandas>=2.1.0
@@ -29,6 +30,13 @@ numpy>=1.26.0
 
 # Technical Analysis
 ta>=0.11.0
+
+# Chart Generation
+matplotlib>=3.8.0
+mplfinance>=0.12.10b0
+
+# Browser Automation (for TradingView AI Agent)
+playwright>=1.40.0
 
 # AI/LLM Providers (only httpx needed for AIML API)
 openai>=1.10.0

@@ -1,5 +1,5 @@
 """
-La Falange Trading Platform - Backend API
+Prometheus Trading Platform - Backend API
 FastAPI application entry point
 """
 
@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.api.v1.routes import ai, auth, trading, positions, analytics, websocket, bot, chart_analysis
+from src.api.v1.routes import ai, auth, trading, positions, analytics, websocket, bot, chart_analysis, market
 from src.api.v1.routes import settings as settings_routes
 from src.core.config import settings
 from src.core.database import init_db
@@ -18,7 +18,20 @@ async def lifespan(app: FastAPI):
     """Application lifespan events."""
     # Startup
     await init_db()
-    print(f"🚀 La Falange Trading Platform v{settings.VERSION} started")
+
+    # Load settings from database and apply to environment
+    try:
+        from src.core.database import async_session_maker
+        from src.api.v1.routes.settings import load_settings_from_db, apply_settings_to_env
+
+        async with async_session_maker() as session:
+            db_settings = await load_settings_from_db(session)
+            apply_settings_to_env(db_settings)
+            print("✅ Settings loaded from database")
+    except Exception as e:
+        print(f"⚠️ Could not load settings from database: {e}")
+
+    print(f"🔥 Prometheus Trading Platform v{settings.VERSION} started")
     print(f"📊 Environment: {settings.ENVIRONMENT}")
     yield
     # Shutdown
@@ -26,7 +39,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="La Falange Trading Platform",
+    title="Prometheus Trading Platform",
     description="AI-Powered CFD/Futures Trading Platform",
     version=settings.VERSION,
     lifespan=lifespan,
@@ -53,6 +66,7 @@ app.include_router(websocket.router, prefix="/api/v1/ws", tags=["WebSocket"])
 app.include_router(bot.router, prefix="/api/v1", tags=["Bot Control"])
 app.include_router(chart_analysis.router, prefix="/api/v1", tags=["Chart Analysis"])
 app.include_router(settings_routes.router, prefix="/api/v1/settings", tags=["Settings"])
+app.include_router(market.router, prefix="/api/v1/market", tags=["Market Data"])
 
 
 @app.get("/health")
@@ -69,7 +83,7 @@ async def health_check():
 async def root():
     """Root endpoint."""
     return {
-        "name": "La Falange Trading Platform",
+        "name": "Prometheus Trading Platform",
         "version": settings.VERSION,
         "docs": "/api/docs",
     }

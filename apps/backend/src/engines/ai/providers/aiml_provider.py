@@ -4,16 +4,18 @@ AIML API Provider
 Multi-model gateway at api.aimlapi.com/v1
 Uses a single API key to access multiple AI models.
 
-Supported models:
-- ChatGPT 5.2
-- Gemini 3 Pro
-- DeepSeek V3.2
-- Grok 4.1 Fast
-- Qwen Max
-- GLM 4.7
+Supported models (exact AIML API model IDs):
+- ChatGPT 5.2 → openai/gpt-5-2-chat-latest
+- Gemini 3 Pro → google/gemini-3-pro-preview
+- DeepSeek V3.2 → deepseek/deepseek-non-thinking-v3.2-exp
+- Grok 4.1 Fast → x-ai/grok-4-1-fast-reasoning
+- Qwen Max → qwen-max
+- GLM 4.7 → zhipu/glm-4.7
 """
 
 import json
+import os
+import re
 import time
 from decimal import Decimal
 from typing import List, Optional
@@ -27,28 +29,29 @@ from src.engines.ai.base_ai import (
     MarketContext,
     TradeDirection,
 )
-from src.engines.ai.prompts.templates import build_analysis_prompt, get_system_prompt
+from src.engines.ai.prompts.templates import build_analysis_prompt, get_system_prompt, ANALYSIS_MODES
 
 
-# AIML API model mappings
+# AIML API model mappings - EXACT model IDs from AIML API documentation
+# Updated 2026-01-23 from https://docs.aimlapi.com/api-references/model-database
 AIML_MODELS = {
     "chatgpt-5.2": {
-        "id": "gpt-5.2",
+        "id": "openai/gpt-5-2-chat-latest",
         "display_name": "ChatGPT 5.2",
         "provider": "OpenAI",
     },
     "gemini-3-pro": {
-        "id": "gemini-3-pro",
-        "display_name": "Gemini 3 Pro",
+        "id": "google/gemini-3-pro-preview",
+        "display_name": "Gemini 3 Pro Preview",
         "provider": "Google",
     },
     "deepseek-v3.2": {
-        "id": "deepseek-chat-v3.2",
+        "id": "deepseek/deepseek-non-thinking-v3.2-exp",
         "display_name": "DeepSeek V3.2",
         "provider": "DeepSeek",
     },
     "grok-4.1-fast": {
-        "id": "grok-4.1-fast",
+        "id": "x-ai/grok-4-1-fast-reasoning",
         "display_name": "Grok 4.1 Fast",
         "provider": "xAI",
     },
@@ -57,9 +60,9 @@ AIML_MODELS = {
         "display_name": "Qwen Max",
         "provider": "Alibaba",
     },
-    "glm-4.7": {
-        "id": "glm-4.7",
-        "display_name": "GLM 4.7",
+    "glm-4.5": {
+        "id": "zhipu/glm-4.5-air",
+        "display_name": "GLM 4.5 Air",
         "provider": "Zhipu",
     },
 }
@@ -84,8 +87,8 @@ class AIMLProvider(BaseAIProvider):
         model_name: str = "chatgpt-5.2",
         api_key: Optional[str] = None,
     ):
-        # Get API key from settings if not provided
-        key = api_key or getattr(settings, 'AIML_API_KEY', None)
+        # Get API key: explicit > environment > settings
+        key = api_key or os.environ.get('AIML_API_KEY') or getattr(settings, 'AIML_API_KEY', None)
         super().__init__(model_name, key)
         self._client: Optional[AsyncOpenAI] = None
 
@@ -134,12 +137,19 @@ class AIMLProvider(BaseAIProvider):
             print(f"AIML health check failed for {self.model_name}: {e}")
             return False
 
-    async def analyze(self, context: MarketContext) -> AIAnalysis:
+    async def analyze(
+        self,
+        context: MarketContext,
+        mode: str = "standard",
+        trading_style: str = "intraday",
+    ) -> AIAnalysis:
         """
         Analyze market context using AIML API.
 
         Args:
             context: Market context with all relevant data
+            mode: Analysis mode - "quick", "standard", or "premium"
+            trading_style: Trading style - "scalping", "intraday", or "swing"
 
         Returns:
             AIAnalysis with trading recommendation
@@ -149,29 +159,37 @@ class AIMLProvider(BaseAIProvider):
         start_time = time.time()
 
         try:
-            # Build prompt
+            # Build prompt with mode-specific system prompt
             user_prompt = build_analysis_prompt(
                 context_str=context.to_prompt_string(),
-                trading_style="intraday",
-                risk_tolerance="moderate",
+                mode=mode,
+                trading_style=trading_style,
                 session=context.market_session or "unknown",
             )
 
-            # Call AIML API
+            # Adjust max_tokens based on mode
+            max_tokens = 1000 if mode == "quick" else 2000 if mode == "standard" else 3000
+
+            # Call AIML API - don't use response_format as not all models support it
             response = await self._client.chat.completions.create(
                 model=self._model_info["id"],
                 messages=[
-                    {"role": "system", "content": get_system_prompt()},
+                    {"role": "system", "content": get_system_prompt(mode)},
                     {"role": "user", "content": user_prompt},
                 ],
-                response_format={"type": "json_object"},
-                temperature=0.3,
-                max_tokens=1000,
+                temperature=0.3 if mode == "quick" else 0.4,
+                max_tokens=max_tokens,
             )
 
-            # Parse response
+            # Parse response - handle potential non-JSON content
             content = response.choices[0].message.content
-            data = json.loads(content)
+            if not content:
+                return self._create_error_response("Empty response from model")
+
+            # Try to extract JSON from response
+            data = self._extract_json(content)
+            if data is None:
+                return self._create_error_response(f"Failed to parse JSON response: {content[:200]}")
 
             # Calculate metrics
             processing_time = int((time.time() - start_time) * 1000)
@@ -203,3 +221,54 @@ class AIMLProvider(BaseAIProvider):
             return self._create_error_response(f"Failed to parse JSON response: {e}")
         except Exception as e:
             return self._create_error_response(str(e))
+
+    def _extract_json(self, content: str) -> Optional[dict]:
+        """
+        Extract JSON from response content.
+        Handles cases where model returns JSON wrapped in markdown or extra text.
+        """
+        # First try direct parsing
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            pass
+
+        # Try to find JSON in markdown code block
+        json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', content, re.DOTALL)
+        if json_match:
+            try:
+                return json.loads(json_match.group(1))
+            except json.JSONDecodeError:
+                pass
+
+        # Try to find raw JSON object
+        json_match = re.search(r'\{[^{}]*"direction"[^{}]*\}', content, re.DOTALL)
+        if json_match:
+            try:
+                return json.loads(json_match.group(0))
+            except json.JSONDecodeError:
+                pass
+
+        # Try to find JSON that spans multiple lines
+        json_match = re.search(r'\{[\s\S]*?"direction"[\s\S]*?\}', content)
+        if json_match:
+            try:
+                # Clean up the match
+                potential_json = json_match.group(0)
+                # Find matching closing brace
+                brace_count = 0
+                end_idx = 0
+                for i, char in enumerate(potential_json):
+                    if char == '{':
+                        brace_count += 1
+                    elif char == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            end_idx = i + 1
+                            break
+                if end_idx > 0:
+                    return json.loads(potential_json[:end_idx])
+            except json.JSONDecodeError:
+                pass
+
+        return None

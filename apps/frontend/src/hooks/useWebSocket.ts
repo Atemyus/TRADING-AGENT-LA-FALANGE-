@@ -4,7 +4,47 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000';
+// Production backend URL (Railway)
+const PRODUCTION_BACKEND_URL = 'wss://trading-agent-la-falange-production.up.railway.app';
+
+// Dynamically determine WebSocket URL based on current page location or API URL
+function getWebSocketUrl(): string {
+  // First check environment variable
+  if (process.env.NEXT_PUBLIC_WS_URL) {
+    return process.env.NEXT_PUBLIC_WS_URL;
+  }
+
+  // Check if API URL is set and derive WS URL from it
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    // Convert http(s) to ws(s)
+    return apiUrl.replace(/^http/, 'ws');
+  }
+
+  // If running in browser, derive from current location
+  if (typeof window !== 'undefined') {
+    const host = window.location.host;
+
+    // If we're on localhost, use local backend
+    if (host.includes('localhost') || host.includes('127.0.0.1')) {
+      const hostname = window.location.hostname;
+      return `ws://${hostname}:8000`;
+    }
+
+    // For production (Railway, etc.), use the hardcoded production URL
+    return PRODUCTION_BACKEND_URL;
+  }
+
+  // Fallback for SSR - use production URL
+  return PRODUCTION_BACKEND_URL;
+}
+
+// Get URL once at module load time
+let WS_URL = PRODUCTION_BACKEND_URL;
+if (typeof window !== 'undefined') {
+  WS_URL = getWebSocketUrl();
+  console.log('[WebSocket] Using URL:', WS_URL);
+}
 
 type MessageHandler = (data: unknown) => void;
 
@@ -44,7 +84,9 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     }
 
     try {
-      const ws = new WebSocket(`${WS_URL}/api/v1/ws/stream`);
+      const wsUrl = `${WS_URL}/api/v1/ws/stream`;
+      console.log('[WebSocket] Connecting to:', wsUrl);
+      const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
         setIsConnected(true);

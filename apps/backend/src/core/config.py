@@ -147,4 +147,11 @@ def get_settings() -> Settings:
     return Settings()
 
 
+def clear_settings_cache() -> None:
+    """Clear the settings cache to force reload from environment."""
+    get_settings.cache_clear()
+    global settings
+    settings = get_settings()
+
+
 settings = get_settings()
