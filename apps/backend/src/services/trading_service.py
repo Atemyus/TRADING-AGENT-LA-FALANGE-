@@ -409,3 +409,12 @@ async def get_trading_service() -> TradingService:
         await _trading_service.start()
 
     return _trading_service
+
+
+async def reset_trading_service() -> None:
+    """Reset the trading service to force reconnection with new broker settings."""
+    global _trading_service
+
+    if _trading_service is not None:
+        await _trading_service.stop()
+        _trading_service = None
