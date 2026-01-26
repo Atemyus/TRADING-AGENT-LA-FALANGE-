@@ -49,7 +49,7 @@ class MetaTraderBroker(BaseBroker):
     - And many more...
     """
 
-    BASE_URL = "https://mt-client-api-v1.agiliumtrade.agiliumtrade.ai"
+    # Provisioning API is global, Client API depends on account region
     PROVISIONING_URL = "https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai"
 
     # Common symbol variations across brokers
@@ -179,6 +179,7 @@ class MetaTraderBroker(BaseBroker):
         self._connected = False
         self._symbol_map: Dict[str, str] = {}  # Maps our symbols to broker symbols
         self._broker_symbols: List[str] = []  # List of available broker symbols
+        self._client_api_url: Optional[str] = None  # Set during connect based on region
 
     async def _ensure_client(self) -> None:
         """Ensure HTTP client is initialized."""
@@ -204,7 +205,9 @@ class MetaTraderBroker(BaseBroker):
         """Make API request."""
         await self._ensure_client()
 
-        url = f"{base_url or self.BASE_URL}{endpoint}"
+        # Use provided base_url, or the client API URL (set during connect), or fallback
+        effective_base_url = base_url or self._client_api_url or "https://mt-client-api-v1.vint-hill.agiliumtrade.ai"
+        url = f"{effective_base_url}{endpoint}"
         response = await self._client.request(method, url, **kwargs)
 
         if response.status_code >= 400:
@@ -280,12 +283,16 @@ class MetaTraderBroker(BaseBroker):
 
         # Get account info to verify connection
         try:
-            # First, ensure account is deployed
+            # First, get account details including region
             account = await self._request(
                 "GET",
                 f"/users/current/accounts/{self.account_id}",
                 base_url=self.PROVISIONING_URL,
             )
+
+            # Get the region from account info to construct correct client API URL
+            region = account.get("region", "vint-hill")
+            self._client_api_url = f"https://mt-client-api-v1.{region}.agiliumtrade.ai"
 
             if account.get("state") != "DEPLOYED":
                 # Deploy the account if not deployed
@@ -297,10 +304,18 @@ class MetaTraderBroker(BaseBroker):
                 # Wait for deployment
                 await asyncio.sleep(5)
 
-            # Get account information
+                # Re-fetch account info after deployment
+                account = await self._request(
+                    "GET",
+                    f"/users/current/accounts/{self.account_id}",
+                    base_url=self.PROVISIONING_URL,
+                )
+
+            # Get account information from client API
             self._account_info = await self._request(
                 "GET",
                 f"/users/current/accounts/{self.account_id}/account-information",
+                base_url=self._client_api_url,
             )
 
             self._connected = True
