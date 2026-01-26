@@ -27,6 +27,7 @@ class PriceStreamingService:
     def __init__(self):
         self._broker: Optional[BaseBroker] = None
         self._streaming = False
+        self._initialized = False  # Flag to track if initialization is complete
         self._subscribers: Dict[str, Set[Callable]] = {}  # symbol -> callbacks
         self._current_prices: Dict[str, Tick] = {}
         self._stream_task: Optional[asyncio.Task] = None
@@ -153,6 +154,9 @@ class PriceStreamingService:
             import traceback
             traceback.print_exc()
             self._broker = None
+        finally:
+            self._initialized = True
+            print(f"[PriceStreaming] Service initialized. Broker: {self._broker.name if self._broker else 'None'}, Connected: {self.is_broker_connected}")
 
     @property
     def is_broker_connected(self) -> bool:
@@ -202,6 +206,18 @@ class PriceStreamingService:
         if self._streaming:
             print("[PriceStreaming] Already streaming, skipping start")
             return
+
+        # Wait for initialization to complete before starting
+        # This prevents race condition where streaming starts before broker connects
+        max_wait = 10  # Maximum 10 seconds wait
+        waited = 0
+        while not self._initialized and waited < max_wait:
+            print(f"[PriceStreaming] Waiting for initialization... ({waited}s)")
+            await asyncio.sleep(0.5)
+            waited += 0.5
+
+        if not self._initialized:
+            print("[PriceStreaming] WARNING: Initialization not complete after timeout, proceeding anyway")
 
         self._streaming = True
 
@@ -488,20 +504,45 @@ class PriceStreamingService:
 
 # Singleton instance
 _price_service: Optional[PriceStreamingService] = None
+_init_lock: asyncio.Lock = None  # Lock to prevent race condition during initialization
+_init_complete: asyncio.Event = None  # Event to signal initialization is complete
 
 
 async def get_price_streaming_service() -> PriceStreamingService:
-    """Get or create PriceStreamingService singleton."""
-    global _price_service
-    if _price_service is None:
-        _price_service = PriceStreamingService()
-        await _price_service.initialize()
+    """
+    Get or create PriceStreamingService singleton.
+
+    Uses a lock to prevent race conditions where streaming starts
+    before broker initialization completes.
+    """
+    global _price_service, _init_lock, _init_complete
+
+    # Create lock and event on first call (must be in async context)
+    if _init_lock is None:
+        _init_lock = asyncio.Lock()
+    if _init_complete is None:
+        _init_complete = asyncio.Event()
+
+    # Acquire lock to ensure only one initialization happens
+    async with _init_lock:
+        if _price_service is None:
+            print("[PriceStreaming] Creating new PriceStreamingService instance...")
+            _price_service = PriceStreamingService()
+            await _price_service.initialize()
+            _init_complete.set()  # Signal that initialization is complete
+            print(f"[PriceStreaming] Initialization complete. Broker connected: {_price_service.is_broker_connected}")
+
+    # Wait for initialization to complete (in case we didn't hold the lock)
+    await _init_complete.wait()
+
     return _price_service
 
 
 def reset_price_streaming_service():
     """Reset the service singleton."""
-    global _price_service
+    global _price_service, _init_lock, _init_complete
     if _price_service:
         asyncio.create_task(_price_service.stop_streaming())
     _price_service = None
+    _init_lock = None
+    _init_complete = None
