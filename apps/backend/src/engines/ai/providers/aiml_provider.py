@@ -33,37 +33,43 @@ from src.engines.ai.prompts.templates import build_analysis_prompt, get_system_p
 
 
 # AIML API model mappings - EXACT model IDs from AIML API documentation
-# Updated 2026-01-23 from https://docs.aimlapi.com/api-references/model-database
+# Updated 2026-01-26 - Verified model IDs from user
 AIML_MODELS = {
     "chatgpt-5.2": {
-        "id": "openai/gpt-5-2-chat-latest",
+        "id": "openai/gpt-5-2",
         "display_name": "ChatGPT 5.2",
         "provider": "OpenAI",
+        "supports_vision": True,
     },
     "gemini-3-pro": {
         "id": "google/gemini-3-pro-preview",
-        "display_name": "Gemini 3 Pro Preview",
+        "display_name": "Gemini 3 Pro",
         "provider": "Google",
+        "supports_vision": True,
     },
     "deepseek-v3.2": {
-        "id": "deepseek/deepseek-non-thinking-v3.2-exp",
+        "id": "deepseek/deepseek-thinking-v3.2-exp",
         "display_name": "DeepSeek V3.2",
         "provider": "DeepSeek",
+        "supports_vision": True,
     },
     "grok-4.1-fast": {
         "id": "x-ai/grok-4-1-fast-reasoning",
         "display_name": "Grok 4.1 Fast",
         "provider": "xAI",
+        "supports_vision": True,
     },
     "qwen-max": {
         "id": "qwen-max",
         "display_name": "Qwen Max",
         "provider": "Alibaba",
+        "supports_vision": True,
     },
-    "glm-4.5": {
-        "id": "zhipu/glm-4.5-air",
-        "display_name": "GLM 4.5 Air",
+    "glm-4.7": {
+        "id": "zhipu/glm-4.7",
+        "display_name": "GLM 4.7",
         "provider": "Zhipu",
+        "supports_vision": True,
     },
 }
 

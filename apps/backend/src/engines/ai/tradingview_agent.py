@@ -269,10 +269,13 @@ class TradingViewBrowser:
             timezone_id='America/New_York',
         )
 
-        # Block unnecessary resources for faster loading
-        await self.context.route("**/*.{png,jpg,jpeg,gif,svg,ico}", lambda route: route.abort())
+        # Block only ads and analytics - DO NOT block images as TradingView charts use them!
+        # NOTE: Removed image blocking that was causing empty/tiny screenshots
         await self.context.route("**/ads/**", lambda route: route.abort())
         await self.context.route("**/analytics/**", lambda route: route.abort())
+        await self.context.route("**/tracking/**", lambda route: route.abort())
+        await self.context.route("**/*google-analytics*", lambda route: route.abort())
+        await self.context.route("**/*facebook*", lambda route: route.abort())
 
         self.page = await self.context.new_page()
         self._initialized = True
@@ -315,7 +318,8 @@ class TradingViewBrowser:
             print(f"[TradingViewBrowser] Opening: {url}")
 
             # Navigate with extended timeout
-            await self.page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            response = await self.page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            print(f"[TradingViewBrowser] Page loaded with status: {response.status if response else 'unknown'}")
 
             # Wait for chart to be ready - try multiple selectors
             chart_ready = False
@@ -325,7 +329,8 @@ class TradingViewBrowser:
                     chart_ready = True
                     print(f"[TradingViewBrowser] Chart found with selector: {selector}")
                     break
-                except:
+                except Exception as e:
+                    print(f"[TradingViewBrowser] Selector '{selector}' not found: {type(e).__name__}")
                     continue
 
             if not chart_ready:
@@ -335,13 +340,18 @@ class TradingViewBrowser:
                     chart_ready = True
                     print("[TradingViewBrowser] Chart found via canvas fallback")
                 except:
-                    pass
+                    print("[TradingViewBrowser] WARNING: No chart canvas found!")
 
-            # Extra wait for chart rendering
-            await asyncio.sleep(3)
+            # Extra wait for chart rendering (candlesticks, indicators)
+            print("[TradingViewBrowser] Waiting 4 seconds for chart to fully render...")
+            await asyncio.sleep(4)
 
             # Dismiss any popups/modals
             await self._dismiss_popups()
+
+            # Verify page content
+            title = await self.page.title()
+            print(f"[TradingViewBrowser] Page title: {title}")
 
             self._current_symbol = symbol
             self._current_timeframe = timeframe
@@ -350,6 +360,8 @@ class TradingViewBrowser:
 
         except Exception as e:
             print(f"[TradingViewBrowser] Failed to open chart: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     async def _dismiss_popups(self):
@@ -385,7 +397,10 @@ class TradingViewBrowser:
         try:
             # Dismiss any popups first
             await self._dismiss_popups()
-            await asyncio.sleep(0.3)
+            await asyncio.sleep(0.5)
+
+            print(f"[TradingViewBrowser] Attempting to take screenshot...")
+            print(f"[TradingViewBrowser] Current URL: {self.page.url}")
 
             # Try to screenshot the chart container
             for selector in self.selectors["chart"]:
@@ -394,29 +409,52 @@ class TradingViewBrowser:
                     if chart_element:
                         # Check if element is visible
                         box = await chart_element.bounding_box()
+                        print(f"[TradingViewBrowser] Found chart element with selector '{selector}', box: {box}")
                         if box and box['width'] > 100 and box['height'] > 100:
                             screenshot = await chart_element.screenshot()
-                            print(f"[TradingViewBrowser] Screenshot taken ({len(screenshot)} bytes)")
+                            size_kb = len(screenshot) / 1024
+                            print(f"[TradingViewBrowser] Chart screenshot: {len(screenshot)} bytes ({size_kb:.1f} KB) - {box['width']}x{box['height']} px")
+                            if size_kb < 10:
+                                print(f"[TradingViewBrowser] WARNING: Screenshot is very small, chart may not have loaded properly")
                             return base64.b64encode(screenshot).decode('utf-8')
-                except:
+                except Exception as e:
+                    print(f"[TradingViewBrowser] Selector '{selector}' failed: {e}")
                     continue
 
             # Fallback: full page screenshot
-            screenshot = await self.page.screenshot()
-            print(f"[TradingViewBrowser] Full page screenshot taken ({len(screenshot)} bytes)")
+            print(f"[TradingViewBrowser] No chart element found, taking full page screenshot")
+            screenshot = await self.page.screenshot(full_page=True)
+            size_kb = len(screenshot) / 1024
+            print(f"[TradingViewBrowser] Full page screenshot: {len(screenshot)} bytes ({size_kb:.1f} KB)")
+            if size_kb < 50:
+                print(f"[TradingViewBrowser] WARNING: Full page screenshot is very small, page may not have loaded")
             return base64.b64encode(screenshot).decode('utf-8')
 
         except Exception as e:
             print(f"[TradingViewBrowser] Screenshot failed: {e}")
+            import traceback
+            traceback.print_exc()
             return ""
 
     async def change_timeframe(self, timeframe: str) -> bool:
         """
         Change the chart timeframe.
-        Uses URL navigation (most reliable method).
+        Uses keyboard shortcuts (faster than URL navigation).
         """
         try:
-            # Method 1: Navigate to new URL with updated timeframe (most reliable)
+            print(f"[TradingViewBrowser] Changing timeframe to {timeframe}...")
+
+            # Method 1: Try keyboard shortcut first (faster)
+            tf_key = self.TIMEFRAME_KEYS.get(timeframe)
+            if tf_key:
+                await self.page.keyboard.press(tf_key)
+                await asyncio.sleep(2)  # Wait for chart to update
+                await self._dismiss_popups()
+                self._current_timeframe = timeframe
+                print(f"[TradingViewBrowser] Timeframe changed to {timeframe} via keyboard (key: {tf_key})")
+                return True
+
+            # Method 2: Fallback to URL navigation
             if self._current_symbol:
                 symbol = self._current_symbol.replace("_", "").replace("/", "")
                 if not symbol.startswith("FX:") and len(symbol) == 6:
@@ -425,27 +463,22 @@ class TradingViewBrowser:
                 tf_url = self.TIMEFRAME_URL.get(timeframe, timeframe)
                 url = f"https://www.tradingview.com/chart/?symbol={symbol}&interval={tf_url}"
 
+                print(f"[TradingViewBrowser] Using URL fallback: {url}")
                 await self.page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                await asyncio.sleep(2)
+                await asyncio.sleep(3)
                 await self._dismiss_popups()
 
                 self._current_timeframe = timeframe
                 print(f"[TradingViewBrowser] Timeframe changed to {timeframe} via URL")
                 return True
 
-            # Method 2: Try keyboard shortcut
-            tf_key = self.TIMEFRAME_KEYS.get(timeframe)
-            if tf_key:
-                await self.page.keyboard.press(tf_key)
-                await asyncio.sleep(1.5)
-                self._current_timeframe = timeframe
-                print(f"[TradingViewBrowser] Timeframe changed to {timeframe} via keyboard")
-                return True
-
+            print(f"[TradingViewBrowser] ERROR: Cannot change timeframe - no keyboard key and no current symbol")
             return False
 
         except Exception as e:
             print(f"[TradingViewBrowser] Failed to change timeframe: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     async def add_indicator(self, indicator_name: str, params: Dict[str, Any] = None) -> bool:
@@ -749,12 +782,13 @@ class TradingViewAIAgent:
     5. Make a final trading decision
     """
 
-    # AI Models that support vision
+    # AI Models that support vision - EXACT model IDs from AIML API
+    # Updated 2026-01-26
     VISION_MODELS = {
-        "chatgpt": "openai/gpt-5-2-chat-latest",
+        "chatgpt": "openai/gpt-5-2",
         "gemini": "google/gemini-3-pro-preview",
-        "deepseek": "deepseek/deepseek-non-thinking-v3.2-exp",
-        "glm": "zhipu/glm-4.5-air",
+        "deepseek": "deepseek/deepseek-thinking-v3.2-exp",
+        "glm": "zhipu/glm-4.7",
         "grok": "x-ai/grok-4-1-fast-reasoning",
         "qwen": "qwen-max",
     }
@@ -763,8 +797,8 @@ class TradingViewAIAgent:
         "chatgpt": "ChatGPT 5.2",
         "gemini": "Gemini 3 Pro",
         "deepseek": "DeepSeek V3.2",
-        "glm": "GLM 4.5",
-        "grok": "Grok 4.1",
+        "glm": "GLM 4.7",
+        "grok": "Grok 4.1 Fast",
         "qwen": "Qwen Max",
     }
 

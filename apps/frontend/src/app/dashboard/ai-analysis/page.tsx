@@ -59,11 +59,11 @@ const providerStyles: Record<string, { color: string; icon: string; bg: string }
 // The 6 AI models we use via AIML API (exact model IDs)
 const AI_MODELS = [
   { provider: 'OpenAI', model: 'ChatGPT 5.2', icon: '💬' },
-  { provider: 'Google', model: 'Gemini 3 Pro Preview', icon: '💎' },
+  { provider: 'Google', model: 'Gemini 3 Pro', icon: '💎' },
   { provider: 'DeepSeek', model: 'DeepSeek V3.2', icon: '🔍' },
   { provider: 'xAI', model: 'Grok 4.1 Fast', icon: '⚡' },
   { provider: 'Alibaba', model: 'Qwen Max', icon: '🌟' },
-  { provider: 'Zhipu', model: 'GLM 4.5 Air', icon: '🧪' },
+  { provider: 'Zhipu', model: 'GLM 4.7', icon: '🧪' },
 ]
 
 // Group symbols by category for the dropdown
@@ -76,10 +76,10 @@ const GROUPED_SYMBOLS = Object.entries(
 )
 
 const MODES = [
-  { value: 'quick', label: 'Quick', description: '1 TF, 2 models', icon: Zap },
-  { value: 'standard', label: 'Standard', description: '2 TF, 4 models', icon: Target },
-  { value: 'premium', label: 'Premium', description: '3 TF, 6 models', icon: Shield },
-  { value: 'ultra', label: 'Ultra', description: '5 TF, 6 models', icon: Layers },
+  { value: 'quick', label: 'Quick', description: '1 TF, 2 AI', icon: Zap },
+  { value: 'standard', label: 'Standard', description: '2 TF, 4 AI', icon: Target },
+  { value: 'premium', label: 'Premium', description: '3 TF, 6 AI', icon: Shield },
+  { value: 'ultra', label: 'Ultra', description: '5 TF, 6 AI', icon: Layers },
 ]
 
 // TradingView Free plan limit: 2 indicators

@@ -26,14 +26,15 @@ interface AIConsensusPanelProps {
 
 // Provider icons/colors mapping for AIML API models
 // These match the provider names returned by the backend
+// Updated 2026-01-26 with correct model names
 const providerStyles: Record<string, { color: string; icon: string }> = {
-  // The 6 AIML models we use
-  'OpenAI': { color: '#10a37f', icon: '💬' },      // ChatGPT 5.2
-  'Google': { color: '#4285f4', icon: '💎' },      // Gemini 3 Pro
-  'DeepSeek': { color: '#0ea5e9', icon: '🔍' },    // DeepSeek V3.2
-  'xAI': { color: '#ef4444', icon: '⚡' },          // Grok 4.1 Fast
-  'Alibaba': { color: '#f97316', icon: '🌟' },     // Qwen Max
-  'Zhipu': { color: '#8b5cf6', icon: '🧪' },       // GLM 4.7
+  // The 6 AIML models we use (exact model IDs from aiml api)
+  'OpenAI': { color: '#10a37f', icon: '💬' },      // ChatGPT 5.2 (openai/gpt-5-2)
+  'Google': { color: '#4285f4', icon: '💎' },      // Gemini 3 Pro (google/gemini-3-pro-preview)
+  'DeepSeek': { color: '#0ea5e9', icon: '🔍' },    // DeepSeek V3.2 (deepseek/deepseek-thinking-v3.2-exp)
+  'xAI': { color: '#ef4444', icon: '⚡' },          // Grok 4.1 Fast (x-ai/grok-4-1-fast-reasoning)
+  'Alibaba': { color: '#f97316', icon: '🌟' },     // Qwen Max (qwen-max)
+  'Zhipu': { color: '#8b5cf6', icon: '🧪' },       // GLM 4.7 (zhipu/glm-4.7)
   // Lowercase fallbacks
   openai: { color: '#10a37f', icon: '💬' },
   google: { color: '#4285f4', icon: '💎' },
