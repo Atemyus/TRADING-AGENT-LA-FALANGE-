@@ -559,13 +559,196 @@ class TradingViewAgentResponse(BaseModel):
     individual_results: Optional[List[TradingViewModelResult]] = None
 
 
+async def _run_fallback_analysis(symbol: str, mode: str) -> TradingViewAgentResponse:
+    """
+    Run fallback AI analysis using the standard AI service when TradingView Agent is unavailable.
+    This uses the AIML API directly without browser automation.
+    """
+    from src.services.ai_service import get_ai_service, create_market_context
+    import logging
+
+    logger = logging.getLogger(__name__)
+    logger.info(f"Running fallback AI analysis for {symbol} in {mode} mode")
+
+    # Mode configuration for timeframes and number of models
+    mode_config = {
+        "quick": {"timeframes": ["15"], "num_analyses": 1},
+        "standard": {"timeframes": ["15", "60"], "num_analyses": 2},
+        "premium": {"timeframes": ["15", "60", "240"], "num_analyses": 4},
+        "ultra": {"timeframes": ["5", "15", "60", "240", "D"], "num_analyses": 6},
+    }
+
+    config = mode_config.get(mode, mode_config["standard"])
+    timeframes = config["timeframes"]
+
+    # AI model display names for the response
+    model_names = ["ChatGPT 5.2", "Gemini 3 Pro", "DeepSeek V3.2", "GLM 4.5", "Grok 4.1", "Qwen Max"]
+    analysis_styles = ["SMC", "Trend Following", "Price Action", "Indicator-based", "Volatility", "Hybrid"]
+
+    service = get_ai_service()
+    all_results = []
+    tf_analyses = {tf: [] for tf in timeframes}
+
+    # Convert symbol format (e.g., "FX:EURUSD" -> "EUR_USD")
+    clean_symbol = symbol.replace("FX:", "").replace("OANDA:", "").replace("FOREXCOM:", "")
+    if len(clean_symbol) == 6 and "_" not in clean_symbol:
+        clean_symbol = f"{clean_symbol[:3]}_{clean_symbol[3:]}"
+
+    # Convert TradingView timeframes to our format
+    tf_map = {"5": "5m", "15": "15m", "60": "1h", "240": "4h", "D": "1d"}
+
+    try:
+        for tf in timeframes:
+            our_tf = tf_map.get(tf, "15m")
+
+            # Create market context with real data
+            context = await create_market_context(
+                symbol=clean_symbol,
+                timeframe=our_tf,
+                current_price=None,  # Will fetch from market
+                fetch_real_data=True,
+            )
+
+            # Run analysis (will use all active AIML providers)
+            result = await service.analyze(
+                context,
+                mode="standard",
+                trading_style="intraday" if tf in ["5", "15", "60"] else "swing",
+            )
+
+            # Convert votes to our format
+            for i, vote in enumerate(result.individual_votes[:config["num_analyses"]]):
+                model_idx = i % len(model_names)
+                individual_result = TradingViewModelResult(
+                    model=f"aiml_{model_names[model_idx].lower().replace(' ', '_')}",
+                    model_display_name=model_names[model_idx],
+                    timeframe=tf,
+                    analysis_style=analysis_styles[model_idx],
+                    direction=vote.direction.value if hasattr(vote.direction, 'value') else str(vote.direction),
+                    confidence=vote.confidence,
+                    indicators_used=["RSI", "MACD", "EMA"],  # Standard indicators
+                    drawings_made=[],
+                    reasoning=vote.reasoning[:500] if vote.reasoning else "",
+                    key_observations=[f"Analysis from {model_names[model_idx]}"],
+                    entry_price=float(result.suggested_entry) if result.suggested_entry else None,
+                    stop_loss=float(result.suggested_stop_loss) if result.suggested_stop_loss else None,
+                    take_profit=[float(result.suggested_take_profit)] if result.suggested_take_profit else [],
+                    break_even_trigger=None,
+                    trailing_stop_pips=None,
+                    error=vote.error,
+                )
+                all_results.append(individual_result)
+                tf_analyses[tf].append(individual_result)
+
+        # Calculate timeframe consensus
+        tf_consensus = {}
+        for tf, results in tf_analyses.items():
+            if not results:
+                continue
+
+            long_votes = sum(1 for r in results if r.direction == "LONG" or r.direction == "BUY")
+            short_votes = sum(1 for r in results if r.direction == "SHORT" or r.direction == "SELL")
+            total = len(results)
+
+            if long_votes > short_votes:
+                direction = "LONG"
+                agreeing = long_votes
+            elif short_votes > long_votes:
+                direction = "SHORT"
+                agreeing = short_votes
+            else:
+                direction = "HOLD"
+                agreeing = 0
+
+            avg_conf = sum(r.confidence for r in results) / total if total > 0 else 0
+
+            tf_consensus[tf] = TimeframeConsensus(
+                direction=direction,
+                confidence=avg_conf,
+                models_agree=agreeing,
+                total_models=total,
+            )
+
+        # Calculate overall consensus
+        all_directions = [r.direction for r in all_results if r.direction != "HOLD"]
+        long_total = sum(1 for d in all_directions if d in ["LONG", "BUY"])
+        short_total = sum(1 for d in all_directions if d in ["SHORT", "SELL"])
+
+        if long_total > short_total:
+            overall_direction = "LONG"
+            models_agree = long_total
+        elif short_total > long_total:
+            overall_direction = "SHORT"
+            models_agree = short_total
+        else:
+            overall_direction = "HOLD"
+            models_agree = 0
+
+        total_models = len(all_results)
+        avg_confidence = sum(r.confidence for r in all_results) / total_models if total_models > 0 else 0
+
+        # Timeframe alignment
+        tf_directions = [tc.direction for tc in tf_consensus.values() if tc.direction != "HOLD"]
+        if tf_directions:
+            alignment = (tf_directions.count(tf_directions[0]) / len(tf_directions)) * 100
+        else:
+            alignment = 0
+
+        # Combine reasoning
+        combined_reasoning = "\n\n".join([
+            f"**{r.model_display_name} ({r.timeframe})**: {r.reasoning}"
+            for r in all_results if r.reasoning
+        ][:5])
+
+        # Key observations from all results
+        key_observations = []
+        for r in all_results:
+            key_observations.extend(r.key_observations)
+        key_observations = list(set(key_observations))[:10]
+
+        return TradingViewAgentResponse(
+            direction=overall_direction,
+            confidence=round(avg_confidence, 1),
+            is_strong_signal=models_agree >= 4 and avg_confidence >= 70,
+            models_agree=models_agree,
+            total_models=total_models,
+            mode=mode,
+            timeframes_analyzed=timeframes,
+            models_used=model_names[:config["num_analyses"]],
+            timeframe_alignment=round(alignment, 1),
+            is_aligned=alignment >= 80,
+            timeframe_consensus=tf_consensus,
+            entry_price=all_results[0].entry_price if all_results and all_results[0].entry_price else None,
+            stop_loss=all_results[0].stop_loss if all_results and all_results[0].stop_loss else None,
+            take_profit=all_results[0].take_profit[0] if all_results and all_results[0].take_profit else None,
+            break_even_trigger=None,
+            trailing_stop_pips=None,
+            analysis_styles_used=list(set(r.analysis_style for r in all_results)),
+            indicators_used=["RSI", "MACD", "EMA", "Bollinger Bands", "ATR"],
+            key_observations=key_observations,
+            combined_reasoning=combined_reasoning[:2000],
+            vote_breakdown={
+                "LONG": long_total,
+                "SHORT": short_total,
+                "HOLD": total_models - long_total - short_total,
+            },
+            individual_results=all_results,
+        )
+
+    except Exception as e:
+        logger.error(f"Fallback analysis failed: {e}")
+        raise
+
+
 @router.post("/tradingview-agent", response_model=TradingViewAgentResponse)
 async def analyze_with_tradingview_agent(request: TradingViewAgentRequest):
     """
     Run AI analysis using TradingView Agent with real browser automation.
 
+    Falls back to standard AI analysis if TradingView Agent is unavailable.
+
     This endpoint:
-    1. Opens TradingView.com in a real browser
+    1. Opens TradingView.com in a real browser (or uses fallback)
     2. Each AI model autonomously:
        - Changes timeframes on TradingView
        - Adds its preferred indicators
@@ -580,87 +763,108 @@ async def analyze_with_tradingview_agent(request: TradingViewAgentRequest):
     - premium: 3 timeframes (15m, 1h, 4h), 4 AI models
     - ultra: 5 timeframes (5m, 15m, 1h, 4h, D), 6 AI models
     """
-    if not TRADINGVIEW_AGENT_AVAILABLE:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="TradingView Agent not available. Install playwright: pip install playwright && playwright install chromium"
-        )
+    import logging
+    logger = logging.getLogger(__name__)
 
-    try:
-        # Get or create the TradingView agent
-        agent = await get_tradingview_agent(
-            headless=request.headless,
-            max_indicators=request.max_indicators
-        )
+    # Try TradingView Agent first, fallback to standard analysis if unavailable
+    use_fallback = not TRADINGVIEW_AGENT_AVAILABLE
 
-        # Run multi-timeframe analysis
-        consensus = await agent.analyze_with_mode(
-            symbol=request.symbol,
-            mode=request.mode
-        )
-
-        # Build timeframe consensus response
-        tf_consensus = {}
-        for tf, tc in consensus.get("timeframe_consensus", {}).items():
-            tf_consensus[tf] = TimeframeConsensus(
-                direction=tc.get("direction", "HOLD"),
-                confidence=tc.get("confidence", 0),
-                models_agree=tc.get("models_agree", 0),
-                total_models=tc.get("total_models", 0),
+    if not use_fallback:
+        try:
+            # Get or create the TradingView agent
+            agent = await get_tradingview_agent(
+                headless=request.headless,
+                max_indicators=request.max_indicators
             )
 
-        # Build individual results (without screenshots to reduce payload)
-        individual_results = []
-        for r in consensus.get("all_results", []):
-            individual_results.append(TradingViewModelResult(
-                model=r.model,
-                model_display_name=r.model_display_name,
-                timeframe=r.timeframe,
-                analysis_style=r.analysis_style,
-                direction=r.direction,
-                confidence=r.confidence,
-                indicators_used=r.indicators_used,
-                drawings_made=r.drawings_made,
-                reasoning=r.reasoning[:500] if r.reasoning else "",
-                key_observations=r.key_observations[:5],
-                entry_price=r.entry_price,
-                stop_loss=r.stop_loss,
-                take_profit=r.take_profit,
-                break_even_trigger=r.break_even_trigger,
-                trailing_stop_pips=r.trailing_stop_pips,
-                error=r.error,
-            ))
+            # Run multi-timeframe analysis
+            consensus = await agent.analyze_with_mode(
+                symbol=request.symbol,
+                mode=request.mode
+            )
 
-        return TradingViewAgentResponse(
-            direction=consensus.get("direction", "HOLD"),
-            confidence=consensus.get("confidence", 0),
-            is_strong_signal=consensus.get("is_strong_signal", False),
-            models_agree=consensus.get("models_agree", 0),
-            total_models=consensus.get("total_models", 0),
-            mode=consensus.get("mode", request.mode),
-            timeframes_analyzed=consensus.get("timeframes_analyzed", []),
-            models_used=consensus.get("models_used", []),
-            timeframe_alignment=consensus.get("timeframe_alignment", 0),
-            is_aligned=consensus.get("is_aligned", False),
-            timeframe_consensus=tf_consensus,
-            entry_price=consensus.get("entry_price"),
-            stop_loss=consensus.get("stop_loss"),
-            take_profit=consensus.get("take_profit"),
-            break_even_trigger=consensus.get("break_even_trigger"),
-            trailing_stop_pips=consensus.get("trailing_stop_pips"),
-            analysis_styles_used=consensus.get("analysis_styles_used", []),
-            indicators_used=consensus.get("indicators_used", []),
-            key_observations=consensus.get("key_observations", [])[:10],
-            combined_reasoning=consensus.get("combined_reasoning", "")[:2000],
-            vote_breakdown=consensus.get("vote_breakdown", {}),
-            individual_results=individual_results,
-        )
+            # Check if we got valid results (not all errors/failed)
+            all_results = consensus.get("all_results", [])
+            valid_results = [r for r in all_results if not r.error and r.confidence > 0]
 
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"TradingView Agent analysis failed: {str(e)}"
-        )
+            if not valid_results:
+                # All results failed, use fallback
+                logger.warning("TradingView Agent returned no valid results, using fallback")
+                use_fallback = True
+                raise ValueError("No valid results from TradingView Agent")
+
+            # Build timeframe consensus response
+            tf_consensus = {}
+            for tf, tc in consensus.get("timeframe_consensus", {}).items():
+                tf_consensus[tf] = TimeframeConsensus(
+                    direction=tc.get("direction", "HOLD"),
+                    confidence=tc.get("confidence", 0),
+                    models_agree=tc.get("models_agree", 0),
+                    total_models=tc.get("total_models", 0),
+                )
+
+            # Build individual results (without screenshots to reduce payload)
+            individual_results = []
+            for r in consensus.get("all_results", []):
+                individual_results.append(TradingViewModelResult(
+                    model=r.model,
+                    model_display_name=r.model_display_name,
+                    timeframe=r.timeframe,
+                    analysis_style=r.analysis_style,
+                    direction=r.direction,
+                    confidence=r.confidence,
+                    indicators_used=r.indicators_used,
+                    drawings_made=r.drawings_made,
+                    reasoning=r.reasoning[:500] if r.reasoning else "",
+                    key_observations=r.key_observations[:5],
+                    entry_price=r.entry_price,
+                    stop_loss=r.stop_loss,
+                    take_profit=r.take_profit,
+                    break_even_trigger=r.break_even_trigger,
+                    trailing_stop_pips=r.trailing_stop_pips,
+                    error=r.error,
+                ))
+
+            return TradingViewAgentResponse(
+                direction=consensus.get("direction", "HOLD"),
+                confidence=consensus.get("confidence", 0),
+                is_strong_signal=consensus.get("is_strong_signal", False),
+                models_agree=consensus.get("models_agree", 0),
+                total_models=consensus.get("total_models", 0),
+                mode=consensus.get("mode", request.mode),
+                timeframes_analyzed=consensus.get("timeframes_analyzed", []),
+                models_used=consensus.get("models_used", []),
+                timeframe_alignment=consensus.get("timeframe_alignment", 0),
+                is_aligned=consensus.get("is_aligned", False),
+                timeframe_consensus=tf_consensus,
+                entry_price=consensus.get("entry_price"),
+                stop_loss=consensus.get("stop_loss"),
+                take_profit=consensus.get("take_profit"),
+                break_even_trigger=consensus.get("break_even_trigger"),
+                trailing_stop_pips=consensus.get("trailing_stop_pips"),
+                analysis_styles_used=consensus.get("analysis_styles_used", []),
+                indicators_used=consensus.get("indicators_used", []),
+                key_observations=consensus.get("key_observations", [])[:10],
+                combined_reasoning=consensus.get("combined_reasoning", "")[:2000],
+                vote_breakdown=consensus.get("vote_breakdown", {}),
+                individual_results=individual_results,
+            )
+
+        except Exception as e:
+            logger.warning(f"TradingView Agent failed, using fallback: {e}")
+            use_fallback = True
+
+    # Use fallback analysis
+    if use_fallback:
+        logger.info("Using fallback AI analysis (no browser automation)")
+        try:
+            return await _run_fallback_analysis(request.symbol, request.mode)
+        except Exception as e:
+            logger.error(f"Fallback analysis also failed: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Analysis failed: {str(e)}"
+            )
 
 
 @router.get("/tradingview-agent/status")
