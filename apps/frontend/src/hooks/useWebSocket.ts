@@ -4,7 +4,34 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000';
+// Dynamically determine WebSocket URL based on current page location
+function getWebSocketUrl(): string {
+  // First check environment variable
+  if (process.env.NEXT_PUBLIC_WS_URL) {
+    return process.env.NEXT_PUBLIC_WS_URL;
+  }
+
+  // If running in browser, derive from current location
+  if (typeof window !== 'undefined') {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+
+    // If we're on localhost with a specific port (like 3000 for Next.js dev),
+    // assume backend is on port 8000
+    if (host.includes('localhost') || host.includes('127.0.0.1')) {
+      const hostname = window.location.hostname;
+      return `ws://${hostname}:8000`;
+    }
+
+    // For production (Railway, etc.), use same host with appropriate protocol
+    return `${protocol}//${host}`;
+  }
+
+  // Fallback for SSR
+  return 'ws://localhost:8000';
+}
+
+const WS_URL = getWebSocketUrl();
 
 type MessageHandler = (data: unknown) => void;
 

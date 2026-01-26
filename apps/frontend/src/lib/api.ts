@@ -3,7 +3,34 @@
  * Connects to real backend endpoints for live data
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+// Dynamically determine API URL based on current page location
+function getApiBaseUrl(): string {
+  // First check environment variable
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+
+  // If running in browser, derive from current location
+  if (typeof window !== 'undefined') {
+    const protocol = window.location.protocol;
+    const host = window.location.host;
+
+    // If we're on localhost with a specific port (like 3000 for Next.js dev),
+    // assume backend is on port 8000
+    if (host.includes('localhost') || host.includes('127.0.0.1')) {
+      const hostname = window.location.hostname;
+      return `http://${hostname}:8000`;
+    }
+
+    // For production (Railway, etc.), use same host
+    return `${protocol}//${host}`;
+  }
+
+  // Fallback for SSR
+  return 'http://localhost:8000';
+}
+
+const API_BASE_URL = getApiBaseUrl()
 
 // ============ Types ============
 
