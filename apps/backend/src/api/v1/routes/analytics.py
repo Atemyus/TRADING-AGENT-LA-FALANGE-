@@ -13,6 +13,7 @@ from src.services.trading_service import get_trading_service
 from src.engines.data.market_data import get_market_data_service
 from src.engines.data.indicators import TechnicalIndicators
 from src.engines.trading.broker_factory import NoBrokerConfiguredError
+from src.engines.trading.metatrader_broker import RateLimitError
 
 router = APIRouter()
 
@@ -149,8 +150,20 @@ async def get_account_summary():
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(e),
         )
+    except RateLimitError as e:
+        logger.warning(f"Rate limit reached for account summary: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="API rate limit exceeded. Please wait a few minutes and try again.",
+        )
     except Exception as e:
         logger.error(f"DEBUG: Exception in get_account_summary: {type(e).__name__}: {e}")
+        # Check if it's a rate limit error from the message
+        if "429" in str(e) or "rate limit" in str(e).lower() or "TooManyRequestsError" in str(e):
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="API rate limit exceeded. Please wait a few minutes and try again.",
+            )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e),

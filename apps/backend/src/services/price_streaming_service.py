@@ -31,6 +31,7 @@ class PriceStreamingService:
         self._subscribers: Dict[str, Set[Callable]] = {}  # symbol -> callbacks
         self._current_prices: Dict[str, Tick] = {}
         self._stream_task: Optional[asyncio.Task] = None
+        self._rate_limited = False  # Track if broker is rate limited
 
         # Base prices for simulation (when no broker) - ALL 74 symbols
         self._base_prices = {
@@ -246,8 +247,10 @@ class PriceStreamingService:
         """Stream prices from connected broker using polling for real-time sync."""
         print(f"[PriceStreaming] _stream_from_broker started for broker: {self._broker.name if self._broker else 'None'}")
         tick_count = 0
-        poll_interval = 0.5  # Poll every 500ms for real-time sync with broker
+        base_poll_interval = 2.0  # Poll every 2 seconds to reduce API calls
+        poll_interval = base_poll_interval
         failed_symbols: Set[str] = set()  # Track symbols that broker doesn't have
+        consecutive_errors = 0  # Track consecutive errors for backoff
 
         while self._streaming and self.is_broker_connected:
             try:
@@ -261,16 +264,20 @@ class PriceStreamingService:
                 simulated_symbols = [s for s in symbols if s in failed_symbols]
 
                 # Get prices from broker for available symbols
-                if broker_symbols:
+                if broker_symbols and not self._rate_limited:
                     try:
-                        # Log every 10 cycles
-                        if tick_count % 100 == 0:
-                            print(f"[PriceStreaming] Polling {len(broker_symbols)} symbols from broker...")
+                        # Log every 50 cycles (less frequent)
+                        if tick_count % 50 == 0:
+                            print(f"[PriceStreaming] Polling {len(broker_symbols)} symbols from broker (interval: {poll_interval}s)...")
 
                         prices = await self._broker.get_prices(broker_symbols)
 
+                        # Reset backoff on success
+                        consecutive_errors = 0
+                        poll_interval = base_poll_interval
+
                         # Log result
-                        if tick_count == 0 or tick_count % 100 == 0:
+                        if tick_count == 0 or tick_count % 50 == 0:
                             print(f"[PriceStreaming] Broker returned {len(prices)} prices")
 
                         # Track which symbols we got prices for
@@ -299,31 +306,50 @@ class PriceStreamingService:
                         # If broker returned NO prices at all, something is wrong
                         if len(prices) == 0 and len(broker_symbols) > 0:
                             print(f"[PriceStreaming] WARNING: Broker returned 0 prices for {len(broker_symbols)} symbols!")
-                            # Mark all as failed to use simulation
-                            for symbol in broker_symbols:
-                                if symbol not in failed_symbols:
-                                    failed_symbols.add(symbol)
+                            consecutive_errors += 1
+                            # Exponential backoff up to 30 seconds
+                            poll_interval = min(base_poll_interval * (2 ** consecutive_errors), 30.0)
 
                     except Exception as poll_error:
-                        print(f"[PriceStreaming] Broker polling error: {poll_error}")
-                        import traceback
-                        traceback.print_exc()
+                        error_str = str(poll_error)
+                        consecutive_errors += 1
+
+                        # Check if it's a rate limit error
+                        if "rate limit" in error_str.lower() or "429" in error_str or "RateLimitError" in error_str:
+                            print(f"[PriceStreaming] Rate limit detected! Switching to simulation mode for 5 minutes...")
+                            self._rate_limited = True
+                            # Schedule to re-enable broker after 5 minutes
+                            asyncio.create_task(self._re_enable_broker_after_delay(300))
+                        else:
+                            print(f"[PriceStreaming] Broker polling error: {poll_error}")
+                            # Exponential backoff up to 30 seconds
+                            poll_interval = min(base_poll_interval * (2 ** consecutive_errors), 30.0)
+                            print(f"[PriceStreaming] Backing off, next poll in {poll_interval}s")
 
                 # Generate simulated prices for symbols not available from broker
-                for symbol in simulated_symbols:
+                # Also generate for ALL symbols if rate limited
+                symbols_to_simulate = simulated_symbols if not self._rate_limited else symbols
+                for symbol in symbols_to_simulate:
                     tick = self._generate_simulated_tick(symbol)
                     if tick:
                         self._current_prices[symbol] = tick
                         await self._notify_subscribers(tick)
 
                 # Wait before next poll cycle
-                await asyncio.sleep(poll_interval)
+                await asyncio.sleep(poll_interval if not self._rate_limited else 1.0)
 
             except Exception as e:
                 print(f"[PriceStreaming] Broker error: {e}")
                 import traceback
                 traceback.print_exc()
-                await asyncio.sleep(1)
+                await asyncio.sleep(2)
+
+    async def _re_enable_broker_after_delay(self, delay_seconds: int):
+        """Re-enable broker polling after a delay."""
+        print(f"[PriceStreaming] Will re-enable broker polling in {delay_seconds} seconds...")
+        await asyncio.sleep(delay_seconds)
+        self._rate_limited = False
+        print("[PriceStreaming] Re-enabled broker polling")
 
     def _generate_simulated_tick(self, symbol: str) -> Optional[Tick]:
         """Generate a simulated tick for a single symbol."""

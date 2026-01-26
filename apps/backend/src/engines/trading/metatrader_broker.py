@@ -11,9 +11,10 @@ Setup:
 """
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, AsyncIterator, Dict, List, Optional
+import time
 
 import httpx
 
@@ -159,6 +160,12 @@ class MetaTraderBroker(BaseBroker):
         'ZN1': ['ZN', 'ZNm', 'ZN1', 'ZN1!', 'TNOTE'],
     }
 
+    # Cache TTLs (in seconds)
+    ACCOUNT_INFO_CACHE_TTL = 30  # Cache account info for 30 seconds
+    POSITIONS_CACHE_TTL = 15  # Cache positions for 15 seconds
+    PRICES_CACHE_TTL = 2  # Cache prices for 2 seconds
+    ORDERS_CACHE_TTL = 10  # Cache orders for 10 seconds
+
     def __init__(
         self,
         access_token: Optional[str] = None,
@@ -181,6 +188,11 @@ class MetaTraderBroker(BaseBroker):
         self._broker_symbols: List[str] = []  # List of available broker symbols
         self._client_api_url: Optional[str] = None  # Set during connect based on region
 
+        # Cache for API responses to avoid rate limiting
+        self._cache: Dict[str, Dict[str, Any]] = {}  # key -> {"data": ..., "expires": timestamp}
+        self._rate_limit_until: Optional[float] = None  # Timestamp until which we should not make API calls
+        self._rate_limit_endpoint: Optional[str] = None  # Which endpoint is rate limited
+
     async def _ensure_client(self) -> None:
         """Ensure HTTP client is initialized."""
         if self._client is None:
@@ -195,6 +207,49 @@ class MetaTraderBroker(BaseBroker):
                 verify=False,
             )
 
+    def _get_cache(self, key: str) -> Optional[Any]:
+        """Get cached data if not expired."""
+        if key in self._cache:
+            cached = self._cache[key]
+            if time.time() < cached["expires"]:
+                return cached["data"]
+            else:
+                # Expired, remove from cache
+                del self._cache[key]
+        return None
+
+    def _set_cache(self, key: str, data: Any, ttl: int) -> None:
+        """Set cache with TTL in seconds."""
+        self._cache[key] = {
+            "data": data,
+            "expires": time.time() + ttl,
+        }
+
+    def _is_rate_limited(self, endpoint: str = None) -> bool:
+        """Check if we're currently rate limited."""
+        if self._rate_limit_until is None:
+            return False
+        if time.time() >= self._rate_limit_until:
+            # Rate limit has expired
+            self._rate_limit_until = None
+            self._rate_limit_endpoint = None
+            return False
+        return True
+
+    def _set_rate_limit(self, retry_time: str, endpoint: str) -> None:
+        """Set rate limit from API response."""
+        try:
+            # Parse ISO format: "2026-01-26T21:08:21.567Z"
+            retry_dt = datetime.fromisoformat(retry_time.replace("Z", "+00:00"))
+            self._rate_limit_until = retry_dt.timestamp()
+            self._rate_limit_endpoint = endpoint
+            print(f"[MetaTrader] Rate limited until {retry_time} for endpoint: {endpoint}")
+        except Exception as e:
+            # If parsing fails, set a 5 minute backoff
+            self._rate_limit_until = time.time() + 300
+            self._rate_limit_endpoint = endpoint
+            print(f"[MetaTrader] Rate limited (parse error: {e}), backing off for 5 minutes")
+
     async def _request(
         self,
         method: str,
@@ -202,13 +257,27 @@ class MetaTraderBroker(BaseBroker):
         base_url: Optional[str] = None,
         **kwargs
     ) -> Dict[str, Any]:
-        """Make API request."""
+        """Make API request with rate limit handling."""
         await self._ensure_client()
 
         # Use provided base_url, or the client API URL (set during connect), or fallback
         effective_base_url = base_url or self._client_api_url or "https://mt-client-api-v1.vint-hill.agiliumtrade.ai"
         url = f"{effective_base_url}{endpoint}"
         response = await self._client.request(method, url, **kwargs)
+
+        if response.status_code == 429:
+            # Rate limit hit - parse the error to get retry time
+            try:
+                error_data = response.json()
+                retry_time = error_data.get("metadata", {}).get("recommendedRetryTime")
+                if retry_time:
+                    self._set_rate_limit(retry_time, endpoint)
+            except Exception:
+                # Set a default 5 minute backoff
+                self._rate_limit_until = time.time() + 300
+                self._rate_limit_endpoint = endpoint
+
+            raise RateLimitError(f"MetaApi rate limit exceeded for {endpoint}")
 
         if response.status_code >= 400:
             error_text = response.text
@@ -218,6 +287,11 @@ class MetaTraderBroker(BaseBroker):
             return {}
 
         return response.json()
+
+
+class RateLimitError(Exception):
+    """Raised when API rate limit is exceeded."""
+    pass
 
     def _resolve_symbol(self, symbol: str) -> str:
         """
@@ -349,54 +423,109 @@ class MetaTraderBroker(BaseBroker):
         return ["forex", "indices", "commodities", "metals", "futures"]
 
     async def get_account_info(self) -> AccountInfo:
-        """Get account information."""
+        """Get account information with caching."""
         if not self._connected:
             await self.connect()
 
-        info = await self._request(
-            "GET",
-            f"/users/current/accounts/{self.account_id}/account-information",
-        )
+        cache_key = "account_info"
 
-        return AccountInfo(
-            account_id=self.account_id,
-            balance=Decimal(str(info.get("balance", 0))),
-            equity=Decimal(str(info.get("equity", 0))),
-            margin_used=Decimal(str(info.get("margin", 0))),
-            margin_available=Decimal(str(info.get("freeMargin", 0))),
-            unrealized_pnl=Decimal(str(info.get("equity", 0) - info.get("balance", 0))),
-            realized_pnl_today=Decimal("0"),  # MetaApi doesn't provide daily P&L directly
-            currency=info.get("currency", "USD"),
-            leverage=info.get("leverage", 1),
-        )
+        # Check cache first
+        cached = self._get_cache(cache_key)
+        if cached is not None:
+            return cached
+
+        # Check if we're rate limited
+        if self._is_rate_limited():
+            # Return last known data if available, or raise error
+            if cache_key in self._cache:
+                print("[MetaTrader] Rate limited, returning stale cached account info")
+                return self._cache[cache_key]["data"]
+            raise RateLimitError("Rate limited and no cached data available")
+
+        try:
+            info = await self._request(
+                "GET",
+                f"/users/current/accounts/{self.account_id}/account-information",
+            )
+
+            account_info = AccountInfo(
+                account_id=self.account_id,
+                balance=Decimal(str(info.get("balance", 0))),
+                equity=Decimal(str(info.get("equity", 0))),
+                margin_used=Decimal(str(info.get("margin", 0))),
+                margin_available=Decimal(str(info.get("freeMargin", 0))),
+                unrealized_pnl=Decimal(str(info.get("equity", 0) - info.get("balance", 0))),
+                realized_pnl_today=Decimal("0"),  # MetaApi doesn't provide daily P&L directly
+                currency=info.get("currency", "USD"),
+                leverage=info.get("leverage", 1),
+            )
+
+            # Cache the result
+            self._set_cache(cache_key, account_info, self.ACCOUNT_INFO_CACHE_TTL)
+            return account_info
+
+        except RateLimitError:
+            # Return stale cache if available
+            if cache_key in self._cache:
+                print("[MetaTrader] Rate limited, returning stale cached account info")
+                return self._cache[cache_key]["data"]
+            raise
 
     async def get_positions(self) -> List[Position]:
-        """Get all open positions."""
+        """Get all open positions with caching."""
         if not self._connected:
             await self.connect()
 
-        positions_data = await self._request(
-            "GET",
-            f"/users/current/accounts/{self.account_id}/positions",
-        )
+        cache_key = "positions"
 
-        positions = []
-        for pos in positions_data:
-            positions.append(Position(
-                position_id=str(pos.get("id")),
-                symbol=pos.get("symbol", ""),
-                side=PositionSide.LONG if pos.get("type") == "POSITION_TYPE_BUY" else PositionSide.SHORT,
-                size=Decimal(str(abs(pos.get("volume", 0)))),
-                entry_price=Decimal(str(pos.get("openPrice", 0))),
-                current_price=Decimal(str(pos.get("currentPrice", 0))),
-                unrealized_pnl=Decimal(str(pos.get("profit", 0))),
-                margin_used=Decimal(str(pos.get("margin", 0))),
-                stop_loss=Decimal(str(pos.get("stopLoss", 0))) if pos.get("stopLoss") else None,
-                take_profit=Decimal(str(pos.get("takeProfit", 0))) if pos.get("takeProfit") else None,
-                opened_at=datetime.fromisoformat(pos.get("time", datetime.now().isoformat()).replace("Z", "+00:00")),
-            ))
+        # Check cache first
+        cached = self._get_cache(cache_key)
+        if cached is not None:
+            return cached
 
-        return positions
+        # Check if we're rate limited
+        if self._is_rate_limited():
+            # Return last known data if available
+            if cache_key in self._cache:
+                print("[MetaTrader] Rate limited, returning stale cached positions")
+                return self._cache[cache_key]["data"]
+            # Return empty list if no cache (better than failing)
+            print("[MetaTrader] Rate limited and no cached positions, returning empty list")
+            return []
+
+        try:
+            positions_data = await self._request(
+                "GET",
+                f"/users/current/accounts/{self.account_id}/positions",
+            )
+
+            positions = []
+            for pos in positions_data:
+                positions.append(Position(
+                    position_id=str(pos.get("id")),
+                    symbol=pos.get("symbol", ""),
+                    side=PositionSide.LONG if pos.get("type") == "POSITION_TYPE_BUY" else PositionSide.SHORT,
+                    size=Decimal(str(abs(pos.get("volume", 0)))),
+                    entry_price=Decimal(str(pos.get("openPrice", 0))),
+                    current_price=Decimal(str(pos.get("currentPrice", 0))),
+                    unrealized_pnl=Decimal(str(pos.get("profit", 0))),
+                    margin_used=Decimal(str(pos.get("margin", 0))),
+                    stop_loss=Decimal(str(pos.get("stopLoss", 0))) if pos.get("stopLoss") else None,
+                    take_profit=Decimal(str(pos.get("takeProfit", 0))) if pos.get("takeProfit") else None,
+                    opened_at=datetime.fromisoformat(pos.get("time", datetime.now().isoformat()).replace("Z", "+00:00")),
+                ))
+
+            # Cache the result
+            self._set_cache(cache_key, positions, self.POSITIONS_CACHE_TTL)
+            return positions
+
+        except RateLimitError:
+            # Return stale cache if available
+            if cache_key in self._cache:
+                print("[MetaTrader] Rate limited, returning stale cached positions")
+                return self._cache[cache_key]["data"]
+            print("[MetaTrader] Rate limited and no cached positions, returning empty list")
+            return []
 
     async def get_position(self, symbol: str) -> Optional[Position]:
         """Get position for a specific symbol."""
@@ -595,46 +724,78 @@ class MetaTraderBroker(BaseBroker):
             return False
 
     async def get_open_orders(self, symbol: Optional[str] = None) -> List[OrderResult]:
-        """Get all open/pending orders."""
+        """Get all open/pending orders with caching."""
         if not self._connected:
             await self.connect()
 
-        orders_data = await self._request(
-            "GET",
-            f"/users/current/accounts/{self.account_id}/orders",
-        )
+        cache_key = "orders"
 
-        orders = []
-        for order in orders_data:
-            order_symbol = order.get("symbol", "")
+        # Check cache first (only for unfiltered requests)
+        if symbol is None:
+            cached = self._get_cache(cache_key)
+            if cached is not None:
+                return cached
+
+        # Check if we're rate limited
+        if self._is_rate_limited():
+            if cache_key in self._cache:
+                print("[MetaTrader] Rate limited, returning stale cached orders")
+                all_orders = self._cache[cache_key]["data"]
+                if symbol:
+                    broker_symbol = self._resolve_symbol(symbol)
+                    return [o for o in all_orders if o.symbol.upper() == broker_symbol.upper()]
+                return all_orders
+            return []
+
+        try:
+            orders_data = await self._request(
+                "GET",
+                f"/users/current/accounts/{self.account_id}/orders",
+            )
+
+            orders = []
+            for order in orders_data:
+                order_symbol = order.get("symbol", "")
+
+                side = OrderSide.BUY if "BUY" in order.get("type", "") else OrderSide.SELL
+
+                order_type = OrderType.MARKET
+                if "LIMIT" in order.get("type", ""):
+                    order_type = OrderType.LIMIT
+                elif "STOP" in order.get("type", ""):
+                    order_type = OrderType.STOP
+
+                orders.append(OrderResult(
+                    order_id=str(order.get("id")),
+                    client_order_id=order.get("clientId"),
+                    symbol=order_symbol,
+                    side=side,
+                    order_type=order_type,
+                    status=OrderStatus.PENDING,
+                    size=Decimal(str(order.get("volume", 0))),
+                    filled_size=Decimal("0"),
+                    price=Decimal(str(order.get("openPrice", 0))) if order.get("openPrice") else None,
+                ))
+
+            # Cache the full result
+            self._set_cache(cache_key, orders, self.ORDERS_CACHE_TTL)
 
             # Filter by symbol if specified
             if symbol:
                 broker_symbol = self._resolve_symbol(symbol)
-                if order_symbol.upper() != broker_symbol.upper():
-                    continue
+                return [o for o in orders if o.symbol.upper() == broker_symbol.upper()]
 
-            side = OrderSide.BUY if "BUY" in order.get("type", "") else OrderSide.SELL
+            return orders
 
-            order_type = OrderType.MARKET
-            if "LIMIT" in order.get("type", ""):
-                order_type = OrderType.LIMIT
-            elif "STOP" in order.get("type", ""):
-                order_type = OrderType.STOP
-
-            orders.append(OrderResult(
-                order_id=str(order.get("id")),
-                client_order_id=order.get("clientId"),
-                symbol=order_symbol,
-                side=side,
-                order_type=order_type,
-                status=OrderStatus.PENDING,
-                size=Decimal(str(order.get("volume", 0))),
-                filled_size=Decimal("0"),
-                price=Decimal(str(order.get("openPrice", 0))) if order.get("openPrice") else None,
-            ))
-
-        return orders
+        except RateLimitError:
+            if cache_key in self._cache:
+                print("[MetaTrader] Rate limited, returning stale cached orders")
+                all_orders = self._cache[cache_key]["data"]
+                if symbol:
+                    broker_symbol = self._resolve_symbol(symbol)
+                    return [o for o in all_orders if o.symbol.upper() == broker_symbol.upper()]
+                return all_orders
+            return []
 
     async def get_order(self, order_id: str) -> Optional[OrderResult]:
         """Get order by ID."""
@@ -714,11 +875,24 @@ class MetaTraderBroker(BaseBroker):
         return instruments
 
     async def get_current_price(self, symbol: str) -> Tick:
-        """Get current bid/ask price for symbol."""
+        """Get current bid/ask price for symbol with caching."""
         if not self._connected:
             await self.connect()
 
         broker_symbol = self._resolve_symbol(symbol)
+        cache_key = f"price_{symbol}"
+
+        # Check cache first
+        cached = self._get_cache(cache_key)
+        if cached is not None:
+            return cached
+
+        # Check if we're rate limited
+        if self._is_rate_limited():
+            if cache_key in self._cache:
+                print(f"[MetaTrader] Rate limited, returning stale cached price for {symbol}")
+                return self._cache[cache_key]["data"]
+            raise RateLimitError(f"Rate limited and no cached price for {symbol}")
 
         try:
             price_data = await self._request(
@@ -726,13 +900,27 @@ class MetaTraderBroker(BaseBroker):
                 f"/users/current/accounts/{self.account_id}/symbols/{broker_symbol}/current-price",
             )
 
-            return Tick(
+            tick = Tick(
                 symbol=symbol,  # Return original symbol for consistency
                 bid=Decimal(str(price_data.get("bid", 0))),
                 ask=Decimal(str(price_data.get("ask", 0))),
                 timestamp=datetime.now(),
             )
+
+            # Cache the result
+            self._set_cache(cache_key, tick, self.PRICES_CACHE_TTL)
+            return tick
+
+        except RateLimitError:
+            if cache_key in self._cache:
+                print(f"[MetaTrader] Rate limited, returning stale cached price for {symbol}")
+                return self._cache[cache_key]["data"]
+            raise
         except Exception as e:
+            # For other errors, still try to return cached data
+            if cache_key in self._cache:
+                print(f"[MetaTrader] Error getting price for {symbol}, returning cached: {e}")
+                return self._cache[cache_key]["data"]
             raise Exception(f"Failed to get price for {symbol}: {e}")
 
     async def stream_prices(
