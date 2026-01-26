@@ -446,18 +446,18 @@ class TradingViewAIAgent:
     MODE_CONFIG = {
         "quick": {
             "timeframes": ["15"],  # 15 minutes
-            "num_models": 1,
-            "description": "Fast single-timeframe analysis"
+            "num_models": 2,
+            "description": "Fast single-timeframe analysis with 2 AI models"
         },
         "standard": {
             "timeframes": ["15", "60"],  # 15m, 1h
-            "num_models": 2,
-            "description": "Balanced multi-timeframe analysis"
+            "num_models": 4,
+            "description": "Balanced multi-timeframe analysis with 4 AI models"
         },
         "premium": {
             "timeframes": ["15", "60", "240"],  # 15m, 1h, 4h
-            "num_models": 4,
-            "description": "Deep multi-timeframe analysis"
+            "num_models": 6,
+            "description": "Deep multi-timeframe analysis with all 6 AI models"
         },
         "ultra": {
             "timeframes": ["5", "15", "60", "240", "D"],  # 5m, 15m, 1h, 4h, Daily
@@ -844,6 +844,101 @@ Be specific with price levels based on what you see on the chart.
             print(f"Error asking AI for analysis: {e}")
             return {"direction": "HOLD", "confidence": 0, "reasoning": str(e)}
 
+    async def _analyze_model_from_screenshot(
+        self,
+        model_key: str,
+        screenshot: str,
+        symbol: str,
+        timeframe: str,
+    ) -> TradingViewAnalysisResult:
+        """
+        Analyze a screenshot with a specific AI model (API call only, no browser interaction).
+        This is optimized for parallel execution - multiple models analyze the same screenshot.
+        """
+        model_id = self.VISION_MODELS.get(model_key)
+        display_name = self.MODEL_DISPLAY_NAMES.get(model_key, model_key)
+        preferences = self.MODEL_PREFERENCES.get(model_key, {})
+
+        result = TradingViewAnalysisResult(
+            model=model_id,
+            model_display_name=display_name,
+            analysis_style=preferences.get("style", "mixed"),
+            indicators_used=[],
+            drawings_made=[],
+            direction="HOLD",
+            confidence=0,
+            timeframe=timeframe,
+        )
+
+        start_time = datetime.now()
+
+        prompt = f"""You are an expert {preferences.get('style', 'technical')} analyst analyzing {symbol} on the {timeframe} timeframe.
+
+Your analysis focus: {preferences.get('focus', 'general technical analysis')}
+Preferred indicators to look for: {', '.join(preferences.get('indicators', ['EMA', 'RSI']))}
+
+Analyze this chart and provide your trading recommendation.
+
+Respond with ONLY a JSON object:
+{{
+  "direction": "LONG" or "SHORT" or "HOLD",
+  "confidence": 0-100,
+  "entry_price": exact price or null,
+  "stop_loss": exact price or null,
+  "take_profit": [price1, price2, price3] or [],
+  "key_observations": ["observation1", "observation2", ...],
+  "reasoning": "Complete explanation of your analysis"
+}}
+
+Be specific with price levels based on what you see on the chart.
+"""
+
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": model_id,
+                        "messages": [{
+                            "role": "user",
+                            "content": [
+                                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{screenshot}"}},
+                                {"type": "text", "text": prompt}
+                            ]
+                        }],
+                        "max_tokens": 1500,
+                        "temperature": 0.2
+                    }
+                )
+                response.raise_for_status()
+                data = response.json()
+                text = data["choices"][0]["message"]["content"]
+
+                # Parse JSON
+                import re
+                match = re.search(r'\{.*\}', text, re.DOTALL)
+                if match:
+                    analysis = json.loads(match.group())
+                    result.direction = analysis.get("direction", "HOLD")
+                    result.confidence = analysis.get("confidence", 0)
+                    result.entry_price = analysis.get("entry_price")
+                    result.stop_loss = analysis.get("stop_loss")
+                    result.take_profit = analysis.get("take_profit", [])
+                    result.key_observations = analysis.get("key_observations", [])
+                    result.reasoning = analysis.get("reasoning", "")
+
+        except Exception as e:
+            result.error = str(e)
+            print(f"Error analyzing with {display_name}: {e}")
+
+        result.latency_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+        result.screenshots.append(screenshot)
+        return result
+
     async def analyze_all_models(
         self,
         symbol: str,
@@ -879,12 +974,13 @@ Be specific with price levels based on what you see on the chart.
         Run multi-timeframe analysis based on the selected mode.
 
         Each mode uses different timeframes and number of AI models:
-        - quick: 1 timeframe (15m), 1 model
-        - standard: 2 timeframes (15m, 1h), 2 models
-        - premium: 3 timeframes (15m, 1h, 4h), 4 models
+        - quick: 1 timeframe (15m), 2 models
+        - standard: 2 timeframes (15m, 1h), 4 models
+        - premium: 3 timeframes (15m, 1h, 4h), 6 models
         - ultra: 5 timeframes (5m, 15m, 1h, 4h, D), 6 models
 
         Each AI analyzes ALL timeframes for the mode, changing TF on TradingView.
+        AI calls are parallelized per timeframe for faster execution.
         """
         mode_config = self.MODE_CONFIG.get(mode, self.MODE_CONFIG["standard"])
         timeframes = mode_config["timeframes"]
@@ -897,33 +993,43 @@ Be specific with price levels based on what you see on the chart.
         timeframe_analyses: Dict[str, List[TradingViewAnalysisResult]] = {tf: [] for tf in timeframes}
 
         print(f"\n{'='*60}")
-        print(f"TradingView AI Agent - Mode: {mode.upper()}")
+        print(f"TradingView AI Agent - Mode: {mode.upper()} (Parallel)")
         print(f"Timeframes: {', '.join(timeframes)}")
         print(f"AI Models: {', '.join([self.MODEL_DISPLAY_NAMES[k] for k in model_keys])}")
         print(f"{'='*60}\n")
 
-        for model_key in model_keys:
-            model_name = self.MODEL_DISPLAY_NAMES[model_key]
-            print(f"\n--- {model_name} starting multi-timeframe analysis ---")
+        # Process each timeframe with all models in parallel
+        for tf in timeframes:
+            print(f"\n--- Analyzing {symbol} on {tf} timeframe with {len(model_keys)} models in parallel ---")
 
-            for tf in timeframes:
-                print(f"  [{model_name}] Analyzing {symbol} on {tf} timeframe...")
+            # Prepare chart for this timeframe
+            screenshot = None
+            if self.browser and self.browser._initialized:
+                await self.browser.remove_all_indicators()
+                await self.browser.change_timeframe(tf)
+                await asyncio.sleep(1.5)  # Wait for chart to load
+                screenshot = await self.browser.take_screenshot()
 
-                # Clean chart for fresh analysis
-                if self.browser and self.browser._initialized:
-                    await self.browser.remove_all_indicators()
-                    # Change timeframe on TradingView
-                    await self.browser.change_timeframe(tf)
-                    await asyncio.sleep(1)
+            if not screenshot:
+                print(f"  [WARNING] Could not capture screenshot for {tf} timeframe")
+                continue
 
-                # Run analysis on this timeframe
-                result = await self.analyze_with_model(model_key, symbol, tf)
-                result.timeframe = tf
+            # Run all models in parallel for this timeframe
+            print(f"  Sending screenshot to {len(model_keys)} AI models simultaneously...")
+            tasks = [
+                self._analyze_model_from_screenshot(model_key, screenshot, symbol, tf)
+                for model_key in model_keys
+            ]
+            tf_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # Process results
+            for result in tf_results:
+                if isinstance(result, Exception):
+                    print(f"  [ERROR] Model analysis failed: {result}")
+                    continue
                 all_results.append(result)
                 timeframe_analyses[tf].append(result)
-
-                print(f"  [{model_name}] {tf}: {result.direction} ({result.confidence}% confidence)")
-                await asyncio.sleep(0.5)
+                print(f"  [{result.model_display_name}] {tf}: {result.direction} ({result.confidence}% confidence)")
 
         # Calculate consensus per timeframe
         tf_consensus = {}

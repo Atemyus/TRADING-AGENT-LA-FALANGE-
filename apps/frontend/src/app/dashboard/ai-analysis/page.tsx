@@ -76,9 +76,9 @@ const GROUPED_SYMBOLS = Object.entries(
 )
 
 const MODES = [
-  { value: 'quick', label: 'Quick', description: '1 TF, 1 model', icon: Zap },
-  { value: 'standard', label: 'Standard', description: '2 TF, 2 models', icon: Target },
-  { value: 'premium', label: 'Premium', description: '3 TF, 4 models', icon: Shield },
+  { value: 'quick', label: 'Quick', description: '1 TF, 2 models', icon: Zap },
+  { value: 'standard', label: 'Standard', description: '2 TF, 4 models', icon: Target },
+  { value: 'premium', label: 'Premium', description: '3 TF, 6 models', icon: Shield },
   { value: 'ultra', label: 'Ultra', description: '5 TF, 6 models', icon: Layers },
 ]
 
