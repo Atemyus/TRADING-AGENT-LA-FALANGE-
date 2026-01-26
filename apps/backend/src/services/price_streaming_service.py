@@ -150,36 +150,58 @@ class PriceStreamingService:
             self._stream_task = None
 
     async def _stream_from_broker(self):
-        """Stream prices from connected broker."""
+        """Stream prices from connected broker using polling for real-time sync."""
         print(f"[PriceStreaming] _stream_from_broker started for broker: {self._broker.name if self._broker else 'None'}")
         tick_count = 0
+        poll_interval = 0.5  # Poll every 500ms for real-time sync with broker
 
         while self._streaming and self.is_broker_connected:
             try:
                 symbols = list(self._subscribers.keys())
                 if not symbols:
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(poll_interval)
                     continue
 
-                print(f"[PriceStreaming] Streaming prices for symbols: {symbols}")
+                # Use polling to get ALL prices at once - more reliable than streaming
+                try:
+                    prices = await self._broker.get_prices(symbols)
 
-                async for tick in self._broker.stream_prices(symbols):
-                    if not self._streaming:
-                        break
+                    for symbol, tick in prices.items():
+                        tick_count += 1
 
-                    tick_count += 1
-                    # Log first few ticks and then every 10th
-                    if tick_count <= 3 or tick_count % 10 == 0:
-                        print(f"[PriceStreaming] Broker tick #{tick_count}: {tick.symbol} bid={tick.bid} ask={tick.ask}")
+                        # Log first few ticks and then every 50th
+                        if tick_count <= 5 or tick_count % 50 == 0:
+                            print(f"[PriceStreaming] Broker poll #{tick_count}: {tick.symbol} bid={tick.bid} ask={tick.ask}")
 
-                    # Update cache
-                    self._current_prices[tick.symbol] = tick
+                        # Update cache
+                        self._current_prices[tick.symbol] = tick
 
-                    # Notify subscribers
-                    await self._notify_subscribers(tick)
+                        # Notify subscribers immediately
+                        await self._notify_subscribers(tick)
+
+                except Exception as poll_error:
+                    print(f"[PriceStreaming] Polling error, trying streaming: {poll_error}")
+
+                    # Fallback to streaming if polling fails
+                    try:
+                        async for tick in self._broker.stream_prices(symbols):
+                            if not self._streaming:
+                                break
+
+                            tick_count += 1
+                            if tick_count <= 5 or tick_count % 50 == 0:
+                                print(f"[PriceStreaming] Broker stream #{tick_count}: {tick.symbol} bid={tick.bid} ask={tick.ask}")
+
+                            self._current_prices[tick.symbol] = tick
+                            await self._notify_subscribers(tick)
+                    except Exception as stream_error:
+                        print(f"[PriceStreaming] Streaming also failed: {stream_error}")
+
+                # Wait before next poll cycle
+                await asyncio.sleep(poll_interval)
 
             except Exception as e:
-                print(f"[PriceStreaming] Broker streaming error: {e}")
+                print(f"[PriceStreaming] Broker error: {e}")
                 import traceback
                 traceback.print_exc()
                 await asyncio.sleep(1)
