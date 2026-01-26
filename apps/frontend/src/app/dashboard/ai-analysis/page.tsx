@@ -83,9 +83,9 @@ const GROUPED_SYMBOLS = Object.entries(
 )
 
 const MODES = [
-  { value: 'quick', label: 'Quick', description: '1 TF, 3 AI', icon: Zap },
-  { value: 'standard', label: 'Standard', description: '2 TF, 5 AI', icon: Target },
-  { value: 'premium', label: 'Premium', description: '3 TF, 7 AI', icon: Shield },
+  { value: 'quick', label: 'Rapida', description: '1 TF, 8 AI', icon: Zap },
+  { value: 'standard', label: 'Standard', description: '2 TF, 8 AI', icon: Target },
+  { value: 'premium', label: 'Premium', description: '3 TF, 8 AI', icon: Shield },
   { value: 'ultra', label: 'Ultra', description: '5 TF, 8 AI', icon: Layers },
 ]
 
@@ -235,11 +235,11 @@ export default function AIAnalysisPage() {
         className="flex items-center justify-between"
       >
         <div>
-          <h1 className="text-3xl font-bold mb-2">AI Analysis</h1>
-          <p className="text-dark-400">Multi-model consensus trading signals</p>
+          <h1 className="text-3xl font-bold mb-2">Analisi AI</h1>
+          <p className="text-dark-400">Segnali di trading con consenso multi-modello</p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-sm text-dark-400">AI Models:</span>
+          <span className="text-sm text-dark-400">Modelli AI:</span>
           {loadingStatus ? (
             <Loader2 size={16} className="animate-spin text-dark-400" />
           ) : aiStatus ? (
@@ -262,7 +262,7 @@ export default function AIAnalysisPage() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           {/* Symbol Selection */}
           <div>
-            <label className="block text-sm font-medium mb-2">Symbol ({ALL_SYMBOLS.length} assets)</label>
+            <label className="block text-sm font-medium mb-2">Simbolo ({ALL_SYMBOLS.length} asset)</label>
             <select
               value={symbol}
               onChange={(e) => setSymbol(e.target.value)}
@@ -280,15 +280,15 @@ export default function AIAnalysisPage() {
 
           {/* TradingView Free Plan Info */}
           <div>
-            <label className="block text-sm font-medium mb-2">TradingView Plan</label>
+            <label className="block text-sm font-medium mb-2">Piano TradingView</label>
             <div className="input bg-dark-800/50 cursor-not-allowed">
-              Free Plan - Max {MAX_INDICATORS_FREE_PLAN} indicators
+              Piano Gratuito - Max {MAX_INDICATORS_FREE_PLAN} indicatori
             </div>
           </div>
 
           {/* Mode Selection */}
           <div>
-            <label className="block text-sm font-medium mb-2">Multi-TF Mode</label>
+            <label className="block text-sm font-medium mb-2">Modalità Multi-TF</label>
             <div className="flex gap-2">
               {MODES.map(m => {
                 const Icon = m.icon
@@ -321,12 +321,12 @@ export default function AIAnalysisPage() {
               {isAnalyzing ? (
                 <>
                   <Loader2 size={20} className="animate-spin" />
-                  Running TradingView Agent...
+                  Esecuzione TradingView Agent...
                 </>
               ) : (
                 <>
                   <Play size={20} />
-                  Run Analysis
+                  Avvia Analisi
                 </>
               )}
             </button>
@@ -337,12 +337,12 @@ export default function AIAnalysisPage() {
         <div className="flex items-center justify-between p-4 bg-dark-800/50 rounded-lg">
           <div className="flex items-center gap-4">
             <div>
-              <p className="text-sm text-dark-400">Selected Symbol</p>
+              <p className="text-sm text-dark-400">Simbolo Selezionato</p>
               <p className="text-xl font-semibold">{selectedSymbol?.label}</p>
             </div>
             <div className="h-10 w-px bg-dark-700" />
             <div>
-              <p className="text-sm text-dark-400">Current Price</p>
+              <p className="text-sm text-dark-400">Prezzo Attuale</p>
               <motion.p
                 key={currentPrice}
                 initial={{ scale: 1.05, color: '#00ff88' }}
@@ -408,8 +408,8 @@ export default function AIAnalysisPage() {
           <div className="flex items-center gap-3">
             <Eye size={20} className="text-primary-400" />
             <div>
-              <h3 className="font-semibold">Chart Vision Analysis</h3>
-              <p className="text-xs text-dark-400">AI sees the chart with all visible indicators</p>
+              <h3 className="font-semibold">Analisi Visiva del Grafico</h3>
+              <p className="text-xs text-dark-400">L'AI vede il grafico con tutti gli indicatori visibili</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -417,7 +417,7 @@ export default function AIAnalysisPage() {
               onClick={() => setShowChart(!showChart)}
               className="px-3 py-1.5 bg-dark-700 hover:bg-dark-600 rounded-lg text-sm transition-colors"
             >
-              {showChart ? 'Hide Chart' : 'Show Chart'}
+              {showChart ? 'Nascondi Grafico' : 'Mostra Grafico'}
             </button>
             {showChart && (
               <button
@@ -428,12 +428,12 @@ export default function AIAnalysisPage() {
                 {isCapturing ? (
                   <>
                     <Loader2 size={14} className="animate-spin" />
-                    Analyzing...
+                    Analizzando...
                   </>
                 ) : (
                   <>
                     <Camera size={14} />
-                    Capture & Analyze
+                    Cattura e Analizza
                   </>
                 )}
               </button>
@@ -463,7 +463,7 @@ export default function AIAnalysisPage() {
                   <div className="absolute inset-0 bg-dark-900/80 flex items-center justify-center">
                     <div className="text-center">
                       <Loader2 size={40} className="animate-spin mx-auto mb-3 text-primary-400" />
-                      <p className="text-sm">Capturing chart & sending to 8 AI models...</p>
+                      <p className="text-sm">Catturando il grafico e inviando a 8 modelli AI...</p>
                     </div>
                   </div>
                 )}
@@ -474,11 +474,11 @@ export default function AIAnalysisPage() {
                 <div className="p-4 border-t border-dark-700/50 bg-dark-800/30">
                   <h4 className="font-semibold mb-3 flex items-center gap-2">
                     <Eye size={16} className="text-primary-400" />
-                    Vision Analysis Result
+                    Risultato Analisi Visiva
                   </h4>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                     <div className="p-3 bg-dark-700/50 rounded-lg">
-                      <p className="text-xs text-dark-400 mb-1">Direction</p>
+                      <p className="text-xs text-dark-400 mb-1">Direzione</p>
                       <p className={`text-lg font-bold ${
                         visionResult.direction === 'LONG' ? 'text-neon-green' :
                         visionResult.direction === 'SHORT' ? 'text-neon-red' : 'text-neon-yellow'
@@ -487,7 +487,7 @@ export default function AIAnalysisPage() {
                       </p>
                     </div>
                     <div className="p-3 bg-dark-700/50 rounded-lg">
-                      <p className="text-xs text-dark-400 mb-1">Confidence</p>
+                      <p className="text-xs text-dark-400 mb-1">Confidenza</p>
                       <p className="text-lg font-bold">{visionResult.confidence}%</p>
                     </div>
                     <div className="p-3 bg-dark-700/50 rounded-lg">
@@ -503,7 +503,7 @@ export default function AIAnalysisPage() {
                   </div>
                   {visionResult.patterns_detected && visionResult.patterns_detected.length > 0 && (
                     <div className="mb-3">
-                      <p className="text-xs text-dark-400 mb-2">Patterns Detected</p>
+                      <p className="text-xs text-dark-400 mb-2">Pattern Rilevati</p>
                       <div className="flex flex-wrap gap-2">
                         {visionResult.patterns_detected.map((pattern, i) => (
                           <span key={i} className="px-2 py-1 bg-primary-500/20 text-primary-300 rounded text-xs">
@@ -515,7 +515,7 @@ export default function AIAnalysisPage() {
                   )}
                   {visionResult.reasoning && (
                     <div className="p-3 bg-dark-700/30 rounded-lg">
-                      <p className="text-xs text-dark-400 mb-1">AI Reasoning</p>
+                      <p className="text-xs text-dark-400 mb-1">Ragionamento AI</p>
                       <p className="text-sm text-dark-300">{visionResult.reasoning}</p>
                     </div>
                   )}
@@ -536,16 +536,16 @@ export default function AIAnalysisPage() {
           <div className="flex items-start gap-3">
             <AlertTriangle className="text-neon-yellow flex-shrink-0 mt-0.5" />
             <div>
-              <h3 className="font-semibold text-neon-yellow mb-1">AI Providers Not Configured</h3>
+              <h3 className="font-semibold text-neon-yellow mb-1">Provider AI Non Configurati</h3>
               <p className="text-dark-300 text-sm mb-3">
-                No AI providers are currently active. Configure your AIML API key to enable AI analysis.
+                Nessun provider AI è attualmente attivo. Configura la tua chiave API AIML per abilitare l'analisi AI.
               </p>
               <Link
                 href="/dashboard/settings"
                 className="inline-flex items-center gap-2 px-4 py-2 bg-primary-500 hover:bg-primary-600 rounded-lg text-sm font-medium transition-colors"
               >
                 <Settings size={16} />
-                Go to Settings
+                Vai alle Impostazioni
               </Link>
             </div>
           </div>
@@ -595,9 +595,9 @@ export default function AIAnalysisPage() {
                 transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
                 className="w-16 h-16 mx-auto mb-6 rounded-full border-4 border-primary-500 border-t-transparent"
               />
-              <h3 className="text-xl font-semibold mb-2">Analyzing Market...</h3>
+              <h3 className="text-xl font-semibold mb-2">Analizzando il Mercato...</h3>
               <p className="text-dark-400 mb-6">
-                Running analysis with {aiStatus?.active_providers || 6} AI models via AIML API
+                Eseguendo analisi con {aiStatus?.active_providers || 8} modelli AI tramite AIML API
               </p>
               <div className="flex justify-center gap-2">
                 {(aiStatus?.providers
@@ -651,7 +651,7 @@ export default function AIAnalysisPage() {
                 <div>
                   <div className="flex items-center gap-2">
                     <Monitor size={16} className="text-primary-400" />
-                    <p className="text-sm text-dark-400">TradingView Agent Signal</p>
+                    <p className="text-sm text-dark-400">Segnale Agente TradingView</p>
                   </div>
                   <h2 className={`text-4xl font-bold ${
                     tvAgentResult.direction === 'LONG' ? 'text-neon-green' :
@@ -662,7 +662,7 @@ export default function AIAnalysisPage() {
                 </div>
               </div>
               <div className="text-right">
-                <p className="text-sm text-dark-400">Confidence</p>
+                <p className="text-sm text-dark-400">Confidenza</p>
                 <p className="text-4xl font-bold font-mono">{tvAgentResult.confidence.toFixed(1)}%</p>
               </div>
             </div>
@@ -670,7 +670,7 @@ export default function AIAnalysisPage() {
             {/* Confidence & Alignment Bars */}
             <div className="grid grid-cols-2 gap-4 mb-6">
               <div>
-                <p className="text-xs text-dark-400 mb-1">Model Confidence</p>
+                <p className="text-xs text-dark-400 mb-1">Confidenza Modelli</p>
                 <div className="h-3 bg-dark-800 rounded-full overflow-hidden">
                   <motion.div
                     initial={{ width: 0 }}
@@ -680,7 +680,7 @@ export default function AIAnalysisPage() {
                 </div>
               </div>
               <div>
-                <p className="text-xs text-dark-400 mb-1">Timeframe Alignment: {tvAgentResult.timeframe_alignment.toFixed(0)}%</p>
+                <p className="text-xs text-dark-400 mb-1">Allineamento Timeframe: {tvAgentResult.timeframe_alignment.toFixed(0)}%</p>
                 <div className="h-3 bg-dark-800 rounded-full overflow-hidden">
                   <motion.div
                     initial={{ width: 0 }}
@@ -697,7 +697,7 @@ export default function AIAnalysisPage() {
             {tvAgentResult.is_strong_signal && (
               <div className="grid grid-cols-5 gap-4 p-4 bg-dark-800/50 rounded-xl">
                 <div>
-                  <p className="text-xs text-dark-400 mb-1">Entry</p>
+                  <p className="text-xs text-dark-400 mb-1">Ingresso</p>
                   <p className="font-mono font-bold">{tvAgentResult.entry_price?.toFixed(5) || '—'}</p>
                 </div>
                 <div>
@@ -731,7 +731,7 @@ export default function AIAnalysisPage() {
             >
               <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                 <BarChart3 size={20} className="text-primary-400" />
-                Timeframe Analysis
+                Analisi Timeframe
               </h3>
               <div className="space-y-3">
                 {Object.entries(tvAgentResult.timeframe_consensus).map(([tf, consensus]) => (
@@ -747,7 +747,7 @@ export default function AIAnalysisPage() {
                     </div>
                     <div className="text-right">
                       <p className="font-mono text-sm">{consensus.confidence.toFixed(0)}%</p>
-                      <p className="text-xs text-dark-400">{consensus.models_agree}/{consensus.total_models} agree</p>
+                      <p className="text-xs text-dark-400">{consensus.models_agree}/{consensus.total_models} concordano</p>
                     </div>
                   </div>
                 ))}
@@ -763,7 +763,7 @@ export default function AIAnalysisPage() {
             >
               <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                 <Brain size={20} className="text-primary-400" />
-                AI Models
+                Modelli AI
               </h3>
               <div className="space-y-2 mb-4">
                 {tvAgentResult.models_used.map((model, i) => (
@@ -773,7 +773,7 @@ export default function AIAnalysisPage() {
                   </div>
                 ))}
               </div>
-              <h4 className="text-sm font-semibold mb-2 text-dark-400">Indicators Used</h4>
+              <h4 className="text-sm font-semibold mb-2 text-dark-400">Indicatori Utilizzati</h4>
               <div className="flex flex-wrap gap-2">
                 {tvAgentResult.indicators_used.map((ind, i) => (
                   <span key={i} className="px-2 py-1 bg-primary-500/20 text-primary-300 rounded text-xs">
@@ -792,7 +792,7 @@ export default function AIAnalysisPage() {
             >
               <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                 <CheckCircle size={20} className="text-neon-green" />
-                Key Observations
+                Osservazioni Chiave
               </h3>
               <ul className="space-y-2">
                 {tvAgentResult.key_observations.slice(0, 6).map((obs, i) => (
@@ -819,10 +819,10 @@ export default function AIAnalysisPage() {
             className="card overflow-hidden"
           >
             <div className="p-4 border-b border-dark-700/50">
-              <h3 className="text-lg font-semibold">Individual AI Analyses</h3>
+              <h3 className="text-lg font-semibold">Analisi AI Individuali</h3>
               <p className="text-xs text-dark-400">
-                {tvAgentResult.models_used.length} models analyzed across {tvAgentResult.timeframes_analyzed.length} timeframes
-                ({tvAgentResult.individual_results?.length || 0} total analyses)
+                {tvAgentResult.models_used.length} modelli analizzati su {tvAgentResult.timeframes_analyzed.length} timeframe
+                ({tvAgentResult.individual_results?.length || 0} analisi totali)
               </p>
             </div>
             <div className="divide-y divide-dark-700/30">
@@ -858,7 +858,7 @@ export default function AIAnalysisPage() {
                           <div className="flex items-center gap-2 text-xs text-dark-400">
                             <span>{modelResults[0]?.analysis_style || 'Technical'} analysis</span>
                             <span>•</span>
-                            <span>{modelResults.length} timeframe{modelResults.length > 1 ? 's' : ''}</span>
+                            <span>{modelResults.length} timeframe</span>
                           </div>
                         </div>
                       </div>
@@ -928,10 +928,10 @@ export default function AIAnalysisPage() {
                                 )}
                               </div>
 
-                              {/* Key observations */}
+                              {/* Osservazioni chiave */}
                               {r.key_observations && r.key_observations.length > 0 && (
                                 <div className="mb-3">
-                                  <p className="text-xs text-dark-400 mb-2">Key Observations</p>
+                                  <p className="text-xs text-dark-400 mb-2">Osservazioni Chiave</p>
                                   <ul className="space-y-1">
                                     {r.key_observations.slice(0, 5).map((obs, j) => (
                                       <li key={j} className="flex items-start gap-2 text-xs text-dark-300">
@@ -943,10 +943,10 @@ export default function AIAnalysisPage() {
                                 </div>
                               )}
 
-                              {/* Full reasoning */}
+                              {/* Ragionamento completo */}
                               {r.reasoning && (
                                 <div className="p-3 bg-dark-900/50 rounded-lg">
-                                  <p className="text-xs text-dark-400 mb-2">Full Analysis</p>
+                                  <p className="text-xs text-dark-400 mb-2">Analisi Completa</p>
                                   <p className="text-sm text-dark-300 leading-relaxed whitespace-pre-wrap">{r.reasoning}</p>
                                 </div>
                               )}
@@ -996,9 +996,9 @@ export default function AIAnalysisPage() {
               <div className="p-4 border-b border-dark-700/50 bg-gradient-to-r from-primary-500/10 to-transparent">
                 <h3 className="text-lg font-semibold flex items-center gap-2">
                   <Eye size={20} className="text-primary-400" />
-                  Combined AI Reasoning
+                  Ragionamento AI Combinato
                 </h3>
-                <p className="text-xs text-dark-400 mt-1">Aggregated analysis from all AI models</p>
+                <p className="text-xs text-dark-400 mt-1">Analisi aggregata da tutti i modelli AI</p>
               </div>
               <div className="p-6 space-y-6">
                 {tvAgentResult.combined_reasoning.split('\n\n').map((section, idx) => {
@@ -1019,7 +1019,7 @@ export default function AIAnalysisPage() {
                           </div>
                           <div>
                             <p className="font-semibold">{modelName}</p>
-                            <p className="text-xs text-dark-400">{timeframe} timeframe analysis</p>
+                            <p className="text-xs text-dark-400">Analisi timeframe {timeframe}</p>
                           </div>
                         </div>
                         <p className="text-sm text-dark-300 leading-relaxed">{reasoning}</p>
