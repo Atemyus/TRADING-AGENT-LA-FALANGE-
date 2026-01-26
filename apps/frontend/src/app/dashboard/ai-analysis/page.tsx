@@ -805,7 +805,7 @@ export default function AIAnalysisPage() {
             </motion.div>
           </div>
 
-          {/* Individual Model Results */}
+          {/* Individual Model Results - Grouped by Model */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -814,113 +814,216 @@ export default function AIAnalysisPage() {
           >
             <div className="p-4 border-b border-dark-700/50">
               <h3 className="text-lg font-semibold">Individual AI Analyses</h3>
-              <p className="text-xs text-dark-400">Click to expand reasoning</p>
+              <p className="text-xs text-dark-400">
+                {tvAgentResult.models_used.length} models analyzed across {tvAgentResult.timeframes_analyzed.length} timeframes
+                ({tvAgentResult.individual_results?.length || 0} total analyses)
+              </p>
             </div>
             <div className="divide-y divide-dark-700/30">
-              {tvAgentResult.individual_results?.map((r, index) => (
-                <motion.div
-                  key={`${r.model}-${r.timeframe}-${index}`}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.03 }}
-                  className="p-4 hover:bg-dark-800/30 transition-colors cursor-pointer"
-                  onClick={() => setExpandedTvResult(expandedTvResult === `${r.model}-${r.timeframe}` ? null : `${r.model}-${r.timeframe}`)}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-primary-500/20 flex items-center justify-center">
-                        <span className="text-lg">{['💬', '💎', '🔍', '🧪', '⚡', '🌟'][index % 6]}</span>
-                      </div>
-                      <div>
-                        <p className="font-semibold">{r.model_display_name}</p>
-                        <div className="flex items-center gap-2 text-xs text-dark-400">
-                          <span className="font-mono">{r.timeframe === 'D' ? 'Daily' : `${r.timeframe}m`}</span>
-                          <span>•</span>
-                          <span>{r.analysis_style}</span>
+              {/* Group results by model */}
+              {tvAgentResult.models_used.map((modelName, modelIdx) => {
+                const modelResults = tvAgentResult.individual_results?.filter(r => r.model_display_name === modelName) || []
+                const icons = ['💬', '💎', '⚡', '🌟', '🔍', '🧪']
+                const icon = icons[modelIdx] || '🤖'
+                const isExpanded = expandedTvResult === modelName
+
+                // Calculate model consensus
+                const longVotes = modelResults.filter(r => r.direction === 'LONG').length
+                const shortVotes = modelResults.filter(r => r.direction === 'SHORT').length
+                const avgConfidence = modelResults.reduce((sum, r) => sum + r.confidence, 0) / modelResults.length || 0
+                const modelDirection = longVotes > shortVotes ? 'LONG' : shortVotes > longVotes ? 'SHORT' : 'HOLD'
+
+                return (
+                  <motion.div
+                    key={modelName}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: modelIdx * 0.05 }}
+                    className="p-4 hover:bg-dark-800/30 transition-colors cursor-pointer"
+                    onClick={() => setExpandedTvResult(isExpanded ? null : modelName)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-xl bg-primary-500/20 flex items-center justify-center">
+                          <span className="text-2xl">{icon}</span>
                         </div>
+                        <div>
+                          <p className="font-semibold text-lg">{modelName}</p>
+                          <div className="flex items-center gap-2 text-xs text-dark-400">
+                            <span>{modelResults[0]?.analysis_style || 'Technical'} analysis</span>
+                            <span>•</span>
+                            <span>{modelResults.length} timeframe{modelResults.length > 1 ? 's' : ''}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        {/* Timeframe badges */}
+                        <div className="hidden md:flex items-center gap-1">
+                          {modelResults.map((r, i) => (
+                            <div
+                              key={i}
+                              className={`px-2 py-0.5 rounded text-xs font-mono ${
+                                r.direction === 'LONG' ? 'bg-neon-green/20 text-neon-green' :
+                                r.direction === 'SHORT' ? 'bg-neon-red/20 text-neon-red' :
+                                'bg-neon-yellow/20 text-neon-yellow'
+                              }`}
+                              title={`${r.timeframe}m: ${r.direction} (${r.confidence}%)`}
+                            >
+                              {r.timeframe === 'D' ? 'D' : `${r.timeframe}m`}
+                            </div>
+                          ))}
+                        </div>
+                        {/* Overall model direction */}
+                        <div className={`px-3 py-1.5 rounded-lg text-sm font-bold ${
+                          modelDirection === 'LONG' ? 'bg-neon-green/20 text-neon-green' :
+                          modelDirection === 'SHORT' ? 'bg-neon-red/20 text-neon-red' :
+                          'bg-neon-yellow/20 text-neon-yellow'
+                        }`}>
+                          {modelDirection}
+                        </div>
+                        <div className="w-16 text-right">
+                          <p className="font-mono font-bold">{avgConfidence.toFixed(0)}%</p>
+                          <p className="text-xs text-dark-400">avg</p>
+                        </div>
+                        <ChevronDown size={16} className={`text-dark-400 transition-transform ${
+                          isExpanded ? 'rotate-180' : ''
+                        }`} />
                       </div>
                     </div>
-                    <div className="flex items-center gap-4">
-                      {r.error ? (
-                        <div className="flex items-center gap-2 text-neon-red">
-                          <XCircle size={16} />
-                          <span className="text-sm">Failed</span>
-                        </div>
-                      ) : (
-                        <>
-                          <div className={`px-3 py-1 rounded-lg text-sm font-semibold ${
-                            r.direction === 'LONG' ? 'bg-neon-green/20 text-neon-green' :
-                            r.direction === 'SHORT' ? 'bg-neon-red/20 text-neon-red' :
-                            'bg-neon-yellow/20 text-neon-yellow'
-                          }`}>
-                            {r.direction}
-                          </div>
-                          <div className="w-16 text-right">
-                            <p className="font-mono font-bold">{r.confidence}%</p>
-                          </div>
-                        </>
+                    <AnimatePresence>
+                      {isExpanded && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          className="mt-4 space-y-4"
+                        >
+                          {/* Per-timeframe details */}
+                          {modelResults.map((r, i) => (
+                            <div key={i} className="p-4 bg-dark-800/50 rounded-xl border border-dark-700/30">
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                  <span className="px-2 py-1 bg-primary-500/30 text-primary-300 rounded font-mono text-sm font-bold">
+                                    {r.timeframe === 'D' ? 'Daily' : `${r.timeframe}m`}
+                                  </span>
+                                  <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                                    r.direction === 'LONG' ? 'bg-neon-green/20 text-neon-green' :
+                                    r.direction === 'SHORT' ? 'bg-neon-red/20 text-neon-red' :
+                                    'bg-neon-yellow/20 text-neon-yellow'
+                                  }`}>
+                                    {r.direction} • {r.confidence}%
+                                  </span>
+                                </div>
+                                {r.error && (
+                                  <div className="flex items-center gap-1 text-neon-red text-xs">
+                                    <XCircle size={12} />
+                                    <span>Error</span>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Key observations */}
+                              {r.key_observations && r.key_observations.length > 0 && (
+                                <div className="mb-3">
+                                  <p className="text-xs text-dark-400 mb-2">Key Observations</p>
+                                  <ul className="space-y-1">
+                                    {r.key_observations.slice(0, 5).map((obs, j) => (
+                                      <li key={j} className="flex items-start gap-2 text-xs text-dark-300">
+                                        <CheckCircle size={12} className="text-neon-green mt-0.5 flex-shrink-0" />
+                                        <span>{obs}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+
+                              {/* Full reasoning */}
+                              {r.reasoning && (
+                                <div className="p-3 bg-dark-900/50 rounded-lg">
+                                  <p className="text-xs text-dark-400 mb-2">Full Analysis</p>
+                                  <p className="text-sm text-dark-300 leading-relaxed whitespace-pre-wrap">{r.reasoning}</p>
+                                </div>
+                              )}
+
+                              {/* Trade levels if available */}
+                              {(r.entry_price || r.stop_loss || r.take_profit.length > 0) && (
+                                <div className="mt-3 flex flex-wrap gap-3 text-xs">
+                                  {r.entry_price && (
+                                    <div>
+                                      <span className="text-dark-400">Entry: </span>
+                                      <span className="font-mono text-white">{r.entry_price.toFixed(5)}</span>
+                                    </div>
+                                  )}
+                                  {r.stop_loss && (
+                                    <div>
+                                      <span className="text-dark-400">SL: </span>
+                                      <span className="font-mono text-neon-red">{r.stop_loss.toFixed(5)}</span>
+                                    </div>
+                                  )}
+                                  {r.take_profit.length > 0 && (
+                                    <div>
+                                      <span className="text-dark-400">TP: </span>
+                                      <span className="font-mono text-neon-green">{r.take_profit[0].toFixed(5)}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </motion.div>
                       )}
-                      <ChevronDown size={16} className={`text-dark-400 transition-transform ${
-                        expandedTvResult === `${r.model}-${r.timeframe}` ? 'rotate-180' : ''
-                      }`} />
-                    </div>
-                  </div>
-                  <AnimatePresence>
-                    {expandedTvResult === `${r.model}-${r.timeframe}` && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="mt-4 space-y-3"
-                      >
-                        {r.indicators_used.length > 0 && (
-                          <div>
-                            <p className="text-xs text-dark-400 mb-1">Indicators</p>
-                            <div className="flex flex-wrap gap-1">
-                              {r.indicators_used.map((ind, i) => (
-                                <span key={i} className="px-2 py-0.5 bg-dark-700 rounded text-xs">{ind}</span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        {r.drawings_made.length > 0 && (
-                          <div>
-                            <p className="text-xs text-dark-400 mb-1">Drawings Made</p>
-                            <div className="flex flex-wrap gap-1">
-                              {r.drawings_made.map((d, i) => (
-                                <span key={i} className="px-2 py-0.5 bg-primary-500/20 text-primary-300 rounded text-xs">
-                                  {String((d as Record<string, unknown>).label || (d as Record<string, unknown>).type || 'Drawing')}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        <div className="p-3 bg-dark-800/50 rounded-lg">
-                          <p className="text-xs text-dark-400 mb-1">Reasoning</p>
-                          <p className="text-sm text-dark-300">{r.reasoning}</p>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </motion.div>
-              ))}
+                    </AnimatePresence>
+                  </motion.div>
+                )
+              })}
             </div>
           </motion.div>
 
-          {/* Combined Reasoning */}
+          {/* Combined Reasoning - Improved */}
           {tvAgentResult.combined_reasoning && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.5 }}
-              className="card p-6"
+              className="card overflow-hidden"
             >
-              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <Eye size={20} className="text-primary-400" />
-                Combined AI Reasoning
-              </h3>
-              <div className="prose prose-invert prose-sm max-w-none">
-                <p className="text-dark-300 whitespace-pre-wrap">{tvAgentResult.combined_reasoning}</p>
+              <div className="p-4 border-b border-dark-700/50 bg-gradient-to-r from-primary-500/10 to-transparent">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <Eye size={20} className="text-primary-400" />
+                  Combined AI Reasoning
+                </h3>
+                <p className="text-xs text-dark-400 mt-1">Aggregated analysis from all AI models</p>
+              </div>
+              <div className="p-6 space-y-6">
+                {tvAgentResult.combined_reasoning.split('\n\n').map((section, idx) => {
+                  // Parse sections that start with **ModelName**
+                  const modelMatch = section.match(/^\*\*(.+?)\*\*\s*\((\d+m?)\):\s*(.+)$/s)
+                  if (modelMatch) {
+                    const [, modelName, timeframe, reasoning] = modelMatch
+                    const modelIdx = tvAgentResult.models_used.findIndex(m => m === modelName)
+                    const icons = ['💬', '💎', '⚡', '🌟', '🔍', '🧪']
+                    const icon = icons[modelIdx] || '🤖'
+
+                    return (
+                      <div key={idx} className="p-4 bg-dark-800/50 rounded-xl border border-dark-700/50">
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="w-10 h-10 rounded-lg bg-primary-500/20 flex items-center justify-center">
+                            <span className="text-lg">{icon}</span>
+                          </div>
+                          <div>
+                            <p className="font-semibold">{modelName}</p>
+                            <p className="text-xs text-dark-400">{timeframe} timeframe analysis</p>
+                          </div>
+                        </div>
+                        <p className="text-sm text-dark-300 leading-relaxed">{reasoning}</p>
+                      </div>
+                    )
+                  }
+                  // Plain text section
+                  return section.trim() ? (
+                    <p key={idx} className="text-sm text-dark-300 leading-relaxed">{section}</p>
+                  ) : null
+                })}
               </div>
             </motion.div>
           )}

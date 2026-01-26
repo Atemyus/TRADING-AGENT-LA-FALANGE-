@@ -844,8 +844,8 @@ async def analyze_with_tradingview_agent(request: TradingViewAgentRequest):
                     confidence=r.confidence,
                     indicators_used=r.indicators_used,
                     drawings_made=r.drawings_made,
-                    reasoning=r.reasoning[:500] if r.reasoning else "",
-                    key_observations=r.key_observations[:5],
+                    reasoning=r.reasoning[:2000] if r.reasoning else "",  # Increased from 500 to 2000
+                    key_observations=r.key_observations[:10],  # Increased from 5 to 10
                     entry_price=r.entry_price,
                     stop_loss=r.stop_loss,
                     take_profit=r.take_profit,
@@ -874,8 +874,8 @@ async def analyze_with_tradingview_agent(request: TradingViewAgentRequest):
                 trailing_stop_pips=consensus.get("trailing_stop_pips"),
                 analysis_styles_used=consensus.get("analysis_styles_used", []),
                 indicators_used=consensus.get("indicators_used", []),
-                key_observations=consensus.get("key_observations", [])[:10],
-                combined_reasoning=consensus.get("combined_reasoning", "")[:2000],
+                key_observations=consensus.get("key_observations", [])[:15],
+                combined_reasoning=consensus.get("combined_reasoning", "")[:8000],  # Increased from 2000 to 8000
                 vote_breakdown=consensus.get("vote_breakdown", {}),
                 individual_results=individual_results,
             )

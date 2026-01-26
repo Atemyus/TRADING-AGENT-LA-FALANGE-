@@ -1306,29 +1306,67 @@ Be specific with price levels based on what you see on the chart.
 
         start_time = datetime.now()
 
-        prompt = f"""You are an expert {preferences.get('style', 'technical')} analyst analyzing {symbol} on the {timeframe} timeframe.
+        # Build a comprehensive professional prompt for each AI model
+        style = preferences.get('style', 'technical')
+        focus = preferences.get('focus', 'general technical analysis')
+        indicators = ', '.join(preferences.get('indicators', ['EMA', 'RSI']))
 
-Your analysis focus: {preferences.get('focus', 'general technical analysis')}
-Preferred indicators to look for: {', '.join(preferences.get('indicators', ['EMA', 'RSI']))}
+        prompt = f"""You are a senior {style.upper()} trading analyst with 15+ years of experience analyzing {symbol} on the {timeframe}-minute timeframe.
 
-Analyze this chart and provide your trading recommendation.
+## YOUR ANALYSIS STYLE: {style.upper()}
+Your specialized focus: {focus}
+Your preferred indicators: {indicators}
 
-Respond with ONLY a JSON object:
+## ANALYSIS REQUIREMENTS
+Provide a comprehensive, professional-grade market analysis. Your analysis should include:
+
+1. **MARKET STRUCTURE ANALYSIS**:
+   - Current trend direction (bullish/bearish/ranging)
+   - Key swing highs and swing lows
+   - Market structure breaks or changes
+
+2. **TECHNICAL INDICATOR READINGS**:
+   - What the visible indicators (EMA, RSI, etc.) are showing
+   - Divergences between price and indicators
+   - Overbought/oversold conditions
+
+3. **KEY PRICE LEVELS**:
+   - Identify support levels from the chart
+   - Identify resistance levels from the chart
+   - Order blocks, imbalance zones, or liquidity areas if visible
+
+4. **ENTRY/EXIT STRATEGY**:
+   - Specific entry price with justification
+   - Stop loss placement with reasoning
+   - Take profit targets (multiple levels)
+
+5. **RISK ASSESSMENT**:
+   - Key risks to this trade
+   - Invalidation scenarios
+
+## OUTPUT FORMAT
+Respond with ONLY a valid JSON object (no markdown, no explanation outside JSON):
 {{
   "direction": "LONG" or "SHORT" or "HOLD",
-  "confidence": 0-100,
+  "confidence": 0-100 (your confidence percentage),
   "entry_price": exact price or null,
   "stop_loss": exact price or null,
-  "take_profit": [price1, price2, price3] or [],
-  "key_observations": ["observation1", "observation2", ...],
-  "reasoning": "Complete explanation of your analysis"
+  "take_profit": [TP1, TP2, TP3] or [],
+  "key_observations": [
+    "Observation about trend",
+    "Observation about indicators",
+    "Observation about price levels",
+    "Observation about momentum",
+    "Observation about volume/volatility"
+  ],
+  "reasoning": "Provide a detailed 200-400 word professional analysis explaining your trading decision. Include specific price levels, indicator readings, market structure analysis, and risk factors. Write as if presenting to institutional clients."
 }}
 
-Be specific with price levels based on what you see on the chart.
+IMPORTANT: Be specific with actual price levels visible on the chart. Do not use placeholder values.
 """
 
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            async with httpx.AsyncClient(timeout=90.0) as client:
                 response = await client.post(
                     f"{self.base_url}/chat/completions",
                     headers={
@@ -1344,26 +1382,63 @@ Be specific with price levels based on what you see on the chart.
                                 {"type": "text", "text": prompt}
                             ]
                         }],
-                        "max_tokens": 1500,
-                        "temperature": 0.2
+                        "max_tokens": 3000,  # Increased for longer professional analysis
+                        "temperature": 0.3
                     }
                 )
                 response.raise_for_status()
                 data = response.json()
                 text = data["choices"][0]["message"]["content"]
+                print(f"[{display_name}] Raw response length: {len(text)} chars")
 
-                # Parse JSON
+                # Parse JSON with improved error handling
                 import re
-                match = re.search(r'\{.*\}', text, re.DOTALL)
+                # Try to find JSON object in the response
+                match = re.search(r'\{[\s\S]*\}', text)
                 if match:
-                    analysis = json.loads(match.group())
-                    result.direction = analysis.get("direction", "HOLD")
-                    result.confidence = analysis.get("confidence", 0)
-                    result.entry_price = analysis.get("entry_price")
-                    result.stop_loss = analysis.get("stop_loss")
-                    result.take_profit = analysis.get("take_profit", [])
-                    result.key_observations = analysis.get("key_observations", [])
-                    result.reasoning = analysis.get("reasoning", "")
+                    try:
+                        json_str = match.group()
+                        # Clean up common JSON issues
+                        json_str = re.sub(r',\s*}', '}', json_str)  # Remove trailing commas
+                        json_str = re.sub(r',\s*]', ']', json_str)  # Remove trailing commas in arrays
+                        analysis = json.loads(json_str)
+
+                        # Validate and extract fields with defaults
+                        direction = analysis.get("direction", "HOLD").upper()
+                        if direction not in ["LONG", "SHORT", "HOLD"]:
+                            direction = "HOLD"
+                        result.direction = direction
+
+                        confidence = analysis.get("confidence", 0)
+                        if isinstance(confidence, str):
+                            confidence = float(confidence.replace('%', ''))
+                        result.confidence = min(max(float(confidence), 0), 100)  # Clamp 0-100
+
+                        result.entry_price = analysis.get("entry_price")
+                        result.stop_loss = analysis.get("stop_loss")
+                        result.take_profit = analysis.get("take_profit", [])
+                        result.key_observations = analysis.get("key_observations", [])
+                        result.reasoning = analysis.get("reasoning", "")
+
+                        # Mark indicators used based on model preferences
+                        result.indicators_used = preferences.get("indicators", ["EMA", "RSI"])
+
+                        print(f"[{display_name}] Parsed: {result.direction} @ {result.confidence}% confidence")
+
+                    except json.JSONDecodeError as json_err:
+                        print(f"[{display_name}] JSON parse error: {json_err}")
+                        print(f"[{display_name}] Problematic JSON: {json_str[:500]}...")
+                        # Fallback: try to extract key values from text
+                        result.direction = "HOLD"
+                        result.confidence = 50
+                        result.reasoning = f"Analysis completed but JSON parsing failed. Raw response: {text[:1000]}"
+                        result.error = f"JSON parse error: {str(json_err)}"
+                else:
+                    print(f"[{display_name}] No JSON found in response")
+                    result.direction = "HOLD"
+                    result.confidence = 50
+                    result.reasoning = f"No structured analysis returned. Raw: {text[:500]}"
+                    result.error = "No JSON in response"
 
         except httpx.HTTPStatusError as e:
             error_detail = ""
@@ -1373,12 +1448,27 @@ Be specific with price levels based on what you see on the chart.
             except:
                 error_detail = f" - {e.response.text[:200]}"
             result.error = f"HTTP {e.response.status_code}{error_detail}"
-            print(f"Error analyzing with {display_name}: HTTP {e.response.status_code}{error_detail}")
-            print(f"  Model ID used: {model_id}")
-            print(f"  This model may not support vision/images")
+            result.confidence = 0
+            print(f"[{display_name}] HTTP Error {e.response.status_code}{error_detail}")
+            print(f"[{display_name}] Model ID: {model_id}")
+
+            # Check for specific error types
+            if e.response.status_code == 400:
+                print(f"[{display_name}] Bad Request - model may not support vision")
+            elif e.response.status_code == 429:
+                print(f"[{display_name}] Rate limited - too many requests")
+            elif e.response.status_code == 401:
+                print(f"[{display_name}] Authentication failed - check API key")
+
+        except httpx.TimeoutException:
+            result.error = "Request timed out (90s)"
+            result.confidence = 0
+            print(f"[{display_name}] Timeout after 90 seconds")
+
         except Exception as e:
             result.error = str(e)
-            print(f"Error analyzing with {display_name}: {e}")
+            result.confidence = 0
+            print(f"[{display_name}] Unexpected error: {type(e).__name__}: {e}")
 
         result.latency_ms = int((datetime.now() - start_time).total_seconds() * 1000)
         result.screenshots.append(screenshot)
@@ -1485,10 +1575,12 @@ Be specific with price levels based on what you see on the chart.
                     await self.browser.change_timeframe(tf)
                     await asyncio.sleep(2)  # Wait for chart to fully update
 
-                # Add indicators for better analysis (respecting TradingView Free limit)
-                indicators_to_add = ["EMA", "RSI"][:self.max_indicators]
-                print(f"[TradingViewAgent] Adding indicators: {indicators_to_add}")
-                for indicator in indicators_to_add:
+                # Each AI model will use its OWN preferred indicators
+                # But for the shared screenshot, we add a base set
+                # Individual models specify which indicators they want in their prompts
+                base_indicators = ["EMA", "RSI"][:self.max_indicators]
+                print(f"[TradingViewAgent] Adding base indicators: {base_indicators}")
+                for indicator in base_indicators:
                     success = await self.browser.add_indicator(indicator)
                     if success:
                         print(f"  [+] Added {indicator}")
@@ -1643,13 +1735,14 @@ Be specific with price levels based on what you see on the chart.
         break_evens = [r.break_even_trigger for r in agreeing if r.break_even_trigger]
         trailing_stops = [r.trailing_stop_pips for r in agreeing if r.trailing_stop_pips]
 
-        # Collect all observations and reasoning
+        # Collect all observations and reasoning (full text, no truncation here)
         all_observations = []
         all_reasoning = []
         for r in agreeing:
             all_observations.extend(r.key_observations)
             if r.reasoning:
-                all_reasoning.append(f"**{r.model_display_name}**: {r.reasoning[:300]}")
+                # Include full reasoning with timeframe context
+                all_reasoning.append(f"**{r.model_display_name}** ({r.timeframe}m): {r.reasoning}")
 
         # Collect analysis styles and indicators
         styles = list(set(r.analysis_style for r in agreeing))
