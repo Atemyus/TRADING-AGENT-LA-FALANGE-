@@ -784,9 +784,9 @@ class TradingViewAIAgent:
 
     # AI Models that support vision - EXACT model IDs from AIML API
     # Updated 2026-01-26 - ORDERED by vision capability (vision-capable first!)
-    # In Standard mode (4 models), only the first 4 are used.
+    # In Standard mode (5 models), only the first 5 are used.
     # Vision-capable: ChatGPT, Gemini, Grok, Qwen
-    # NOT vision-capable: DeepSeek, GLM (will fail on image analysis)
+    # NOT vision-capable: DeepSeek, GLM, Llama, Mistral (will fail on image analysis)
     VISION_MODELS = {
         "chatgpt": "openai/gpt-5-2",               # Vision: YES
         "gemini": "google/gemini-3-pro-preview",   # Vision: YES
@@ -794,6 +794,8 @@ class TradingViewAIAgent:
         "qwen": "alibaba/qwen3-vl-32b-instruct",   # Vision: YES (VL = Vision-Language)
         "deepseek": "deepseek/deepseek-chat-v3.1", # Vision: NO - text only model
         "glm": "zhipu/glm-4.5-air",                # Vision: NO - text only model
+        "llama": "meta-llama/llama-4-scout",       # Vision: NO - text only model
+        "mistral": "mistralai/Mistral-7B-Instruct-v0.3",  # Vision: NO - text only model
     }
 
     MODEL_DISPLAY_NAMES = {
@@ -803,6 +805,8 @@ class TradingViewAIAgent:
         "qwen": "Qwen3 VL",
         "deepseek": "DeepSeek V3.1",
         "glm": "GLM 4.5 Air",
+        "llama": "Llama 4 Scout",
+        "mistral": "Mistral 7B v0.3",
     }
 
     # Each AI model gets a different analysis style preference
@@ -839,6 +843,16 @@ class TradingViewAIAgent:
             "indicators": ["RSI", "MACD"],
             "focus": "Indicator divergences and signals"
         },
+        "llama": {
+            "style": "momentum",
+            "indicators": ["RSI", "Stochastic"],
+            "focus": "Momentum shifts and overbought/oversold"
+        },
+        "mistral": {
+            "style": "support_resistance",
+            "indicators": ["Pivot Points", "Volume"],
+            "focus": "Key price levels and volume analysis"
+        },
     }
 
     # TradingView Free plan allows max 2 indicators
@@ -848,23 +862,23 @@ class TradingViewAIAgent:
     MODE_CONFIG = {
         "quick": {
             "timeframes": ["15"],  # 15 minutes
-            "num_models": 2,
-            "description": "Fast single-timeframe analysis with 2 AI models"
+            "num_models": 3,
+            "description": "Fast single-timeframe analysis with 3 AI models"
         },
         "standard": {
             "timeframes": ["15", "60"],  # 15m, 1h
-            "num_models": 4,
-            "description": "Balanced multi-timeframe analysis with 4 AI models"
+            "num_models": 5,
+            "description": "Balanced multi-timeframe analysis with 5 AI models"
         },
         "premium": {
             "timeframes": ["15", "60", "240"],  # 15m, 1h, 4h
-            "num_models": 6,
-            "description": "Deep multi-timeframe analysis with all 6 AI models"
+            "num_models": 7,
+            "description": "Deep multi-timeframe analysis with 7 AI models"
         },
         "ultra": {
             "timeframes": ["5", "15", "60", "240", "D"],  # 5m, 15m, 1h, 4h, Daily
-            "num_models": 6,
-            "description": "Complete multi-timeframe analysis with all AI models"
+            "num_models": 8,
+            "description": "Complete multi-timeframe analysis with all 8 AI models"
         },
     }
 
@@ -1509,10 +1523,10 @@ IMPORTANT: Be specific with actual price levels visible on the chart. Do not use
         Run multi-timeframe analysis based on the selected mode.
 
         Each mode uses different timeframes and number of AI models:
-        - quick: 1 timeframe (15m), 2 models
-        - standard: 2 timeframes (15m, 1h), 4 models
-        - premium: 3 timeframes (15m, 1h, 4h), 6 models
-        - ultra: 5 timeframes (5m, 15m, 1h, 4h, D), 6 models
+        - quick: 1 timeframe (15m), 3 models
+        - standard: 2 timeframes (15m, 1h), 5 models
+        - premium: 3 timeframes (15m, 1h, 4h), 7 models
+        - ultra: 5 timeframes (5m, 15m, 1h, 4h, D), 8 models
 
         Each AI analyzes ALL timeframes for the mode, changing TF on TradingView.
         AI calls are parallelized per timeframe for faster execution.

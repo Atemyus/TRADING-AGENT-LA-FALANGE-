@@ -253,7 +253,7 @@ IMPORTANT: Be PRECISE with price levels. Read them directly from the chart. Refe
         Args:
             images_base64: Dict mapping timeframe to base64 chart image
             prompt: Analysis prompt
-            models: List of models to use. Defaults to all 6 models.
+            models: List of models to use. Defaults to all 8 models.
             max_models: Maximum number of models to use (for faster modes)
 
         Returns:
@@ -522,7 +522,7 @@ IMPORTANT: Be PRECISE with price levels. Read them directly from the chart. Refe
         """
         Calculate consensus from multiple AI analysis results.
 
-        With 6 models, requires at least 4 to agree for a strong signal.
+        With 8 models, requires at least 5 to agree for a strong signal.
         """
         valid_results = [r for r in results if not r.error and r.direction != "HOLD"]
         total_results = len([r for r in results if not r.error])

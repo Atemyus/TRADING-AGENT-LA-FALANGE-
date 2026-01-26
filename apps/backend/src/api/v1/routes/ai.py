@@ -762,10 +762,10 @@ async def analyze_with_tradingview_agent(request: TradingViewAgentRequest):
     3. Returns multi-timeframe consensus with alignment score
 
     Modes:
-    - quick: 1 timeframe (15m), 1 AI model
-    - standard: 2 timeframes (15m, 1h), 2 AI models
-    - premium: 3 timeframes (15m, 1h, 4h), 4 AI models
-    - ultra: 5 timeframes (5m, 15m, 1h, 4h, D), 6 AI models
+    - quick: 1 timeframe (15m), 3 AI models
+    - standard: 2 timeframes (15m, 1h), 5 AI models
+    - premium: 3 timeframes (15m, 1h, 4h), 7 AI models
+    - ultra: 5 timeframes (5m, 15m, 1h, 4h, D), 8 AI models
 
     Returns:
         TradingViewAgentResponse with data_source="tradingview_browser"

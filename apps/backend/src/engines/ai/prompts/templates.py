@@ -303,14 +303,14 @@ ANALYSIS_MODES = {
     "standard": {
         "name": "Standard Analysis",
         "description": "Balanced technical and SMC analysis",
-        "models_used": 6,  # Uses all 6 models
+        "models_used": 5,  # Uses 5 models
         "focus": ["trend", "structure", "smc_zones", "indicators"],
         "depth": "moderate",
     },
     "premium": {
         "name": "Premium Analysis",
         "description": "Full institutional-grade SMC analysis with trade narrative",
-        "models_used": 6,  # Uses all 6 models with premium prompts
+        "models_used": 7,  # Uses 7 models with premium prompts
         "focus": ["htf_bias", "smc_mastery", "institutional_flow", "liquidity_analysis", "full_confluence"],
         "depth": "comprehensive",
     },

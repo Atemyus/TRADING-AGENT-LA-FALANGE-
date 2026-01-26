@@ -40,13 +40,15 @@ const TradingViewWidget = dynamic(
 
 // Provider styling for AIML API models
 const providerStyles: Record<string, { color: string; icon: string; bg: string }> = {
-  // The 6 AIML models (matching backend provider names)
+  // The 8 AIML models (matching backend provider names)
   'OpenAI': { color: 'text-green-400', icon: '💬', bg: 'bg-green-500/20' },
   'Google': { color: 'text-blue-400', icon: '💎', bg: 'bg-blue-500/20' },
   'DeepSeek': { color: 'text-cyan-400', icon: '🔍', bg: 'bg-cyan-500/20' },
   'xAI': { color: 'text-red-400', icon: '⚡', bg: 'bg-red-500/20' },
   'Alibaba': { color: 'text-orange-400', icon: '🌟', bg: 'bg-orange-500/20' },
   'Zhipu': { color: 'text-purple-400', icon: '🧪', bg: 'bg-purple-500/20' },
+  'Meta': { color: 'text-sky-400', icon: '🦙', bg: 'bg-sky-500/20' },
+  'Mistral': { color: 'text-amber-400', icon: '🌪️', bg: 'bg-amber-500/20' },
   // Also match lowercase provider keys from backend
   'aiml_openai': { color: 'text-green-400', icon: '💬', bg: 'bg-green-500/20' },
   'aiml_google': { color: 'text-blue-400', icon: '💎', bg: 'bg-blue-500/20' },
@@ -54,10 +56,12 @@ const providerStyles: Record<string, { color: string; icon: string; bg: string }
   'aiml_xai': { color: 'text-red-400', icon: '⚡', bg: 'bg-red-500/20' },
   'aiml_alibaba': { color: 'text-orange-400', icon: '🌟', bg: 'bg-orange-500/20' },
   'aiml_zhipu': { color: 'text-purple-400', icon: '🧪', bg: 'bg-purple-500/20' },
+  'aiml_meta': { color: 'text-sky-400', icon: '🦙', bg: 'bg-sky-500/20' },
+  'aiml_mistral': { color: 'text-amber-400', icon: '🌪️', bg: 'bg-amber-500/20' },
 }
 
-// The 6 AI models we use via AIML API (exact model IDs)
-// ORDERED: Vision-capable models first (for Standard mode which uses only 4)
+// The 8 AI models we use via AIML API (exact model IDs)
+// ORDERED: Vision-capable models first (for Standard mode which uses only 5)
 const AI_MODELS = [
   { provider: 'OpenAI', model: 'ChatGPT 5.2', icon: '💬', vision: true },
   { provider: 'Google', model: 'Gemini 3 Pro', icon: '💎', vision: true },
@@ -65,6 +69,8 @@ const AI_MODELS = [
   { provider: 'Alibaba', model: 'Qwen3 VL', icon: '🌟', vision: true },
   { provider: 'DeepSeek', model: 'DeepSeek V3.1', icon: '🔍', vision: false },
   { provider: 'Zhipu', model: 'GLM 4.5 Air', icon: '🧪', vision: false },
+  { provider: 'Meta', model: 'Llama 4 Scout', icon: '🦙', vision: false },
+  { provider: 'Mistral', model: 'Mistral 7B v0.3', icon: '🌪️', vision: false },
 ]
 
 // Group symbols by category for the dropdown
@@ -77,10 +83,10 @@ const GROUPED_SYMBOLS = Object.entries(
 )
 
 const MODES = [
-  { value: 'quick', label: 'Quick', description: '1 TF, 2 AI', icon: Zap },
-  { value: 'standard', label: 'Standard', description: '2 TF, 4 AI', icon: Target },
-  { value: 'premium', label: 'Premium', description: '3 TF, 6 AI', icon: Shield },
-  { value: 'ultra', label: 'Ultra', description: '5 TF, 6 AI', icon: Layers },
+  { value: 'quick', label: 'Quick', description: '1 TF, 3 AI', icon: Zap },
+  { value: 'standard', label: 'Standard', description: '2 TF, 5 AI', icon: Target },
+  { value: 'premium', label: 'Premium', description: '3 TF, 7 AI', icon: Shield },
+  { value: 'ultra', label: 'Ultra', description: '5 TF, 8 AI', icon: Layers },
 ]
 
 // TradingView Free plan limit: 2 indicators
@@ -457,7 +463,7 @@ export default function AIAnalysisPage() {
                   <div className="absolute inset-0 bg-dark-900/80 flex items-center justify-center">
                     <div className="text-center">
                       <Loader2 size={40} className="animate-spin mx-auto mb-3 text-primary-400" />
-                      <p className="text-sm">Capturing chart & sending to 6 AI models...</p>
+                      <p className="text-sm">Capturing chart & sending to 8 AI models...</p>
                     </div>
                   </div>
                 )}
@@ -762,7 +768,7 @@ export default function AIAnalysisPage() {
               <div className="space-y-2 mb-4">
                 {tvAgentResult.models_used.map((model, i) => (
                   <div key={i} className="flex items-center gap-2 p-2 bg-dark-800/50 rounded-lg">
-                    <span className="text-lg">{['💬', '💎', '🔍', '🧪', '⚡', '🌟'][i] || '🤖'}</span>
+                    <span className="text-lg">{['💬', '💎', '⚡', '🌟', '🔍', '🧪', '🦙', '🌪️'][i] || '🤖'}</span>
                     <span className="text-sm">{model}</span>
                   </div>
                 ))}
@@ -823,7 +829,7 @@ export default function AIAnalysisPage() {
               {/* Group results by model */}
               {tvAgentResult.models_used.map((modelName, modelIdx) => {
                 const modelResults = tvAgentResult.individual_results?.filter(r => r.model_display_name === modelName) || []
-                const icons = ['💬', '💎', '⚡', '🌟', '🔍', '🧪']
+                const icons = ['💬', '💎', '⚡', '🌟', '🔍', '🧪', '🦙', '🌪️']
                 const icon = icons[modelIdx] || '🤖'
                 const isExpanded = expandedTvResult === modelName
 
@@ -1002,7 +1008,7 @@ export default function AIAnalysisPage() {
                   if (modelMatch) {
                     const [, modelName, timeframe, reasoning] = modelMatch
                     const modelIdx = tvAgentResult.models_used.findIndex(m => m === modelName)
-                    const icons = ['💬', '💎', '⚡', '🌟', '🔍', '🧪']
+                    const icons = ['💬', '💎', '⚡', '🌟', '🔍', '🧪', '🦙', '🌪️']
                     const icon = icons[modelIdx] || '🤖'
 
                     return (

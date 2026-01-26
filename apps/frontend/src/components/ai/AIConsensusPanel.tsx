@@ -28,13 +28,15 @@ interface AIConsensusPanelProps {
 // These match the provider names returned by the backend
 // Updated 2026-01-26 - Vision-capable models first
 const providerStyles: Record<string, { color: string; icon: string }> = {
-  // The 6 AIML models (vision-capable first, then text-only)
+  // The 8 AIML models (vision-capable first, then text-only)
   'OpenAI': { color: '#10a37f', icon: '💬' },      // ChatGPT 5.2 - Vision: YES
   'Google': { color: '#4285f4', icon: '💎' },      // Gemini 3 Pro - Vision: YES
   'xAI': { color: '#ef4444', icon: '⚡' },          // Grok 4.1 Fast - Vision: YES
   'Alibaba': { color: '#f97316', icon: '🌟' },     // Qwen3 VL - Vision: YES
   'DeepSeek': { color: '#0ea5e9', icon: '🔍' },    // DeepSeek V3.1 - Vision: NO
   'Zhipu': { color: '#8b5cf6', icon: '🧪' },       // GLM 4.5 Air - Vision: NO
+  'Meta': { color: '#0ea5e9', icon: '🦙' },        // Llama 4 Scout - Vision: NO
+  'Mistral': { color: '#f59e0b', icon: '🌪️' },     // Mistral 7B v0.3 - Vision: NO
   // Lowercase fallbacks
   openai: { color: '#10a37f', icon: '💬' },
   google: { color: '#4285f4', icon: '💎' },
@@ -42,6 +44,8 @@ const providerStyles: Record<string, { color: string; icon: string }> = {
   alibaba: { color: '#f97316', icon: '🌟' },
   deepseek: { color: '#0ea5e9', icon: '🔍' },
   zhipu: { color: '#8b5cf6', icon: '🧪' },
+  meta: { color: '#0ea5e9', icon: '🦙' },
+  mistral: { color: '#f59e0b', icon: '🌪️' },
 }
 
 function DirectionBadge({ direction }: { direction: string }) {

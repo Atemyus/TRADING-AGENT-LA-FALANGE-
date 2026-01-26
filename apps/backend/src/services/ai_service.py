@@ -66,10 +66,10 @@ class AIServiceConfig:
     providers: List[ProviderConfig] = field(default_factory=list)
 
 
-# Default provider configurations - AIML API with 6 models
+# Default provider configurations - AIML API with 8 models
 # All models accessed via api.aimlapi.com with single API key
 # Model IDs verified from https://docs.aimlapi.com/api-references/model-database
-# ORDERED: Vision-capable models first (for Standard mode which uses only 4)
+# ORDERED: Vision-capable models first (for Standard mode which uses only 5)
 DEFAULT_PROVIDERS = [
     # ChatGPT 5.2 (OpenAI via AIML) - Vision: YES
     ProviderConfig(
@@ -105,6 +105,18 @@ DEFAULT_PROVIDERS = [
     ProviderConfig(
         provider_class=AIMLProvider,
         model_name="glm-4.5",
+        weight=1.0,
+    ),
+    # Llama 4 Scout (Meta via AIML) - Vision: NO (text only)
+    ProviderConfig(
+        provider_class=AIMLProvider,
+        model_name="llama-4-scout",
+        weight=1.0,
+    ),
+    # Mistral 7B Instruct v0.3 (Mistral via AIML) - Vision: NO (text only)
+    ProviderConfig(
+        provider_class=AIMLProvider,
+        model_name="mistral-7b-v0.3",
         weight=1.0,
     ),
 ]
@@ -408,13 +420,13 @@ class AIService:
         trading_style: str = "intraday",
     ) -> ConsensusResult:
         """
-        Premium analysis using all 6 AIML models with comprehensive prompts.
+        Premium analysis using 7 AIML models with comprehensive prompts.
 
-        Uses ChatGPT 5.2, Gemini 3 Pro, DeepSeek, Grok, Qwen, GLM.
+        Uses ChatGPT 5.2, Gemini 3 Pro, DeepSeek, Grok, Qwen, GLM, Llama 4 Scout.
         Full institutional-grade analysis with SMC concepts, liquidity analysis,
         and detailed trade narrative.
         """
-        # Use all 6 models with premium prompts for best analysis
+        # Use 7 models with premium prompts for best analysis
         return await self.analyze(
             context,
             mode="premium",

@@ -13,6 +13,8 @@ Vision-capable:
 Text-only:
 - DeepSeek V3.1 → deepseek/deepseek-chat-v3.1
 - GLM 4.5 Air → zhipu/glm-4.5-air
+- Llama 4 Scout → meta-llama/llama-4-scout
+- Mistral 7B Instruct v0.3 → mistralai/Mistral-7B-Instruct-v0.3
 """
 
 import json
@@ -73,6 +75,18 @@ AIML_MODELS = {
         "display_name": "GLM 4.5 Air",
         "provider": "Zhipu",
         "supports_vision": False,  # Text-only model, no vision support
+    },
+    "llama-4-scout": {
+        "id": "meta-llama/llama-4-scout",
+        "display_name": "Llama 4 Scout",
+        "provider": "Meta",
+        "supports_vision": False,  # Text-only model
+    },
+    "mistral-7b-v0.3": {
+        "id": "mistralai/Mistral-7B-Instruct-v0.3",
+        "display_name": "Mistral 7B v0.3",
+        "provider": "Mistral",
+        "supports_vision": False,  # Text-only model
     },
 }
 
