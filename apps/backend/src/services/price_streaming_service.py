@@ -50,14 +50,31 @@ class PriceStreamingService:
     async def initialize(self):
         """Initialize the service and try to connect to broker."""
         try:
+            print("[PriceStreaming] Initializing price streaming service...")
             self._broker = await get_broker()
-            if self._broker and self._broker.is_connected:
-                print("✅ Price streaming: Using broker real-time data")
+
+            if self._broker:
+                print(f"[PriceStreaming] Got broker: {self._broker.name}")
+                print(f"[PriceStreaming] Broker connected: {self._broker.is_connected}")
+
+                # If broker exists but not connected, try to connect
+                if not self._broker.is_connected:
+                    print("[PriceStreaming] Broker not connected, attempting to connect...")
+                    await self._broker.connect()
+                    print(f"[PriceStreaming] Broker connected after retry: {self._broker.is_connected}")
+
+                if self._broker.is_connected:
+                    print(f"✅ Price streaming: Using broker real-time data from {self._broker.name}")
+                else:
+                    print("⚠️ Price streaming: Broker exists but not connected, using simulated data")
+                    self._broker = None
             else:
-                print("⚠️ Price streaming: No broker connected, using simulated data")
-                self._broker = None
+                print("⚠️ Price streaming: No broker instance, using simulated data")
+
         except Exception as e:
             print(f"⚠️ Price streaming: Could not get broker ({e}), using simulated data")
+            import traceback
+            traceback.print_exc()
             self._broker = None
 
     @property
@@ -106,13 +123,19 @@ class PriceStreamingService:
     async def start_streaming(self):
         """Start the price streaming loop."""
         if self._streaming:
+            print("[PriceStreaming] Already streaming, skipping start")
             return
 
         self._streaming = True
 
+        print(f"[PriceStreaming] Starting streaming. Broker connected: {self.is_broker_connected}")
+        print(f"[PriceStreaming] Data source: {self.data_source}")
+
         if self.is_broker_connected:
+            print("[PriceStreaming] Starting BROKER price stream")
             self._stream_task = asyncio.create_task(self._stream_from_broker())
         else:
+            print("[PriceStreaming] Starting SIMULATED price stream")
             self._stream_task = asyncio.create_task(self._stream_simulated())
 
     async def stop_streaming(self):
@@ -128,6 +151,9 @@ class PriceStreamingService:
 
     async def _stream_from_broker(self):
         """Stream prices from connected broker."""
+        print(f"[PriceStreaming] _stream_from_broker started for broker: {self._broker.name if self._broker else 'None'}")
+        tick_count = 0
+
         while self._streaming and self.is_broker_connected:
             try:
                 symbols = list(self._subscribers.keys())
@@ -135,9 +161,16 @@ class PriceStreamingService:
                     await asyncio.sleep(0.5)
                     continue
 
+                print(f"[PriceStreaming] Streaming prices for symbols: {symbols}")
+
                 async for tick in self._broker.stream_prices(symbols):
                     if not self._streaming:
                         break
+
+                    tick_count += 1
+                    # Log first few ticks and then every 10th
+                    if tick_count <= 3 or tick_count % 10 == 0:
+                        print(f"[PriceStreaming] Broker tick #{tick_count}: {tick.symbol} bid={tick.bid} ask={tick.ask}")
 
                     # Update cache
                     self._current_prices[tick.symbol] = tick
@@ -146,7 +179,9 @@ class PriceStreamingService:
                     await self._notify_subscribers(tick)
 
             except Exception as e:
-                print(f"Broker streaming error: {e}")
+                print(f"[PriceStreaming] Broker streaming error: {e}")
+                import traceback
+                traceback.print_exc()
                 await asyncio.sleep(1)
 
     async def _stream_simulated(self):
