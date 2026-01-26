@@ -59,7 +59,9 @@ class ConnectionManager:
 
     async def broadcast(self, channel: str, message: dict):
         """Send message to all subscribers of a channel."""
-        for websocket, channels in self.subscriptions.items():
+        # Create a copy to avoid "dictionary changed size during iteration" error
+        subscriptions_snapshot = list(self.subscriptions.items())
+        for websocket, channels in subscriptions_snapshot:
             if channel in channels:
                 try:
                     await websocket.send_json(message)
@@ -68,7 +70,9 @@ class ConnectionManager:
 
     async def broadcast_price(self, symbol: str, price_data: dict):
         """Send price update to all subscribers of this symbol."""
-        for websocket, symbols in self.price_subscriptions.items():
+        # Create a copy to avoid "dictionary changed size during iteration" error
+        subscriptions_snapshot = list(self.price_subscriptions.items())
+        for websocket, symbols in subscriptions_snapshot:
             if symbol in symbols or "all" in symbols:
                 try:
                     await websocket.send_json(price_data)
@@ -96,8 +100,10 @@ class ConnectionManager:
             # Keep running while there are subscribers - dynamically add new symbols
             while any(self.price_subscriptions.values()):
                 # Collect all subscribed symbols from all clients
+                # Create a copy to avoid "dictionary changed size during iteration" error
                 all_symbols: Set[str] = set()
-                for symbols in self.price_subscriptions.values():
+                subscriptions_values = list(self.price_subscriptions.values())
+                for symbols in subscriptions_values:
                     all_symbols.update(symbols)
 
                 # If "all" is requested, use ALL available symbols

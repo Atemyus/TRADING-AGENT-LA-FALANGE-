@@ -34,6 +34,11 @@ from src.engines.trading.base_broker import (
 )
 
 
+class RateLimitError(Exception):
+    """Raised when API rate limit is exceeded."""
+    pass
+
+
 class MetaTraderBroker(BaseBroker):
     """
     MetaTrader 4/5 broker via MetaApi.cloud
@@ -287,11 +292,6 @@ class MetaTraderBroker(BaseBroker):
             return {}
 
         return response.json()
-
-
-class RateLimitError(Exception):
-    """Raised when API rate limit is exceeded."""
-    pass
 
     def _resolve_symbol(self, symbol: str) -> str:
         """
