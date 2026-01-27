@@ -312,8 +312,8 @@ class AutoTrader:
         """Manage open positions: Break Even, Trailing Stop, Partial TP."""
         for trade in self.state.open_positions:
             try:
-                price = await self.broker.get_price(trade.symbol)
-                current_price = (price["bid"] + price["ask"]) / 2
+                tick = await self.broker.get_current_price(trade.symbol)
+                current_price = float(tick.mid)
 
                 # Check Break Even
                 if trade.break_even_trigger and not trade.is_break_even:
@@ -324,10 +324,11 @@ class AutoTrader:
                         should_move_be = True
 
                     if should_move_be:
-                        # Move SL to entry price
-                        await self.broker.modify_order(
-                            order_id=trade.id,
-                            stop_loss=trade.entry_price
+                        # Move SL to entry price using modify_position
+                        from decimal import Decimal
+                        await self.broker.modify_position(
+                            symbol=trade.symbol,
+                            stop_loss=Decimal(str(trade.entry_price))
                         )
                         trade.stop_loss = trade.entry_price
                         trade.is_break_even = True
@@ -349,9 +350,10 @@ class AutoTrader:
                             new_sl = potential_sl
 
                     if new_sl:
-                        await self.broker.modify_order(
-                            order_id=trade.id,
-                            stop_loss=new_sl
+                        from decimal import Decimal
+                        await self.broker.modify_position(
+                            symbol=trade.symbol,
+                            stop_loss=Decimal(str(new_sl))
                         )
                         trade.stop_loss = new_sl
                         trade.current_trailing_sl = new_sl
@@ -476,13 +478,15 @@ class AutoTrader:
     ):
         """Execute a trade based on TradingView AI agent consensus."""
         try:
+            from decimal import Decimal
+
             # Get current price
-            price = await self.broker.get_price(symbol)
-            current_price = (price["bid"] + price["ask"]) / 2
+            tick = await self.broker.get_current_price(symbol)
+            current_price = float(tick.mid)
 
             # Calculate position size
             account_info = await self.broker.get_account_info()
-            account_balance = account_info.get("balance", 10000)
+            account_balance = float(account_info.balance)
 
             risk_amount = account_balance * (self.config.risk_per_trade_percent / 100)
             sl_distance = abs(current_price - consensus["stop_loss"])
@@ -497,19 +501,20 @@ class AutoTrader:
                 symbol=symbol,
                 side=side,
                 order_type=OrderType.MARKET,
-                units=units,
-                stop_loss=consensus["stop_loss"],
-                take_profit=consensus["take_profit"],
+                size=Decimal(str(units)),
+                stop_loss=Decimal(str(consensus["stop_loss"])),
+                take_profit=Decimal(str(consensus["take_profit"])),
             )
 
             order_result = await self.broker.place_order(order)
 
-            if order_result.success:
+            if order_result.is_filled:
+                fill_price = float(order_result.average_fill_price) if order_result.average_fill_price else current_price
                 trade = TradeRecord(
                     id=order_result.order_id,
                     symbol=symbol,
                     direction=consensus["direction"],
-                    entry_price=order_result.fill_price or current_price,
+                    entry_price=fill_price,
                     stop_loss=consensus["stop_loss"],
                     take_profit=consensus["take_profit"],
                     units=units,
@@ -613,13 +618,15 @@ class AutoTrader:
     ):
         """Execute a trade based on autonomous AI consensus."""
         try:
+            from decimal import Decimal
+
             # Get current price
-            price = await self.broker.get_price(symbol)
-            current_price = (price["bid"] + price["ask"]) / 2
+            tick = await self.broker.get_current_price(symbol)
+            current_price = float(tick.mid)
 
             # Calculate position size
             account_info = await self.broker.get_account_info()
-            account_balance = account_info.get("balance", 10000)
+            account_balance = float(account_info.balance)
 
             risk_amount = account_balance * (self.config.risk_per_trade_percent / 100)
             sl_distance = abs(current_price - consensus["stop_loss"])
@@ -638,25 +645,26 @@ class AutoTrader:
                 symbol=symbol,
                 side=side,
                 order_type=OrderType.MARKET,
-                units=units,
-                stop_loss=consensus["stop_loss"],
-                take_profit=consensus["take_profit"],
+                size=Decimal(str(units)),
+                stop_loss=Decimal(str(consensus["stop_loss"])),
+                take_profit=Decimal(str(consensus["take_profit"])),
             )
 
             # Execute order
             order_result = await self.broker.place_order(order)
 
-            if order_result.success:
+            if order_result.is_filled:
                 # Collect analysis styles used by agreeing models
                 styles_used = consensus.get("analysis_styles_used", [])
                 indicators_used = consensus.get("indicators_considered", [])
 
                 # Record trade with advanced management
+                fill_price = float(order_result.average_fill_price) if order_result.average_fill_price else current_price
                 trade = TradeRecord(
                     id=order_result.order_id,
                     symbol=symbol,
                     direction=consensus["direction"],
-                    entry_price=order_result.fill_price or current_price,
+                    entry_price=fill_price,
                     stop_loss=consensus["stop_loss"],
                     take_profit=consensus["take_profit"],
                     units=units,
@@ -736,13 +744,15 @@ class AutoTrader:
     async def _execute_trade(self, result: MultiTimeframeResult):
         """Execute a trade based on analysis result."""
         try:
+            from decimal import Decimal
+
             # Get current price
-            price = await self.broker.get_price(result.symbol)
-            current_price = (price["bid"] + price["ask"]) / 2
+            tick = await self.broker.get_current_price(result.symbol)
+            current_price = float(tick.mid)
 
             # Calculate position size
             account_info = await self.broker.get_account_info()
-            account_balance = account_info.get("balance", 10000)
+            account_balance = float(account_info.balance)
 
             risk_amount = account_balance * (self.config.risk_per_trade_percent / 100)
             sl_distance = abs(current_price - result.stop_loss)
@@ -757,25 +767,27 @@ class AutoTrader:
             side = OrderSide.BUY if result.final_direction == "LONG" else OrderSide.SELL
 
             # Create order
+            tp_value = result.take_profit[0] if result.take_profit else None
             order = OrderRequest(
                 symbol=result.symbol,
                 side=side,
                 order_type=OrderType.MARKET,
-                units=units,
-                stop_loss=result.stop_loss,
-                take_profit=result.take_profit[0] if result.take_profit else None,
+                size=Decimal(str(units)),
+                stop_loss=Decimal(str(result.stop_loss)),
+                take_profit=Decimal(str(tp_value)) if tp_value else None,
             )
 
             # Execute order
             order_result = await self.broker.place_order(order)
 
-            if order_result.success:
+            if order_result.is_filled:
                 # Record trade
+                fill_price = float(order_result.average_fill_price) if order_result.average_fill_price else current_price
                 trade = TradeRecord(
                     id=order_result.order_id,
                     symbol=result.symbol,
                     direction=result.final_direction,
-                    entry_price=order_result.fill_price or current_price,
+                    entry_price=fill_price,
                     stop_loss=result.stop_loss,
                     take_profit=result.take_profit[0] if result.take_profit else 0,
                     units=units,
