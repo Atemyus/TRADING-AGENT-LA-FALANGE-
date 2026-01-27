@@ -132,6 +132,11 @@ class ConnectionManager:
 
     async def _handle_tick(self, tick):
         """Handle incoming tick and broadcast to clients."""
+        # Determine if this is a real broker price or simulated
+        is_real = False
+        if self._price_service:
+            is_real = self._price_service.is_symbol_available(tick.symbol)
+
         price_data = {
             "type": "price",
             "symbol": tick.symbol,
@@ -141,6 +146,7 @@ class ConnectionManager:
             "spread": str(tick.spread),
             "timestamp": tick.timestamp.isoformat(),
             "source": self._price_service.data_source if self._price_service else "unknown",
+            "isReal": is_real,  # True = from broker, False = simulated
         }
         await self.broadcast_price(tick.symbol, price_data)
 
@@ -249,6 +255,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 try:
                     price_service = await get_price_streaming_service()
                     prices = price_service.get_all_prices()
+                    available = price_service.available_symbols
                     await manager.send_personal(websocket, {
                         "type": "prices_snapshot",
                         "prices": {
@@ -257,9 +264,27 @@ async def websocket_endpoint(websocket: WebSocket):
                                 "ask": str(tick.ask),
                                 "mid": str(tick.mid),
                                 "spread": str(tick.spread),
+                                "isReal": symbol in available,
                             }
                             for symbol, tick in prices.items()
                         },
+                        "timestamp": datetime.utcnow().isoformat(),
+                    })
+                except Exception as e:
+                    await manager.send_personal(websocket, {
+                        "type": "error",
+                        "message": str(e),
+                    })
+
+            elif action == "get_available_symbols":
+                # Get list of symbols available from broker
+                try:
+                    price_service = await get_price_streaming_service()
+                    await manager.send_personal(websocket, {
+                        "type": "available_symbols",
+                        "available": list(price_service.available_symbols),
+                        "failed": list(price_service.failed_symbols),
+                        "broker_connected": price_service.is_broker_connected,
                         "timestamp": datetime.utcnow().isoformat(),
                     })
                 except Exception as e:

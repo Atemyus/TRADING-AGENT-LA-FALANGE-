@@ -1,7 +1,7 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { TrendingUp, TrendingDown, Wifi, WifiOff, ChevronLeft, ChevronRight } from 'lucide-react'
+import { TrendingUp, TrendingDown, Wifi, WifiOff, ChevronLeft, ChevronRight, Filter, Radio } from 'lucide-react'
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { usePriceStream } from '@/hooks/useWebSocket'
 import { ALL_SYMBOLS, CATEGORY_LABELS, type TradingSymbol } from '@/lib/symbols'
@@ -19,6 +19,7 @@ interface PriceData {
   spread: string
   change: number
   changePercent: number
+  isReal: boolean  // True = from broker, False = simulated
 }
 
 interface PriceTickerProps {
@@ -44,6 +45,7 @@ const createEmptyPrice = (symbol: TradingSymbol): PriceData => {
     spread: '--',
     change: 0,
     changePercent: 0,
+    isReal: false,
   }
 }
 
@@ -168,6 +170,7 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
   // Initialize with empty prices (no hardcoded values) - wait for broker data
   const [prices, setPrices] = useState<PriceData[]>(() => ALL_SYMBOLS.map(createEmptyPrice))
   const [scrollPosition, setScrollPosition] = useState(0)
+  const [showOnlyReal, setShowOnlyReal] = useState(true)  // Default: show only real broker prices
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const prevPricesRef = useRef<Record<string, number>>({})
   // Base prices will be set from FIRST broker price received (not hardcoded)
@@ -237,6 +240,7 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
             spread: streamData.spread,
             change: sessionChange,
             changePercent,
+            isReal: streamData.isReal ?? false,
           }
         }
 
@@ -251,6 +255,14 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
   // Convert selected symbol format
   const selectedValue = selectedSymbol?.replace('/', '_')
 
+  // Filter prices based on showOnlyReal toggle
+  const filteredPrices = showOnlyReal
+    ? prices.filter(p => p.isReal)
+    : prices
+
+  // Count real prices
+  const realCount = prices.filter(p => p.isReal).length
+
   return (
     <>
       {/* Hide scrollbar for webkit browsers */}
@@ -260,12 +272,26 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
         }
       `}</style>
       <div className="space-y-2 w-full overflow-hidden">
-      {/* Header with connection status */}
+      {/* Header with connection status and filter */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <span className="text-sm text-dark-400">
-            {ALL_SYMBOLS.length} Assets
+            {showOnlyReal ? realCount : ALL_SYMBOLS.length} Asset{(showOnlyReal ? realCount : ALL_SYMBOLS.length) !== 1 ? 's' : ''}
           </span>
+          {/* Toggle for real prices only */}
+          <button
+            onClick={() => setShowOnlyReal(!showOnlyReal)}
+            className={`
+              flex items-center gap-1.5 px-2 py-1 rounded-md text-xs transition-all
+              ${showOnlyReal
+                ? 'bg-neon-green/20 text-neon-green border border-neon-green/30'
+                : 'bg-dark-700 text-dark-400 border border-dark-600 hover:border-dark-500'
+              }
+            `}
+          >
+            <Radio size={10} className={showOnlyReal ? 'text-neon-green' : 'text-dark-400'} />
+            Solo Reali ({realCount})
+          </button>
         </div>
         <div className="flex items-center gap-2 text-xs">
           {isConnected ? (
@@ -314,22 +340,28 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
               msOverflowStyle: 'none', /* IE/Edge */
             }}
           >
-            {prices.map((price, index) => (
-              <motion.div
-                key={price.value}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: Math.min(index * 0.02, 0.5) }}
-                className="flex-shrink-0"
-              >
-                <PriceCard
-                  price={price}
-                  isSelected={selectedValue === price.value}
-                  onClick={() => onSelect?.(price.label)}
-                  isLoading={!isConnected}
-                />
-              </motion.div>
-            ))}
+            {filteredPrices.length > 0 ? (
+              filteredPrices.map((price, index) => (
+                <motion.div
+                  key={price.value}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: Math.min(index * 0.02, 0.5) }}
+                  className="flex-shrink-0"
+                >
+                  <PriceCard
+                    price={price}
+                    isSelected={selectedValue === price.value}
+                    onClick={() => onSelect?.(price.label)}
+                    isLoading={!isConnected}
+                  />
+                </motion.div>
+              ))
+            ) : (
+              <div className="flex items-center justify-center w-full py-8 text-dark-400">
+                <span>Caricamento prezzi dal broker...</span>
+              </div>
+            )}
           </div>
           {/* Gradient fades for smooth edges */}
           <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-dark-900 to-transparent pointer-events-none z-10" />
@@ -384,39 +416,47 @@ export function PriceTickerCompact({ onSelect, selectedSymbol }: { onSelect?: (s
         ask: streamData.ask,
         change: sessionChange,
         changePercent,
+        isReal: streamData.isReal ?? false,
       }
     }
     return createEmptyPrice(symbol)
   })
 
+  // Filter to show only real broker prices
+  const filteredPrices = prices.filter(p => p.isReal)
+
   return (
     <div className="flex gap-4 overflow-x-auto py-2 scrollbar-hide">
-      {prices.map((price) => {
-        const isPositive = price.change >= 0
-        const isSelected = selectedSymbol?.replace('/', '_') === price.value
-        const hasPrice = price.mid !== '--' && price.mid !== ''
-        return (
-          <div
-            key={price.value}
-            onClick={() => onSelect?.(price.label)}
-            className={`
-              flex items-center gap-3 px-4 py-2 rounded-lg whitespace-nowrap cursor-pointer
-              transition-colors duration-200
-              ${isSelected ? 'bg-primary-500/20 border border-primary-500/50' : 'bg-dark-800/50 hover:bg-dark-700/50'}
-            `}
-          >
-            <span className="font-medium">{price.displayName}</span>
-            <span className="font-mono">{hasPrice ? price.mid : <span className="text-dark-500 animate-pulse">--</span>}</span>
-            {hasPrice ? (
-              <span className={`text-sm ${isPositive ? 'text-neon-green' : 'text-neon-red'}`}>
-                {isPositive ? '+' : ''}{price.changePercent.toFixed(2)}%
-              </span>
-            ) : (
-              <span className="text-sm text-dark-500">--</span>
-            )}
-          </div>
-        )
-      })}
+      {filteredPrices.length > 0 ? (
+        filteredPrices.map((price) => {
+          const isPositive = price.change >= 0
+          const isSelected = selectedSymbol?.replace('/', '_') === price.value
+          const hasPrice = price.mid !== '--' && price.mid !== ''
+          return (
+            <div
+              key={price.value}
+              onClick={() => onSelect?.(price.label)}
+              className={`
+                flex items-center gap-3 px-4 py-2 rounded-lg whitespace-nowrap cursor-pointer
+                transition-colors duration-200
+                ${isSelected ? 'bg-primary-500/20 border border-primary-500/50' : 'bg-dark-800/50 hover:bg-dark-700/50'}
+              `}
+            >
+              <span className="font-medium">{price.displayName}</span>
+              <span className="font-mono">{hasPrice ? price.mid : <span className="text-dark-500 animate-pulse">--</span>}</span>
+              {hasPrice ? (
+                <span className={`text-sm ${isPositive ? 'text-neon-green' : 'text-neon-red'}`}>
+                  {isPositive ? '+' : ''}{price.changePercent.toFixed(2)}%
+                </span>
+              ) : (
+                <span className="text-sm text-dark-500">--</span>
+              )}
+            </div>
+          )
+        })
+      ) : (
+        <span className="text-dark-400 text-sm">Caricamento...</span>
+      )}
     </div>
   )
 }

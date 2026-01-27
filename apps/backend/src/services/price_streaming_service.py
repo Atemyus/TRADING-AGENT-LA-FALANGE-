@@ -32,6 +32,8 @@ class PriceStreamingService:
         self._current_prices: Dict[str, Tick] = {}
         self._stream_task: Optional[asyncio.Task] = None
         self._rate_limited = False  # Track if broker is rate limited
+        self._failed_symbols: Set[str] = set()  # Symbols that failed to get from broker
+        self._available_symbols: Set[str] = set()  # Symbols successfully fetched from broker
 
         # Base prices for simulation (when no broker) - ALL 74 symbols
         self._base_prices = {
@@ -171,6 +173,20 @@ class PriceStreamingService:
             return self._broker.name
         return "simulated"
 
+    @property
+    def available_symbols(self) -> Set[str]:
+        """Get symbols that are available from the broker (real prices)."""
+        return self._available_symbols.copy()
+
+    @property
+    def failed_symbols(self) -> Set[str]:
+        """Get symbols that failed to fetch from broker (use simulation)."""
+        return self._failed_symbols.copy()
+
+    def is_symbol_available(self, symbol: str) -> bool:
+        """Check if a symbol is available from the broker."""
+        return symbol in self._available_symbols
+
     def get_current_price(self, symbol: str) -> Optional[Tick]:
         """Get the latest cached price for a symbol."""
         return self._current_prices.get(symbol)
@@ -249,7 +265,9 @@ class PriceStreamingService:
         tick_count = 0
         base_poll_interval = 2.0  # Poll every 2 seconds to reduce API calls
         poll_interval = base_poll_interval
-        failed_symbols: Set[str] = set()  # Track symbols that broker doesn't have
+        # Use instance-level tracking for symbols
+        self._failed_symbols = set()  # Reset on start
+        self._available_symbols = set()  # Reset on start
         consecutive_errors = 0  # Track consecutive errors for backoff
 
         while self._streaming and self.is_broker_connected:
@@ -260,8 +278,8 @@ class PriceStreamingService:
                     continue
 
                 # Split symbols into broker-available and simulation-fallback
-                broker_symbols = [s for s in symbols if s not in failed_symbols]
-                simulated_symbols = [s for s in symbols if s in failed_symbols]
+                broker_symbols = [s for s in symbols if s not in self._failed_symbols]
+                simulated_symbols = [s for s in symbols if s in self._failed_symbols]
 
                 # Get prices from broker for available symbols
                 if broker_symbols and not self._rate_limited:
@@ -293,15 +311,18 @@ class PriceStreamingService:
                             # Update cache
                             self._current_prices[tick.symbol] = tick
 
+                            # Track available symbols (got real price from broker)
+                            self._available_symbols.add(tick.symbol)
+
                             # Notify subscribers immediately
                             await self._notify_subscribers(tick)
 
                         # Mark symbols that broker didn't return as failed
                         for symbol in broker_symbols:
                             if symbol not in received_symbols:
-                                if symbol not in failed_symbols:
+                                if symbol not in self._failed_symbols:
                                     print(f"[PriceStreaming] Symbol {symbol} not available from broker, using simulation")
-                                    failed_symbols.add(symbol)
+                                    self._failed_symbols.add(symbol)
 
                         # If broker returned NO prices at all, something is wrong
                         if len(prices) == 0 and len(broker_symbols) > 0:
