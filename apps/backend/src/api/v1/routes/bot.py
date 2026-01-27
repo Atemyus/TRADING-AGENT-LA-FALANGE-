@@ -34,6 +34,9 @@ class BotConfigRequest(BaseModel):
     trade_on_weekends: Optional[bool] = None
     telegram_enabled: Optional[bool] = None
     discord_enabled: Optional[bool] = None
+    # TradingView AI Agent settings
+    tradingview_headless: Optional[bool] = None
+    tradingview_max_indicators: Optional[int] = None
 
 
 class BotStatusResponse(BaseModel):
@@ -172,6 +175,15 @@ async def update_config(config: BotConfigRequest):
     if config.discord_enabled is not None:
         current_config.discord_enabled = config.discord_enabled
 
+    # TradingView AI Agent settings
+    if config.tradingview_headless is not None:
+        current_config.tradingview_headless = config.tradingview_headless
+
+    if config.tradingview_max_indicators is not None:
+        if not 1 <= config.tradingview_max_indicators <= 25:
+            raise HTTPException(status_code=400, detail="Max indicators must be between 1 and 25")
+        current_config.tradingview_max_indicators = config.tradingview_max_indicators
+
     bot.configure(current_config)
 
     return {
@@ -202,6 +214,9 @@ async def get_config():
         "trade_on_weekends": config.trade_on_weekends,
         "telegram_enabled": config.telegram_enabled,
         "discord_enabled": config.discord_enabled,
+        # TradingView AI Agent settings
+        "tradingview_headless": config.tradingview_headless,
+        "tradingview_max_indicators": config.tradingview_max_indicators,
     }
 
 
