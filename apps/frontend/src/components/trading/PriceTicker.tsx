@@ -1,7 +1,7 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { TrendingUp, TrendingDown, Wifi, WifiOff, ChevronLeft, ChevronRight, Filter, Radio } from 'lucide-react'
+import { TrendingUp, TrendingDown, Wifi, WifiOff, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { usePriceStream } from '@/hooks/useWebSocket'
 import { ALL_SYMBOLS, CATEGORY_LABELS, type TradingSymbol } from '@/lib/symbols'
@@ -170,7 +170,6 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
   // Initialize with empty prices (no hardcoded values) - wait for broker data
   const [prices, setPrices] = useState<PriceData[]>(() => ALL_SYMBOLS.map(createEmptyPrice))
   const [scrollPosition, setScrollPosition] = useState(0)
-  const [showOnlyReal, setShowOnlyReal] = useState(true)  // Default: show only real broker prices
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const prevPricesRef = useRef<Record<string, number>>({})
   // Base prices will be set from FIRST broker price received (not hardcoded)
@@ -255,13 +254,9 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
   // Convert selected symbol format
   const selectedValue = selectedSymbol?.replace('/', '_')
 
-  // Filter prices based on showOnlyReal toggle
-  const filteredPrices = showOnlyReal
-    ? prices.filter(p => p.isReal)
-    : prices
-
-  // Count real prices
-  const realCount = prices.filter(p => p.isReal).length
+  // Show ONLY real broker prices (never simulated)
+  const realPrices = prices.filter(p => p.isReal)
+  const realCount = realPrices.length
 
   return (
     <>
@@ -272,26 +267,12 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
         }
       `}</style>
       <div className="space-y-2 w-full overflow-hidden">
-      {/* Header with connection status and filter */}
+      {/* Header with connection status */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <span className="text-sm text-dark-400">
-            {showOnlyReal ? realCount : ALL_SYMBOLS.length} Asset{(showOnlyReal ? realCount : ALL_SYMBOLS.length) !== 1 ? 's' : ''}
+            {realCount} Asset{realCount !== 1 ? 's' : ''} Reali
           </span>
-          {/* Toggle for real prices only */}
-          <button
-            onClick={() => setShowOnlyReal(!showOnlyReal)}
-            className={`
-              flex items-center gap-1.5 px-2 py-1 rounded-md text-xs transition-all
-              ${showOnlyReal
-                ? 'bg-neon-green/20 text-neon-green border border-neon-green/30'
-                : 'bg-dark-700 text-dark-400 border border-dark-600 hover:border-dark-500'
-              }
-            `}
-          >
-            <Radio size={10} className={showOnlyReal ? 'text-neon-green' : 'text-dark-400'} />
-            Solo Reali ({realCount})
-          </button>
         </div>
         <div className="flex items-center gap-2 text-xs">
           {isConnected ? (
@@ -340,8 +321,8 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
               msOverflowStyle: 'none', /* IE/Edge */
             }}
           >
-            {filteredPrices.length > 0 ? (
-              filteredPrices.map((price, index) => (
+            {realPrices.length > 0 ? (
+              realPrices.map((price, index) => (
                 <motion.div
                   key={price.value}
                   initial={{ opacity: 0, y: 20 }}
