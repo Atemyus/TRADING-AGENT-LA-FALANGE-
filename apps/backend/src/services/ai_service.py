@@ -69,7 +69,7 @@ class AIServiceConfig:
 # Default provider configurations - AIML API with 8 models
 # All models accessed via api.aimlapi.com with single API key
 # Model IDs verified from https://docs.aimlapi.com/api-references/model-database
-# Only vision-capable models for chart analysis
+# Vision-capable models + Llama 4 Scout for analysis
 DEFAULT_PROVIDERS = [
     # ChatGPT 5.2 (OpenAI via AIML) - Vision: YES
     ProviderConfig(
@@ -93,6 +93,12 @@ DEFAULT_PROVIDERS = [
     ProviderConfig(
         provider_class=AIMLProvider,
         model_name="qwen3-vl",
+        weight=1.0,
+    ),
+    # Llama 4 Scout (Meta via AIML) - Text analysis
+    ProviderConfig(
+        provider_class=AIMLProvider,
+        model_name="llama-4-scout",
         weight=1.0,
     ),
 ]

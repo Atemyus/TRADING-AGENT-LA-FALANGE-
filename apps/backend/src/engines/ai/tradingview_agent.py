@@ -782,14 +782,14 @@ class TradingViewAIAgent:
     5. Make a final trading decision
     """
 
-    # AI Models that support vision - EXACT model IDs from AIML API
-    # Updated 2026-01-27 - Only vision-capable models for chart analysis
-    # These models can analyze TradingView chart screenshots
+    # AI Models for chart analysis - EXACT model IDs from AIML API
+    # Updated 2026-01-27 - Vision-capable models + Llama 4 Scout
     VISION_MODELS = {
         "chatgpt": "openai/gpt-5-2",               # Vision: YES
         "gemini": "google/gemini-3-pro-preview",   # Vision: YES
         "grok": "x-ai/grok-4-1-fast-reasoning",    # Vision: YES
         "qwen": "alibaba/qwen3-vl-32b-instruct",   # Vision: YES (VL = Vision-Language)
+        "llama": "meta-llama/llama-4-scout",       # Text analysis
     }
 
     MODEL_DISPLAY_NAMES = {
@@ -797,11 +797,11 @@ class TradingViewAIAgent:
         "gemini": "Gemini 3 Pro",
         "grok": "Grok 4.1 Fast",
         "qwen": "Qwen3 VL",
+        "llama": "Llama 4 Scout",
     }
 
     # Each AI model gets a different analysis style preference
     # NOTE: Max 2 indicators per model (TradingView Free plan limit)
-    # Only vision-capable models for chart screenshot analysis
     MODEL_PREFERENCES = {
         "chatgpt": {
             "style": "smc",
@@ -823,13 +823,18 @@ class TradingViewAIAgent:
             "indicators": ["Ichimoku Cloud", "RSI"],
             "focus": "Cloud analysis with momentum"
         },
+        "llama": {
+            "style": "momentum",
+            "indicators": ["RSI", "Stochastic"],
+            "focus": "Momentum shifts and overbought/oversold"
+        },
     }
 
     # TradingView Free plan allows max 2 indicators
     MAX_INDICATORS_FREE_PLAN = 2
 
     # Analysis mode configuration - timeframes and models per mode
-    # Max 4 vision-capable models: ChatGPT, Gemini, Grok, Qwen
+    # 5 models available: ChatGPT, Gemini, Grok, Qwen, Llama
     MODE_CONFIG = {
         "quick": {
             "timeframes": ["15"],  # 15 minutes
@@ -843,13 +848,13 @@ class TradingViewAIAgent:
         },
         "premium": {
             "timeframes": ["15", "60", "240"],  # 15m, 1h, 4h
-            "num_models": 4,
-            "description": "Analisi multi-timeframe approfondita con 4 modelli AI"
+            "num_models": 5,
+            "description": "Analisi multi-timeframe approfondita con 5 modelli AI"
         },
         "ultra": {
             "timeframes": ["5", "15", "60", "240", "D"],  # 5m, 15m, 1h, 4h, Daily
-            "num_models": 4,
-            "description": "Analisi multi-timeframe completa con tutti i 4 modelli AI vision"
+            "num_models": 5,
+            "description": "Analisi multi-timeframe completa con tutti i 5 modelli AI"
         },
     }
 

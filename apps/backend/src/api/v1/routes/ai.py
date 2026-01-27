@@ -584,9 +584,9 @@ async def _run_fallback_analysis(symbol: str, mode: str) -> TradingViewAgentResp
     config = mode_config.get(mode, mode_config["standard"])
     timeframes = config["timeframes"]
 
-    # AI model display names for the response (only vision-capable models)
-    model_names = ["ChatGPT 5.2", "Gemini 3 Pro", "Grok 4.1 Fast", "Qwen3 VL"]
-    analysis_styles = ["SMC", "Trend Following", "Volatility", "Hybrid"]
+    # AI model display names for the response
+    model_names = ["ChatGPT 5.2", "Gemini 3 Pro", "Grok 4.1 Fast", "Qwen3 VL", "Llama 4 Scout"]
+    analysis_styles = ["SMC", "Trend Following", "Volatility", "Hybrid", "Momentum"]
 
     service = get_ai_service()
     all_results = []
@@ -916,13 +916,14 @@ async def get_tradingview_agent_status():
         "modes": {
             "quick": {"timeframes": ["15"], "models": 2},
             "standard": {"timeframes": ["15", "60"], "models": 3},
-            "premium": {"timeframes": ["15", "60", "240"], "models": 4},
-            "ultra": {"timeframes": ["5", "15", "60", "240", "D"], "models": 4},
+            "premium": {"timeframes": ["15", "60", "240"], "models": 5},
+            "ultra": {"timeframes": ["5", "15", "60", "240", "D"], "models": 5},
         },
         "ai_models": [
             {"key": "chatgpt", "name": "ChatGPT 5.2", "style": "SMC", "vision": True},
             {"key": "gemini", "name": "Gemini 3 Pro", "style": "Trend", "vision": True},
             {"key": "grok", "name": "Grok 4.1 Fast", "style": "Volatility", "vision": True},
             {"key": "qwen", "name": "Qwen3 VL", "style": "Hybrid", "vision": True},
+            {"key": "llama", "name": "Llama 4 Scout", "style": "Momentum", "vision": False},
         ],
     }

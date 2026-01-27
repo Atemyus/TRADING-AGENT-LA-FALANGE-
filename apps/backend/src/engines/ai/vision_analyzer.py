@@ -1,11 +1,12 @@
 """
 Vision Analyzer - Multi-AI visual chart analysis via AIML API.
 
-Uses AIML API gateway to access vision-capable models only:
+Uses AIML API gateway to access AI models:
 - ChatGPT 5.2 (vision-capable)
 - Gemini 3 Pro (vision-capable)
 - Grok 4.1 Fast (vision-capable)
 - Qwen3 VL (vision-capable)
+- Llama 4 Scout (text analysis)
 """
 
 import asyncio
@@ -22,13 +23,13 @@ from src.core.config import settings
 
 
 class VisionModel(str, Enum):
-    """Available vision-capable AI models via AIML API."""
+    """Available AI models via AIML API."""
     # AIML API model IDs (updated 2026-01-27)
-    # Only vision-capable models for chart analysis
     CHATGPT_5_2 = "openai/gpt-5-2"
     GEMINI_3_PRO = "google/gemini-3-pro-preview"
     GROK_4_1 = "x-ai/grok-4-1-fast-reasoning"
     QWEN3_VL = "alibaba/qwen3-vl-32b-instruct"  # Vision-Language model
+    LLAMA_4_SCOUT = "meta-llama/llama-4-scout"  # Text analysis
 
 
 # Human-readable model names for display
@@ -37,6 +38,7 @@ MODEL_DISPLAY_NAMES = {
     VisionModel.GEMINI_3_PRO: "Gemini 3 Pro",
     VisionModel.GROK_4_1: "Grok 4.1 Fast",
     VisionModel.QWEN3_VL: "Qwen3 VL",
+    VisionModel.LLAMA_4_SCOUT: "Llama 4 Scout",
 }
 
 
