@@ -130,8 +130,8 @@ class MetaTraderBroker(BaseBroker):
                   'USA500', 'USA500m', 'SPA500', 'S&P500', 'SP500m'],
         'NAS100': ['NAS100', 'NAS100m', 'NAS100.', 'NAS100.stp', 'NAS100-', 'NAS100_', 'NAS100Cash',
                    '.NAS100Cash', '.NAS100', 'NAS100.cash',  # Common broker patterns
-                   'USTEC', 'USTECm', 'USTEC.', '.USTECCash', 'NDX100', 'NASDAQ', 'NASDAQ100',
-                   'NDX', 'NDXm', '[NAS100]', 'USTECH', 'USTECH100', 'NSDQ100'],
+                   'USTEC', 'USTECm', 'USTEC.', '.USTECCash', '.USTECHCash', 'USTECH', 'USTECHCash',
+                   'NDX100', 'NASDAQ', 'NASDAQ100', 'NDX', 'NDXm', '[NAS100]', 'USTECH100', 'NSDQ100'],
         'US2000': ['US2000', 'US2000m', 'US2000.', 'US2000.stp', 'US2000-', 'US2000_', 'US2000Cash',
                    '.US2000Cash', '.US2000', 'US2000.cash',  # Common broker patterns
                    'RUSSELL', 'RUSSELL2000', 'RUT', 'RUTm', 'RTY', 'RTYm', 'RUS2000',
