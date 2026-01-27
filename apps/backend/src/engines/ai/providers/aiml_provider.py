@@ -88,6 +88,12 @@ AIML_MODELS = {
         "provider": "Mistral",
         "supports_vision": False,  # Text-only model
     },
+    "ernie-4.5-vl": {
+        "id": "baidu/ernie-4.5-vl-424b-a47b",
+        "display_name": "ERNIE 4.5 VL",
+        "provider": "Baidu",
+        "supports_vision": True,  # VL = Vision-Language model
+    },
 }
 
 

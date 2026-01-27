@@ -38,6 +38,7 @@ class AIModel(str, Enum):
     GROK_4_1 = "x-ai/grok-4-1-fast-reasoning"
     QWEN3_VL = "alibaba/qwen3-vl-32b-instruct"  # Vision-Language model
     LLAMA_4_SCOUT = "meta-llama/llama-4-scout"  # Text analysis
+    ERNIE_4_5_VL = "baidu/ernie-4.5-vl-424b-a47b"  # Vision-Language model
 
 
 MODEL_DISPLAY_NAMES = {
@@ -46,6 +47,7 @@ MODEL_DISPLAY_NAMES = {
     AIModel.GROK_4_1: "Grok 4.1 Fast",
     AIModel.QWEN3_VL: "Qwen3 VL",
     AIModel.LLAMA_4_SCOUT: "Llama 4 Scout",
+    AIModel.ERNIE_4_5_VL: "ERNIE 4.5 VL",
 }
 
 

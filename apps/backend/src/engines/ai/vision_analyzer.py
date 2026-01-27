@@ -7,6 +7,7 @@ Uses AIML API gateway to access AI models:
 - Grok 4.1 Fast (vision-capable)
 - Qwen3 VL (vision-capable)
 - Llama 4 Scout (text analysis)
+- ERNIE 4.5 VL (vision-capable)
 """
 
 import asyncio
@@ -30,6 +31,7 @@ class VisionModel(str, Enum):
     GROK_4_1 = "x-ai/grok-4-1-fast-reasoning"
     QWEN3_VL = "alibaba/qwen3-vl-32b-instruct"  # Vision-Language model
     LLAMA_4_SCOUT = "meta-llama/llama-4-scout"  # Text analysis
+    ERNIE_4_5_VL = "baidu/ernie-4.5-vl-424b-a47b"  # Vision-Language model
 
 
 # Human-readable model names for display
@@ -39,6 +41,7 @@ MODEL_DISPLAY_NAMES = {
     VisionModel.GROK_4_1: "Grok 4.1 Fast",
     VisionModel.QWEN3_VL: "Qwen3 VL",
     VisionModel.LLAMA_4_SCOUT: "Llama 4 Scout",
+    VisionModel.ERNIE_4_5_VL: "ERNIE 4.5 VL",
 }
 
 

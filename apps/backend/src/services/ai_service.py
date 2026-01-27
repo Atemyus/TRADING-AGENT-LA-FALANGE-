@@ -69,7 +69,7 @@ class AIServiceConfig:
 # Default provider configurations - AIML API with 8 models
 # All models accessed via api.aimlapi.com with single API key
 # Model IDs verified from https://docs.aimlapi.com/api-references/model-database
-# Vision-capable models + Llama 4 Scout for analysis
+# Vision-capable models + Llama 4 Scout + ERNIE 4.5 VL for analysis
 DEFAULT_PROVIDERS = [
     # ChatGPT 5.2 (OpenAI via AIML) - Vision: YES
     ProviderConfig(
@@ -99,6 +99,12 @@ DEFAULT_PROVIDERS = [
     ProviderConfig(
         provider_class=AIMLProvider,
         model_name="llama-4-scout",
+        weight=1.0,
+    ),
+    # ERNIE 4.5 VL (Baidu via AIML) - Vision: YES (VL = Vision-Language)
+    ProviderConfig(
+        provider_class=AIMLProvider,
+        model_name="ernie-4.5-vl",
         weight=1.0,
     ),
 ]

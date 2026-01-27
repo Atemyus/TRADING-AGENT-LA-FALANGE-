@@ -783,13 +783,14 @@ class TradingViewAIAgent:
     """
 
     # AI Models for chart analysis - EXACT model IDs from AIML API
-    # Updated 2026-01-27 - Vision-capable models + Llama 4 Scout
+    # Updated 2026-01-27 - Vision-capable models + Llama 4 Scout + ERNIE 4.5 VL
     VISION_MODELS = {
         "chatgpt": "openai/gpt-5-2",               # Vision: YES
         "gemini": "google/gemini-3-pro-preview",   # Vision: YES
         "grok": "x-ai/grok-4-1-fast-reasoning",    # Vision: YES
         "qwen": "alibaba/qwen3-vl-32b-instruct",   # Vision: YES (VL = Vision-Language)
         "llama": "meta-llama/llama-4-scout",       # Text analysis
+        "ernie": "baidu/ernie-4.5-vl-424b-a47b",   # Vision: YES (VL = Vision-Language)
     }
 
     MODEL_DISPLAY_NAMES = {
@@ -798,6 +799,7 @@ class TradingViewAIAgent:
         "grok": "Grok 4.1 Fast",
         "qwen": "Qwen3 VL",
         "llama": "Llama 4 Scout",
+        "ernie": "ERNIE 4.5 VL",
     }
 
     # Each AI model gets a different analysis style preference
@@ -828,13 +830,18 @@ class TradingViewAIAgent:
             "indicators": ["RSI", "Stochastic"],
             "focus": "Momentum shifts and overbought/oversold"
         },
+        "ernie": {
+            "style": "price_action",
+            "indicators": ["Volume", "EMA"],
+            "focus": "Candlestick patterns and price structure"
+        },
     }
 
     # TradingView Free plan allows max 2 indicators
     MAX_INDICATORS_FREE_PLAN = 2
 
     # Analysis mode configuration - timeframes and models per mode
-    # 5 models available: ChatGPT, Gemini, Grok, Qwen, Llama
+    # 6 models available: ChatGPT, Gemini, Grok, Qwen, Llama, ERNIE
     MODE_CONFIG = {
         "quick": {
             "timeframes": ["15"],  # 15 minutes
@@ -843,18 +850,18 @@ class TradingViewAIAgent:
         },
         "standard": {
             "timeframes": ["15", "60"],  # 15m, 1h
-            "num_models": 3,
-            "description": "Analisi multi-timeframe bilanciata con 3 modelli AI"
+            "num_models": 4,
+            "description": "Analisi multi-timeframe bilanciata con 4 modelli AI"
         },
         "premium": {
             "timeframes": ["15", "60", "240"],  # 15m, 1h, 4h
-            "num_models": 5,
-            "description": "Analisi multi-timeframe approfondita con 5 modelli AI"
+            "num_models": 6,
+            "description": "Analisi multi-timeframe approfondita con 6 modelli AI"
         },
         "ultra": {
             "timeframes": ["5", "15", "60", "240", "D"],  # 5m, 15m, 1h, 4h, Daily
-            "num_models": 5,
-            "description": "Analisi multi-timeframe completa con tutti i 5 modelli AI"
+            "num_models": 6,
+            "description": "Analisi multi-timeframe completa con tutti i 6 modelli AI"
         },
     }
 
