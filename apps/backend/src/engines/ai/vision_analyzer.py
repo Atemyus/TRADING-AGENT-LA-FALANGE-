@@ -1,13 +1,11 @@
 """
 Vision Analyzer - Multi-AI visual chart analysis via AIML API.
 
-Uses AIML API gateway to access multiple vision-capable models:
+Uses AIML API gateway to access vision-capable models only:
 - ChatGPT 5.2 (vision-capable)
 - Gemini 3 Pro (vision-capable)
 - Grok 4.1 Fast (vision-capable)
 - Qwen3 VL (vision-capable)
-- DeepSeek V3.1 (text-only)
-- GLM 4.5 Air (text-only)
 """
 
 import asyncio
@@ -24,16 +22,13 @@ from src.core.config import settings
 
 
 class VisionModel(str, Enum):
-    """Available AI models via AIML API - ordered by vision capability."""
-    # AIML API model IDs (updated 2026-01-26)
-    # Vision-capable models first
+    """Available vision-capable AI models via AIML API."""
+    # AIML API model IDs (updated 2026-01-27)
+    # Only vision-capable models for chart analysis
     CHATGPT_5_2 = "openai/gpt-5-2"
     GEMINI_3_PRO = "google/gemini-3-pro-preview"
     GROK_4_1 = "x-ai/grok-4-1-fast-reasoning"
     QWEN3_VL = "alibaba/qwen3-vl-32b-instruct"  # Vision-Language model
-    # Text-only models (no vision support)
-    DEEPSEEK_V3_1 = "deepseek/deepseek-chat-v3.1"
-    GLM_4_5 = "zhipu/glm-4.5-air"
 
 
 # Human-readable model names for display
@@ -42,8 +37,6 @@ MODEL_DISPLAY_NAMES = {
     VisionModel.GEMINI_3_PRO: "Gemini 3 Pro",
     VisionModel.GROK_4_1: "Grok 4.1 Fast",
     VisionModel.QWEN3_VL: "Qwen3 VL",
-    VisionModel.DEEPSEEK_V3_1: "DeepSeek V3.1",
-    VisionModel.GLM_4_5: "GLM 4.5 Air",
 }
 
 

@@ -783,19 +783,13 @@ class TradingViewAIAgent:
     """
 
     # AI Models that support vision - EXACT model IDs from AIML API
-    # Updated 2026-01-26 - ORDERED by vision capability (vision-capable first!)
-    # In Standard mode (5 models), only the first 5 are used.
-    # Vision-capable: ChatGPT, Gemini, Grok, Qwen
-    # NOT vision-capable: DeepSeek, GLM, Llama, Mistral (will fail on image analysis)
+    # Updated 2026-01-27 - Only vision-capable models for chart analysis
+    # These models can analyze TradingView chart screenshots
     VISION_MODELS = {
         "chatgpt": "openai/gpt-5-2",               # Vision: YES
         "gemini": "google/gemini-3-pro-preview",   # Vision: YES
         "grok": "x-ai/grok-4-1-fast-reasoning",    # Vision: YES
         "qwen": "alibaba/qwen3-vl-32b-instruct",   # Vision: YES (VL = Vision-Language)
-        "deepseek": "deepseek/deepseek-chat-v3.1", # Vision: NO - text only model
-        "glm": "zhipu/glm-4.5-air",                # Vision: NO - text only model
-        "llama": "meta-llama/llama-4-scout",       # Vision: NO - text only model
-        "mistral": "mistralai/Mistral-7B-Instruct-v0.3",  # Vision: NO - text only model
     }
 
     MODEL_DISPLAY_NAMES = {
@@ -803,15 +797,11 @@ class TradingViewAIAgent:
         "gemini": "Gemini 3 Pro",
         "grok": "Grok 4.1 Fast",
         "qwen": "Qwen3 VL",
-        "deepseek": "DeepSeek V3.1",
-        "glm": "GLM 4.5 Air",
-        "llama": "Llama 4 Scout",
-        "mistral": "Mistral 7B v0.3",
     }
 
     # Each AI model gets a different analysis style preference
     # NOTE: Max 2 indicators per model (TradingView Free plan limit)
-    # ORDERED same as VISION_MODELS (vision-capable first)
+    # Only vision-capable models for chart screenshot analysis
     MODEL_PREFERENCES = {
         "chatgpt": {
             "style": "smc",
@@ -833,52 +823,33 @@ class TradingViewAIAgent:
             "indicators": ["Ichimoku Cloud", "RSI"],
             "focus": "Cloud analysis with momentum"
         },
-        "deepseek": {
-            "style": "price_action",
-            "indicators": ["Volume", "EMA"],
-            "focus": "Candlestick patterns and structure"
-        },
-        "glm": {
-            "style": "indicator_based",
-            "indicators": ["RSI", "MACD"],
-            "focus": "Indicator divergences and signals"
-        },
-        "llama": {
-            "style": "momentum",
-            "indicators": ["RSI", "Stochastic"],
-            "focus": "Momentum shifts and overbought/oversold"
-        },
-        "mistral": {
-            "style": "support_resistance",
-            "indicators": ["Pivot Points", "Volume"],
-            "focus": "Key price levels and volume analysis"
-        },
     }
 
     # TradingView Free plan allows max 2 indicators
     MAX_INDICATORS_FREE_PLAN = 2
 
     # Analysis mode configuration - timeframes and models per mode
+    # Max 4 vision-capable models: ChatGPT, Gemini, Grok, Qwen
     MODE_CONFIG = {
         "quick": {
             "timeframes": ["15"],  # 15 minutes
-            "num_models": 3,
-            "description": "Fast single-timeframe analysis with 3 AI models"
+            "num_models": 2,
+            "description": "Analisi rapida single-timeframe con 2 modelli AI"
         },
         "standard": {
             "timeframes": ["15", "60"],  # 15m, 1h
-            "num_models": 5,
-            "description": "Balanced multi-timeframe analysis with 5 AI models"
+            "num_models": 3,
+            "description": "Analisi multi-timeframe bilanciata con 3 modelli AI"
         },
         "premium": {
             "timeframes": ["15", "60", "240"],  # 15m, 1h, 4h
-            "num_models": 7,
-            "description": "Deep multi-timeframe analysis with 7 AI models"
+            "num_models": 4,
+            "description": "Analisi multi-timeframe approfondita con 4 modelli AI"
         },
         "ultra": {
             "timeframes": ["5", "15", "60", "240", "D"],  # 5m, 15m, 1h, 4h, Daily
-            "num_models": 8,
-            "description": "Complete multi-timeframe analysis with all 8 AI models"
+            "num_models": 4,
+            "description": "Analisi multi-timeframe completa con tutti i 4 modelli AI vision"
         },
     }
 

@@ -69,7 +69,7 @@ class AIServiceConfig:
 # Default provider configurations - AIML API with 8 models
 # All models accessed via api.aimlapi.com with single API key
 # Model IDs verified from https://docs.aimlapi.com/api-references/model-database
-# ORDERED: Vision-capable models first (for Standard mode which uses only 5)
+# Only vision-capable models for chart analysis
 DEFAULT_PROVIDERS = [
     # ChatGPT 5.2 (OpenAI via AIML) - Vision: YES
     ProviderConfig(
@@ -93,30 +93,6 @@ DEFAULT_PROVIDERS = [
     ProviderConfig(
         provider_class=AIMLProvider,
         model_name="qwen3-vl",
-        weight=1.0,
-    ),
-    # DeepSeek V3.1 (DeepSeek via AIML) - Vision: NO (text only)
-    ProviderConfig(
-        provider_class=AIMLProvider,
-        model_name="deepseek-v3.1",
-        weight=1.0,
-    ),
-    # GLM 4.5 Air (Zhipu via AIML) - Vision: NO (text only)
-    ProviderConfig(
-        provider_class=AIMLProvider,
-        model_name="glm-4.5",
-        weight=1.0,
-    ),
-    # Llama 4 Scout (Meta via AIML) - Vision: NO (text only)
-    ProviderConfig(
-        provider_class=AIMLProvider,
-        model_name="llama-4-scout",
-        weight=1.0,
-    ),
-    # Mistral 7B Instruct v0.3 (Mistral via AIML) - Vision: NO (text only)
-    ProviderConfig(
-        provider_class=AIMLProvider,
-        model_name="mistral-7b-v0.3",
         weight=1.0,
     ),
 ]
@@ -389,23 +365,22 @@ class AIService:
         trading_style: str = "scalping",
     ) -> ConsensusResult:
         """
-        Quick analysis using fastest AIML models.
+        Analisi rapida usando i modelli AIML più veloci con vision.
 
-        Uses Grok 4.1 Fast, DeepSeek, and Qwen for rapid decisions.
-        Good for real-time scalping scenarios.
-        Focuses on momentum and immediate price action.
+        Usa Grok 4.1 Fast e Qwen3 VL per decisioni rapide.
+        Ideale per scenari di scalping in tempo reale.
+        Focus su momentum e price action immediata.
         """
         fast_providers = [
             "aiml_xai_grok-4.1-fast",
-            "aiml_deepseek_deepseek-v3.1",
             "aiml_alibaba_qwen3-vl",
         ]
 
         available = [p for p in fast_providers if p in self._providers]
 
         if not available:
-            # Fall back to first 3 available
-            available = list(self._providers.keys())[:3]
+            # Fall back to first 2 available
+            available = list(self._providers.keys())[:2]
 
         return await self.analyze(
             context,
@@ -420,13 +395,13 @@ class AIService:
         trading_style: str = "intraday",
     ) -> ConsensusResult:
         """
-        Premium analysis using 7 AIML models with comprehensive prompts.
+        Analisi premium usando tutti i 4 modelli AIML con vision.
 
-        Uses ChatGPT 5.2, Gemini 3 Pro, DeepSeek, Grok, Qwen, GLM, Llama 4 Scout.
-        Full institutional-grade analysis with SMC concepts, liquidity analysis,
-        and detailed trade narrative.
+        Usa ChatGPT 5.2, Gemini 3 Pro, Grok 4.1 Fast, Qwen3 VL.
+        Analisi di grado istituzionale completa con concetti SMC,
+        analisi della liquidità e narrativa di trade dettagliata.
         """
-        # Use 7 models with premium prompts for best analysis
+        # Usa tutti i 4 modelli vision per la migliore analisi
         return await self.analyze(
             context,
             mode="premium",
