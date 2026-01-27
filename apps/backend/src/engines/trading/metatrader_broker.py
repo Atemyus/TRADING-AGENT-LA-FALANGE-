@@ -119,27 +119,56 @@ class MetaTraderBroker(BaseBroker):
         'COTTON_USD': ['COTTON', 'COTTONm', 'COTTON.', 'CT', 'CTm'],
 
         # ============ US INDICES ============
-        'US30': ['US30', 'US30m', 'US30.', 'DJ30', 'DJI30', 'DOW30', 'DJIA'],
-        'US500': ['US500', 'US500m', 'US500.', 'SPX500', 'SP500', 'SPX', 'SPXm'],
-        'NAS100': ['NAS100', 'NAS100m', 'NAS100.', 'USTEC', 'NDX100', 'NASDAQ', 'NDX', 'NDXm'],
-        'US2000': ['US2000', 'US2000m', 'US2000.', 'RUSSELL', 'RUT', 'RUTm', 'RTY'],
+        # Different brokers use various naming conventions for indices
+        'US30': ['US30', 'US30m', 'US30.', 'US30.stp', 'US30-', 'US30_', 'US30Cash',
+                 'DJ30', 'DJI30', 'DOW30', 'DJIA', 'WS30', 'WS30m', '.US30', '[US30]',
+                 'USA30', 'USA30m', 'DowJones', 'DowJones30', 'USDJIND', 'US30.cash'],
+        'US500': ['US500', 'US500m', 'US500.', 'US500.stp', 'US500-', 'US500_', 'US500Cash',
+                  'SPX500', 'SPX500m', 'SP500', 'SPX', 'SPXm', '.SPX500', '[US500]',
+                  'USA500', 'USA500m', 'SPA500', 'S&P500', 'SP500m', 'US500.cash'],
+        'NAS100': ['NAS100', 'NAS100m', 'NAS100.', 'NAS100.stp', 'NAS100-', 'NAS100_', 'NAS100Cash',
+                   'USTEC', 'USTECm', 'USTEC.', 'NDX100', 'NASDAQ', 'NASDAQ100', 'NDX', 'NDXm',
+                   '.NAS100', '[NAS100]', 'USTECH', 'USTECH100', 'NAS100.cash', 'NSDQ100'],
+        'US2000': ['US2000', 'US2000m', 'US2000.', 'US2000.stp', 'US2000-', 'US2000_',
+                   'RUSSELL', 'RUSSELL2000', 'RUT', 'RUTm', 'RTY', 'RTYm', 'RUS2000',
+                   '.US2000', '[US2000]', 'USA2000', 'US2000.cash'],
 
         # ============ EUROPEAN INDICES ============
-        'DE40': ['DE40', 'DE40m', 'DE40.', 'GER40', 'GER30', 'DAX40', 'DAX', 'DAXm'],
-        'UK100': ['UK100', 'UK100m', 'UK100.', 'FTSE100', 'FTSE', 'FTSEm'],
-        'FR40': ['FR40', 'FR40m', 'FR40.', 'FRA40', 'CAC40', 'CAC', 'CACm'],
-        'EU50': ['EU50', 'EU50m', 'EU50.', 'EUSTX50', 'STOXX50', 'SX5E'],
-        'ES35': ['ES35', 'ES35m', 'ES35.', 'ESP35', 'IBEX35', 'IBEX', 'IBEXm'],
-        'IT40': ['IT40', 'IT40m', 'IT40.', 'ITA40', 'FTMIB', 'MIB', 'MIBm'],
+        'DE40': ['DE40', 'DE40m', 'DE40.', 'DE40.stp', 'DE40-', 'DE40_', 'DE40Cash',
+                 'GER40', 'GER40m', 'GER30', 'GER30m', 'DAX40', 'DAX', 'DAXm', 'DAX30',
+                 '.DE40', '[DE40]', 'GERMANY40', 'GERMANY30', 'DEU40', 'DEU30', 'DE40.cash'],
+        'UK100': ['UK100', 'UK100m', 'UK100.', 'UK100.stp', 'UK100-', 'UK100_', 'UK100Cash',
+                  'FTSE100', 'FTSE', 'FTSEm', 'FTSE.', '.UK100', '[UK100]',
+                  'GBR100', 'GB100', 'UKFTSE', 'UK100.cash'],
+        'FR40': ['FR40', 'FR40m', 'FR40.', 'FR40.stp', 'FR40-', 'FR40_', 'FR40Cash',
+                 'FRA40', 'FRA40m', 'CAC40', 'CAC', 'CACm', 'CAC.', '.FR40', '[FR40]',
+                 'FRANCE40', 'FRA40.cash', 'FR40.cash'],
+        'EU50': ['EU50', 'EU50m', 'EU50.', 'EU50.stp', 'EU50-', 'EU50_', 'EU50Cash',
+                 'EUSTX50', 'EUSTX50m', 'STOXX50', 'STOXX50m', 'SX5E', 'SX5Em',
+                 '.EU50', '[EU50]', 'EURO50', 'EUR50', 'EUROSTOXX50', 'EU50.cash'],
+        'ES35': ['ES35', 'ES35m', 'ES35.', 'ES35.stp', 'ES35-', 'ES35_', 'ES35Cash',
+                 'ESP35', 'ESP35m', 'IBEX35', 'IBEX', 'IBEXm', '.ES35', '[ES35]',
+                 'SPAIN35', 'SPA35', 'ES35.cash'],
+        'IT40': ['IT40', 'IT40m', 'IT40.', 'IT40.stp', 'IT40-', 'IT40_', 'IT40Cash',
+                 'ITA40', 'ITA40m', 'FTMIB', 'FTMIBm', 'MIB', 'MIBm', 'MIB40',
+                 '.IT40', '[IT40]', 'ITALY40', 'IT40.cash'],
 
         # ============ ASIAN INDICES ============
-        'JP225': ['JP225', 'JP225m', 'JP225.', 'JPN225', 'NIKKEI', 'NI225', 'NIKKEIm'],
-        'HK50': ['HK50', 'HK50m', 'HK50.', 'HSI', 'HSIm', 'HANGSENG'],
-        'AU200': ['AU200', 'AU200m', 'AU200.', 'AUS200', 'ASX200', 'ASX', 'ASXm'],
-        'CN50': ['CN50', 'CN50m', 'CN50.', 'CHINA50', 'CHINAA50', 'A50', 'A50m'],
+        'JP225': ['JP225', 'JP225m', 'JP225.', 'JP225.stp', 'JP225-', 'JP225_', 'JP225Cash',
+                  'JPN225', 'JPN225m', 'NIKKEI', 'NIKKEI225', 'NIKKEIm', 'NI225', 'NI225m',
+                  '.JP225', '[JP225]', 'JAPAN225', 'JAP225', 'JP225.cash'],
+        'HK50': ['HK50', 'HK50m', 'HK50.', 'HK50.stp', 'HK50-', 'HK50_', 'HK50Cash',
+                 'HSI', 'HSIm', 'HSI50', 'HANGSENG', 'HK33', 'HK33m', '.HK50', '[HK50]',
+                 'HONGKONG50', 'HKIND', 'HK50.cash'],
+        'AU200': ['AU200', 'AU200m', 'AU200.', 'AU200.stp', 'AU200-', 'AU200_', 'AU200Cash',
+                  'AUS200', 'AUS200m', 'ASX200', 'ASX', 'ASXm', '.AU200', '[AU200]',
+                  'AUSTRALIA200', 'AUIND', 'AU200.cash'],
+        'CN50': ['CN50', 'CN50m', 'CN50.', 'CN50.stp', 'CN50-', 'CN50_', 'CN50Cash',
+                 'CHINA50', 'CHINA50m', 'CHINAA50', 'A50', 'A50m', 'CNA50', '.CN50', '[CN50]',
+                 'CHINA', 'CHN50', 'FTXIN50', 'CN50.cash'],
 
         # ============ OTHER INDICES ============
-        'VIX': ['VIX', 'VIXm', 'VIX.', 'VOLATILITY', 'UVXY'],
+        'VIX': ['VIX', 'VIXm', 'VIX.', 'VOLATILITY', 'UVXY', '.VIX', '[VIX]', 'CBOE_VIX'],
 
         # ============ INDEX FUTURES ============
         'ES1': ['ES', 'ESm', 'ES1', 'ES1!', 'SP500FUT'],
@@ -316,7 +345,7 @@ class MetaTraderBroker(BaseBroker):
                     self._symbol_map[symbol] = broker_sym
                     return broker_sym
 
-            # Check known aliases
+            # Check known aliases (exact match)
             aliases = self.SYMBOL_ALIASES.get(symbol, [])
             for alias in aliases:
                 for broker_sym in self._broker_symbols:
@@ -324,11 +353,45 @@ class MetaTraderBroker(BaseBroker):
                         self._symbol_map[symbol] = broker_sym
                         return broker_sym
 
-            # Fuzzy match - symbol starts with base symbol
+            # Check aliases with suffix patterns (e.g., "US30" matches "US30.stp", "US30m", etc.)
+            for alias in aliases:
+                for broker_sym in self._broker_symbols:
+                    broker_upper = broker_sym.upper()
+                    alias_upper = alias.upper()
+                    # Match if broker symbol starts with alias or alias starts with broker symbol
+                    if broker_upper.startswith(alias_upper) or alias_upper.startswith(broker_upper):
+                        self._symbol_map[symbol] = broker_sym
+                        return broker_sym
+
+            # Fuzzy match - broker symbol starts with base symbol
             for broker_sym in self._broker_symbols:
                 if broker_sym.upper().startswith(base_symbol.upper()):
                     self._symbol_map[symbol] = broker_sym
                     return broker_sym
+
+            # Reverse fuzzy match - base symbol starts with broker symbol
+            for broker_sym in self._broker_symbols:
+                if base_symbol.upper().startswith(broker_sym.upper()):
+                    self._symbol_map[symbol] = broker_sym
+                    return broker_sym
+
+            # Check if any alias is contained in broker symbol (for patterns like "[US30]" or ".US30")
+            for alias in aliases:
+                for broker_sym in self._broker_symbols:
+                    # Strip common prefixes/suffixes and check
+                    clean_broker = broker_sym.strip('[]._-').upper()
+                    if clean_broker == alias.upper():
+                        self._symbol_map[symbol] = broker_sym
+                        return broker_sym
+
+            # Log that we couldn't find a match (only once per symbol)
+            if symbol not in self._symbol_map:
+                print(f"[MetaTrader] WARNING: Could not resolve symbol '{symbol}' to broker format")
+                print(f"[MetaTrader] Tried aliases: {aliases[:5]}...")
+                # Cache the fallback to avoid repeated logs
+                fallback = symbol.replace('_', '')
+                self._symbol_map[symbol] = fallback
+                return fallback
 
         # Fallback: return without underscore
         return symbol.replace('_', '')
@@ -339,9 +402,28 @@ class MetaTraderBroker(BaseBroker):
             symbols = await self.get_symbols()
             self._broker_symbols = [s.get('symbol', s) if isinstance(s, dict) else s for s in symbols]
 
+            print(f"[MetaTrader] Broker has {len(self._broker_symbols)} symbols available")
+
+            # Log indices found on broker (helpful for debugging)
+            index_keywords = ['30', '40', '50', '100', '200', '225', '500', 'DAX', 'FTSE', 'CAC',
+                              'IBEX', 'NIKKEI', 'STOXX', 'DOW', 'SPX', 'NAS', 'HSI', 'ASX']
+            found_indices = [s for s in self._broker_symbols
+                             if any(kw in s.upper() for kw in index_keywords)]
+            if found_indices:
+                print(f"[MetaTrader] Indices found on broker: {found_indices[:15]}")
+                if len(found_indices) > 15:
+                    print(f"[MetaTrader] ... and {len(found_indices) - 15} more indices")
+            else:
+                print("[MetaTrader] WARNING: No indices found on broker!")
+
             # Pre-map common symbols
+            mapped_count = 0
             for our_symbol in self.SYMBOL_ALIASES.keys():
-                self._resolve_symbol(our_symbol)
+                resolved = self._resolve_symbol(our_symbol)
+                if resolved != our_symbol.replace('_', ''):
+                    mapped_count += 1
+
+            print(f"[MetaTrader] Successfully mapped {mapped_count}/{len(self.SYMBOL_ALIASES)} symbols to broker format")
 
         except Exception as e:
             print(f"Warning: Could not build symbol map: {e}")
