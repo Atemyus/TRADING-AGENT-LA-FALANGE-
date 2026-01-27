@@ -121,51 +121,65 @@ class MetaTraderBroker(BaseBroker):
         # ============ US INDICES ============
         # Different brokers use various naming conventions for indices
         'US30': ['US30', 'US30m', 'US30.', 'US30.stp', 'US30-', 'US30_', 'US30Cash',
-                 'DJ30', 'DJI30', 'DOW30', 'DJIA', 'WS30', 'WS30m', '.US30', '[US30]',
-                 'USA30', 'USA30m', 'DowJones', 'DowJones30', 'USDJIND', 'US30.cash'],
+                 '.US30Cash', '.US30', 'US30.cash',  # Common broker patterns
+                 'DJ30', 'DJI30', 'DOW30', 'DJIA', 'WS30', 'WS30m', '[US30]',
+                 'USA30', 'USA30m', 'DowJones', 'DowJones30', 'USDJIND'],
         'US500': ['US500', 'US500m', 'US500.', 'US500.stp', 'US500-', 'US500_', 'US500Cash',
+                  '.US500Cash', '.US500', 'US500.cash',  # Common broker patterns
                   'SPX500', 'SPX500m', 'SP500', 'SPX', 'SPXm', '.SPX500', '[US500]',
-                  'USA500', 'USA500m', 'SPA500', 'S&P500', 'SP500m', 'US500.cash'],
+                  'USA500', 'USA500m', 'SPA500', 'S&P500', 'SP500m'],
         'NAS100': ['NAS100', 'NAS100m', 'NAS100.', 'NAS100.stp', 'NAS100-', 'NAS100_', 'NAS100Cash',
-                   'USTEC', 'USTECm', 'USTEC.', 'NDX100', 'NASDAQ', 'NASDAQ100', 'NDX', 'NDXm',
-                   '.NAS100', '[NAS100]', 'USTECH', 'USTECH100', 'NAS100.cash', 'NSDQ100'],
-        'US2000': ['US2000', 'US2000m', 'US2000.', 'US2000.stp', 'US2000-', 'US2000_',
+                   '.NAS100Cash', '.NAS100', 'NAS100.cash',  # Common broker patterns
+                   'USTEC', 'USTECm', 'USTEC.', '.USTECCash', 'NDX100', 'NASDAQ', 'NASDAQ100',
+                   'NDX', 'NDXm', '[NAS100]', 'USTECH', 'USTECH100', 'NSDQ100'],
+        'US2000': ['US2000', 'US2000m', 'US2000.', 'US2000.stp', 'US2000-', 'US2000_', 'US2000Cash',
+                   '.US2000Cash', '.US2000', 'US2000.cash',  # Common broker patterns
                    'RUSSELL', 'RUSSELL2000', 'RUT', 'RUTm', 'RTY', 'RTYm', 'RUS2000',
-                   '.US2000', '[US2000]', 'USA2000', 'US2000.cash'],
+                   '[US2000]', 'USA2000'],
 
         # ============ EUROPEAN INDICES ============
         'DE40': ['DE40', 'DE40m', 'DE40.', 'DE40.stp', 'DE40-', 'DE40_', 'DE40Cash',
+                 '.DE40Cash', '.DE40', 'DE40.cash',  # Common broker patterns
                  'GER40', 'GER40m', 'GER30', 'GER30m', 'DAX40', 'DAX', 'DAXm', 'DAX30',
-                 '.DE40', '[DE40]', 'GERMANY40', 'GERMANY30', 'DEU40', 'DEU30', 'DE40.cash'],
+                 '[DE40]', 'GERMANY40', 'GERMANY30', 'DEU40', 'DEU30'],
         'UK100': ['UK100', 'UK100m', 'UK100.', 'UK100.stp', 'UK100-', 'UK100_', 'UK100Cash',
-                  'FTSE100', 'FTSE', 'FTSEm', 'FTSE.', '.UK100', '[UK100]',
-                  'GBR100', 'GB100', 'UKFTSE', 'UK100.cash'],
+                  '.UK100Cash', '.UK100', 'UK100.cash',  # Common broker patterns
+                  'FTSE100', 'FTSE', 'FTSEm', 'FTSE.', '[UK100]',
+                  'GBR100', 'GB100', 'UKFTSE'],
         'FR40': ['FR40', 'FR40m', 'FR40.', 'FR40.stp', 'FR40-', 'FR40_', 'FR40Cash',
-                 'FRA40', 'FRA40m', 'CAC40', 'CAC', 'CACm', 'CAC.', '.FR40', '[FR40]',
-                 'FRANCE40', 'FRA40.cash', 'FR40.cash'],
+                 '.FR40Cash', '.FR40', 'FR40.cash',  # Common broker patterns
+                 'FRA40', 'FRA40m', 'CAC40', 'CAC', 'CACm', 'CAC.', '[FR40]',
+                 'FRANCE40'],
         'EU50': ['EU50', 'EU50m', 'EU50.', 'EU50.stp', 'EU50-', 'EU50_', 'EU50Cash',
+                 '.EU50Cash', '.EU50', 'EU50.cash',  # Common broker patterns
                  'EUSTX50', 'EUSTX50m', 'STOXX50', 'STOXX50m', 'SX5E', 'SX5Em',
-                 '.EU50', '[EU50]', 'EURO50', 'EUR50', 'EUROSTOXX50', 'EU50.cash'],
+                 '[EU50]', 'EURO50', 'EUR50', 'EUROSTOXX50'],
         'ES35': ['ES35', 'ES35m', 'ES35.', 'ES35.stp', 'ES35-', 'ES35_', 'ES35Cash',
-                 'ESP35', 'ESP35m', 'IBEX35', 'IBEX', 'IBEXm', '.ES35', '[ES35]',
-                 'SPAIN35', 'SPA35', 'ES35.cash'],
+                 '.ES35Cash', '.ES35', 'ES35.cash',  # Common broker patterns
+                 'ESP35', 'ESP35m', 'IBEX35', 'IBEX', 'IBEXm', '[ES35]',
+                 'SPAIN35', 'SPA35'],
         'IT40': ['IT40', 'IT40m', 'IT40.', 'IT40.stp', 'IT40-', 'IT40_', 'IT40Cash',
+                 '.IT40Cash', '.IT40', 'IT40.cash',  # Common broker patterns
                  'ITA40', 'ITA40m', 'FTMIB', 'FTMIBm', 'MIB', 'MIBm', 'MIB40',
-                 '.IT40', '[IT40]', 'ITALY40', 'IT40.cash'],
+                 '[IT40]', 'ITALY40'],
 
         # ============ ASIAN INDICES ============
         'JP225': ['JP225', 'JP225m', 'JP225.', 'JP225.stp', 'JP225-', 'JP225_', 'JP225Cash',
+                  '.JP225Cash', '.JP225', 'JP225.cash',  # Common broker patterns
                   'JPN225', 'JPN225m', 'NIKKEI', 'NIKKEI225', 'NIKKEIm', 'NI225', 'NI225m',
-                  '.JP225', '[JP225]', 'JAPAN225', 'JAP225', 'JP225.cash'],
+                  '[JP225]', 'JAPAN225', 'JAP225'],
         'HK50': ['HK50', 'HK50m', 'HK50.', 'HK50.stp', 'HK50-', 'HK50_', 'HK50Cash',
-                 'HSI', 'HSIm', 'HSI50', 'HANGSENG', 'HK33', 'HK33m', '.HK50', '[HK50]',
-                 'HONGKONG50', 'HKIND', 'HK50.cash'],
+                 '.HK50Cash', '.HK50', 'HK50.cash',  # Common broker patterns
+                 'HSI', 'HSIm', 'HSI50', 'HANGSENG', 'HK33', 'HK33m', '[HK50]',
+                 'HONGKONG50', 'HKIND'],
         'AU200': ['AU200', 'AU200m', 'AU200.', 'AU200.stp', 'AU200-', 'AU200_', 'AU200Cash',
-                  'AUS200', 'AUS200m', 'ASX200', 'ASX', 'ASXm', '.AU200', '[AU200]',
-                  'AUSTRALIA200', 'AUIND', 'AU200.cash'],
+                  '.AU200Cash', '.AU200', 'AU200.cash',  # Common broker patterns
+                  'AUS200', 'AUS200m', 'ASX200', 'ASX', 'ASXm', '[AU200]',
+                  'AUSTRALIA200', 'AUIND'],
         'CN50': ['CN50', 'CN50m', 'CN50.', 'CN50.stp', 'CN50-', 'CN50_', 'CN50Cash',
-                 'CHINA50', 'CHINA50m', 'CHINAA50', 'A50', 'A50m', 'CNA50', '.CN50', '[CN50]',
-                 'CHINA', 'CHN50', 'FTXIN50', 'CN50.cash'],
+                 '.CN50Cash', '.CN50', 'CN50.cash',  # Common broker patterns
+                 'CHINA50', 'CHINA50m', 'CHINAA50', 'A50', 'A50m', 'CNA50', '[CN50]',
+                 'CHINA', 'CHN50', 'FTXIN50'],
 
         # ============ OTHER INDICES ============
         'VIX': ['VIX', 'VIXm', 'VIX.', 'VOLATILITY', 'UVXY', '.VIX', '[VIX]', 'CBOE_VIX'],
