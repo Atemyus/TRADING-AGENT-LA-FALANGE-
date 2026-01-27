@@ -1076,18 +1076,18 @@ class TradingViewAIAgent:
         # Respect TradingView indicator limit
         max_ind = min(self.max_indicators, 4)  # Cap at 4 for performance
 
-        prompt = f"""You are analyzing a {symbol} chart on TradingView.
+        prompt = f"""Stai analizzando un grafico {symbol} su TradingView.
 
-Your preferred analysis style: {preferences.get('style', 'mixed')}
-Your preferred focus: {preferences.get('focus', 'general analysis')}
+Il tuo stile di analisi preferito: {preferences.get('style', 'mixed')}
+Il tuo focus preferito: {preferences.get('focus', 'analisi generale')}
 
-Look at this chart and decide which indicators you want to add.
-You can choose from: RSI, MACD, EMA, SMA, Bollinger Bands, Stochastic, ADX, ATR, Ichimoku, VWAP, Volume, Supertrend
+Guarda questo grafico e decidi quali indicatori vuoi aggiungere.
+Puoi scegliere tra: RSI, MACD, EMA, SMA, Bollinger Bands, Stochastic, ADX, ATR, Ichimoku, VWAP, Volume, Supertrend
 
-IMPORTANT: You can add a MAXIMUM of {max_ind} indicators (TradingView plan limit).
-Choose the {max_ind} most useful indicators for your analysis style.
+IMPORTANTE: Puoi aggiungere un MASSIMO di {max_ind} indicatori (limite del piano TradingView).
+Scegli i {max_ind} indicatori più utili per il tuo stile di analisi.
 
-Respond with ONLY a JSON array of indicator names (max {max_ind}), e.g.:
+Rispondi SOLO con un array JSON di nomi di indicatori (max {max_ind}), es.:
 ["RSI", "EMA"]
 """
 
@@ -1140,42 +1140,42 @@ Respond with ONLY a JSON array of indicator names (max {max_ind}), e.g.:
     ) -> List[Dict[str, Any]]:
         """Ask AI what to draw on the chart (trendlines, S/R, zones, fibonacci, pitchfork)."""
 
-        prompt = f"""You are analyzing a {symbol} chart with indicators.
+        prompt = f"""Stai analizzando un grafico {symbol} con indicatori.
 
-Your analysis style: {preferences.get('style', 'mixed')}
-Your focus: {preferences.get('focus', 'general analysis')}
+Il tuo stile di analisi: {preferences.get('style', 'mixed')}
+Il tuo focus: {preferences.get('focus', 'analisi generale')}
 
-The chart is 1920x1080 pixels. The main chart area is approximately:
-- X: 100 to 1800 (left to right, older to newer prices)
-- Y: 100 to 900 (top is higher price, bottom is lower price)
+Il grafico è 1920x1080 pixel. L'area principale del grafico è approssimativamente:
+- X: da 100 a 1800 (da sinistra a destra, da prezzi più vecchi a più recenti)
+- Y: da 100 a 900 (in alto prezzi più alti, in basso prezzi più bassi)
 
-Look at the chart and identify key technical levels and patterns to draw:
-1. Trendlines (connect swing highs or swing lows)
-2. Horizontal support/resistance levels
-3. Zones (rectangles for order blocks, supply/demand, consolidation)
-4. Fibonacci retracements (from swing high to swing low or vice versa)
-5. Pitchfork channels (if you see a clear 3-point channel pattern)
+Guarda il grafico e identifica i livelli tecnici chiave e i pattern da disegnare:
+1. Trendline (collega swing high o swing low)
+2. Livelli orizzontali di supporto/resistenza
+3. Zone (rettangoli per order block, domanda/offerta, consolidamento)
+4. Ritracciamenti di Fibonacci (da swing high a swing low o viceversa)
+5. Canali Pitchfork (se vedi un chiaro pattern a 3 punti)
 
-AVAILABLE DRAWING TYPES:
-- "trendline": Connect two points (start_x, start_y, end_x, end_y)
-- "horizontal_line": Draw at specific price level (y position)
-- "rectangle": Draw a zone (x1, y1, x2, y2)
-- "fibonacci": Fibonacci retracement (start_x, start_y, end_x, end_y)
-- "pitchfork": Andrew's Pitchfork - 3 points (x1, y1, x2, y2, x3, y3)
+TIPI DI DISEGNO DISPONIBILI:
+- "trendline": Collega due punti (start_x, start_y, end_x, end_y)
+- "horizontal_line": Disegna a un livello di prezzo specifico (posizione y)
+- "rectangle": Disegna una zona (x1, y1, x2, y2)
+- "fibonacci": Ritracciamento di Fibonacci (start_x, start_y, end_x, end_y)
+- "pitchfork": Pitchfork di Andrew - 3 punti (x1, y1, x2, y2, x3, y3)
 
-Respond with ONLY a JSON array of drawings:
+Rispondi SOLO con un array JSON di disegni:
 
-Example:
+Esempio:
 [
-  {{"type": "trendline", "start_x": 200, "start_y": 400, "end_x": 800, "end_y": 300, "label": "Bullish trendline"}},
-  {{"type": "horizontal_line", "y": 350, "label": "Key resistance level"}},
-  {{"type": "rectangle", "x1": 600, "y1": 400, "x2": 750, "y2": 480, "label": "Bullish Order Block"}},
-  {{"type": "fibonacci", "start_x": 300, "start_y": 200, "end_x": 700, "end_y": 600, "label": "Fib retracement from swing high"}},
-  {{"type": "pitchfork", "x1": 200, "y1": 500, "x2": 400, "y2": 300, "x3": 600, "y3": 450, "label": "Ascending pitchfork channel"}}
+  {{"type": "trendline", "start_x": 200, "start_y": 400, "end_x": 800, "end_y": 300, "label": "Trendline rialzista"}},
+  {{"type": "horizontal_line", "y": 350, "label": "Livello di resistenza chiave"}},
+  {{"type": "rectangle", "x1": 600, "y1": 400, "x2": 750, "y2": 480, "label": "Order Block rialzista"}},
+  {{"type": "fibonacci", "start_x": 300, "start_y": 200, "end_x": 700, "end_y": 600, "label": "Ritracciamento Fib da swing high"}},
+  {{"type": "pitchfork", "x1": 200, "y1": 500, "x2": 400, "y2": 300, "x3": 600, "y3": 450, "label": "Canale pitchfork ascendente"}}
 ]
 
-Draw 3-5 key technical elements that support your analysis. Be precise with coordinates.
-Only respond with the JSON array, no other text.
+Disegna 3-5 elementi tecnici chiave che supportano la tua analisi. Sii preciso con le coordinate.
+Rispondi solo con l'array JSON, nessun altro testo.
 """
 
         try:
@@ -1228,29 +1228,31 @@ Only respond with the JSON array, no other text.
 
         drawings_desc = "\n".join([f"- {d.get('label', d.get('type'))}" for d in drawings_made])
 
-        prompt = f"""You have been analyzing {symbol} on the {timeframe} minute timeframe.
+        prompt = f"""Hai analizzato {symbol} sul timeframe {timeframe} minuti.
 
-Your analysis style: {preferences.get('style', 'mixed')}
-Indicators you added: {', '.join(indicators_used)}
-Drawings you made:
+Il tuo stile di analisi: {preferences.get('style', 'mixed')}
+Indicatori aggiunti: {', '.join(indicators_used)}
+Disegni effettuati:
 {drawings_desc}
 
-Now provide your complete trading analysis based on EVERYTHING you've observed.
+Ora fornisci la tua analisi di trading completa basata su TUTTO ciò che hai osservato.
 
-Respond with ONLY a JSON object:
+IMPORTANTE: Scrivi TUTTO in ITALIANO (reasoning, key_observations).
+
+Rispondi SOLO con un oggetto JSON:
 {{
-  "direction": "LONG" or "SHORT" or "HOLD",
+  "direction": "LONG" oppure "SHORT" oppure "HOLD",
   "confidence": 0-100,
-  "entry_price": exact price or null,
-  "stop_loss": exact price or null,
-  "take_profit": [price1, price2, price3] or [],
-  "break_even_trigger": price to move SL to entry or null,
-  "trailing_stop_pips": trailing stop distance or null,
-  "key_observations": ["observation1", "observation2", ...],
-  "reasoning": "Complete explanation of your analysis and why you recommend this trade or why you say HOLD"
+  "entry_price": prezzo esatto o null,
+  "stop_loss": prezzo esatto o null,
+  "take_profit": [prezzo1, prezzo2, prezzo3] o [],
+  "break_even_trigger": prezzo per spostare SL all'entry o null,
+  "trailing_stop_pips": distanza trailing stop o null,
+  "key_observations": ["osservazione1 IN ITALIANO", "osservazione2 IN ITALIANO", ...],
+  "reasoning": "Spiegazione completa IN ITALIANO della tua analisi e perché raccomandi questo trade o perché dici HOLD"
 }}
 
-Be specific with price levels based on what you see on the chart.
+Sii specifico con i livelli di prezzo basandoti su ciò che vedi sul grafico.
 """
 
         try:
@@ -1325,58 +1327,59 @@ Be specific with price levels based on what you see on the chart.
         focus = preferences.get('focus', 'general technical analysis')
         indicators = ', '.join(preferences.get('indicators', ['EMA', 'RSI']))
 
-        prompt = f"""You are a senior {style.upper()} trading analyst with 15+ years of experience analyzing {symbol} on the {timeframe}-minute timeframe.
+        prompt = f"""Sei un analista di trading senior specializzato in {style.upper()} con oltre 15 anni di esperienza nell'analisi di {symbol} sul timeframe {timeframe} minuti.
 
-## YOUR ANALYSIS STYLE: {style.upper()}
-Your specialized focus: {focus}
-Your preferred indicators: {indicators}
+## IL TUO STILE DI ANALISI: {style.upper()}
+Il tuo focus specializzato: {focus}
+I tuoi indicatori preferiti: {indicators}
 
-## ANALYSIS REQUIREMENTS
-Provide a comprehensive, professional-grade market analysis. Your analysis should include:
+## REQUISITI DELL'ANALISI
+Fornisci un'analisi di mercato completa e professionale. La tua analisi deve includere:
 
-1. **MARKET STRUCTURE ANALYSIS**:
-   - Current trend direction (bullish/bearish/ranging)
-   - Key swing highs and swing lows
-   - Market structure breaks or changes
+1. **ANALISI DELLA STRUTTURA DI MERCATO**:
+   - Direzione del trend attuale (rialzista/ribassista/laterale)
+   - Swing high e swing low chiave
+   - Rotture o cambiamenti della struttura di mercato
 
-2. **TECHNICAL INDICATOR READINGS**:
-   - What the visible indicators (EMA, RSI, etc.) are showing
-   - Divergences between price and indicators
-   - Overbought/oversold conditions
+2. **LETTURA DEGLI INDICATORI TECNICI**:
+   - Cosa mostrano gli indicatori visibili (EMA, RSI, ecc.)
+   - Divergenze tra prezzo e indicatori
+   - Condizioni di ipercomprato/ipervenduto
 
-3. **KEY PRICE LEVELS**:
-   - Identify support levels from the chart
-   - Identify resistance levels from the chart
-   - Order blocks, imbalance zones, or liquidity areas if visible
+3. **LIVELLI DI PREZZO CHIAVE**:
+   - Identifica i livelli di supporto dal grafico
+   - Identifica i livelli di resistenza dal grafico
+   - Order block, zone di squilibrio o aree di liquidità se visibili
 
-4. **ENTRY/EXIT STRATEGY**:
-   - Specific entry price with justification
-   - Stop loss placement with reasoning
-   - Take profit targets (multiple levels)
+4. **STRATEGIA DI ENTRATA/USCITA**:
+   - Prezzo di entrata specifico con giustificazione
+   - Posizionamento dello stop loss con ragionamento
+   - Obiettivi di take profit (livelli multipli)
 
-5. **RISK ASSESSMENT**:
-   - Key risks to this trade
-   - Invalidation scenarios
+5. **VALUTAZIONE DEL RISCHIO**:
+   - Rischi chiave di questo trade
+   - Scenari di invalidazione
 
-## OUTPUT FORMAT
-Respond with ONLY a valid JSON object (no markdown, no explanation outside JSON):
+## FORMATO OUTPUT
+Rispondi SOLO con un oggetto JSON valido (niente markdown, niente spiegazioni fuori dal JSON):
 {{
-  "direction": "LONG" or "SHORT" or "HOLD",
-  "confidence": 0-100 (your confidence percentage),
-  "entry_price": exact price or null,
-  "stop_loss": exact price or null,
-  "take_profit": [TP1, TP2, TP3] or [],
+  "direction": "LONG" oppure "SHORT" oppure "HOLD",
+  "confidence": 0-100 (la tua percentuale di confidenza),
+  "entry_price": prezzo esatto o null,
+  "stop_loss": prezzo esatto o null,
+  "take_profit": [TP1, TP2, TP3] o [],
   "key_observations": [
-    "Observation about trend",
-    "Observation about indicators",
-    "Observation about price levels",
-    "Observation about momentum",
-    "Observation about volume/volatility"
+    "Osservazione sul trend IN ITALIANO",
+    "Osservazione sugli indicatori IN ITALIANO",
+    "Osservazione sui livelli di prezzo IN ITALIANO",
+    "Osservazione sul momentum IN ITALIANO",
+    "Osservazione su volume/volatilità IN ITALIANO"
   ],
-  "reasoning": "Provide a detailed 200-400 word professional analysis explaining your trading decision. Include specific price levels, indicator readings, market structure analysis, and risk factors. Write as if presenting to institutional clients."
+  "reasoning": "Fornisci un'analisi professionale dettagliata di 200-400 parole IN ITALIANO che spieghi la tua decisione di trading. Includi livelli di prezzo specifici, letture degli indicatori, analisi della struttura di mercato e fattori di rischio. Scrivi come se stessi presentando a clienti istituzionali."
 }}
 
-IMPORTANT: Be specific with actual price levels visible on the chart. Do not use placeholder values.
+IMPORTANTE: Sii specifico con i livelli di prezzo effettivi visibili sul grafico. Non usare valori placeholder.
+IMPORTANTE: Scrivi TUTTO in ITALIANO (key_observations, reasoning).
 """
 
         try:
