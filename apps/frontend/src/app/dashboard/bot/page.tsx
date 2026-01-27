@@ -110,6 +110,7 @@ interface BotConfig {
 }
 
 const AVAILABLE_SYMBOLS = [
+  // ============ FOREX MAJORS ============
   "EUR/USD",
   "GBP/USD",
   "USD/JPY",
@@ -117,11 +118,40 @@ const AVAILABLE_SYMBOLS = [
   "AUD/USD",
   "USD/CAD",
   "NZD/USD",
+  // ============ FOREX CROSS ============
+  "EUR/GBP",
+  "EUR/JPY",
+  "GBP/JPY",
+  "EUR/CHF",
+  "EUR/AUD",
+  "EUR/CAD",
+  "GBP/CHF",
+  "GBP/AUD",
+  "AUD/JPY",
+  "AUD/CAD",
+  "AUD/NZD",
+  "CAD/JPY",
+  "NZD/JPY",
+  "CHF/JPY",
+  // ============ METALS ============
   "XAU/USD",
   "XAG/USD",
+  // ============ COMMODITIES ============
+  "WTI/USD",
+  "BRENT/USD",
+  // ============ US INDICES ============
   "US30",
+  "US500",
   "NAS100",
-  "SPX500",
+  // ============ EUROPEAN INDICES ============
+  "DE40",
+  "UK100",
+  "FR40",
+  "EU50",
+  // ============ ASIAN INDICES ============
+  "JP225",
+  "HK50",
+  "AU200",
 ];
 
 const ANALYSIS_MODES = [
