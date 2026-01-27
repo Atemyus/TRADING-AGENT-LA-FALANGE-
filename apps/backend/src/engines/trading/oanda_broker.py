@@ -55,6 +55,54 @@ class OANDABroker(BaseBroker):
     PRACTICE_STREAM = "https://stream-fxpractice.oanda.com"
     LIVE_STREAM = "https://stream-fxtrade.oanda.com"
 
+    # Symbol mapping: App symbol -> OANDA symbol
+    # OANDA uses specific naming conventions for CFD indices
+    SYMBOL_MAP = {
+        # ============ US INDICES ============
+        'US30': 'US30_USD',          # Dow Jones Industrial Average
+        'US500': 'SPX500_USD',       # S&P 500
+        'NAS100': 'NAS100_USD',      # NASDAQ 100
+        'US2000': 'US2000_USD',      # Russell 2000
+
+        # ============ EUROPEAN INDICES ============
+        'DE40': 'DE30_EUR',          # DAX (OANDA still uses DE30)
+        'UK100': 'UK100_GBP',        # FTSE 100
+        'FR40': 'FR40_EUR',          # CAC 40
+        'EU50': 'EU50_EUR',          # Euro Stoxx 50
+        'ES35': 'ES35_EUR',          # IBEX 35
+        'IT40': 'IT40_EUR',          # FTSE MIB (if available, may vary)
+
+        # ============ ASIAN INDICES ============
+        'JP225': 'JP225_USD',        # Nikkei 225
+        'HK50': 'HK33_HKD',          # Hang Seng (OANDA uses HK33)
+        'AU200': 'AU200_AUD',        # ASX 200
+        'CN50': 'CN50_USD',          # China A50
+
+        # ============ METALS ============
+        'XAU_USD': 'XAU_USD',        # Gold
+        'XAG_USD': 'XAG_USD',        # Silver
+        'XPT_USD': 'XPT_USD',        # Platinum
+        'XPD_USD': 'XPD_USD',        # Palladium
+        'XCU_USD': 'XCU_USD',        # Copper
+
+        # ============ ENERGY / COMMODITIES ============
+        'WTI_USD': 'WTICO_USD',      # WTI Crude Oil
+        'BRENT_USD': 'BCO_USD',      # Brent Crude Oil
+        'NATGAS_USD': 'NATGAS_USD',  # Natural Gas
+
+        # ============ AGRICULTURAL (may not be available) ============
+        'WHEAT_USD': 'WHEAT_USD',
+        'CORN_USD': 'CORN_USD',
+        'SOYBEAN_USD': 'SOYBN_USD',
+        'COFFEE_USD': 'COFFEE_USD',
+        'SUGAR_USD': 'SUGAR_USD',
+        'COCOA_USD': 'COCOA_USD',
+        'COTTON_USD': 'COTTON_USD',
+    }
+
+    # Reverse mapping for converting OANDA symbols back to app symbols
+    REVERSE_SYMBOL_MAP = {v: k for k, v in SYMBOL_MAP.items()}
+
     def __init__(
         self,
         api_key: Optional[str] = None,
@@ -538,17 +586,18 @@ class OANDABroker(BaseBroker):
 
     async def get_current_price(self, symbol: str) -> Tick:
         """Get current bid/ask price for symbol."""
-        symbol = self.normalize_symbol(symbol)
+        original_symbol = symbol
+        oanda_symbol = self.normalize_symbol(symbol)
 
         data = await self._request(
             "GET",
             f"/v3/accounts/{self.account_id}/pricing",
-            params={"instruments": symbol},
+            params={"instruments": oanda_symbol},
         )
 
         price = data["prices"][0]
         return Tick(
-            symbol=price["instrument"],
+            symbol=original_symbol,  # Return with original app symbol
             bid=Decimal(price["bids"][0]["price"]),
             ask=Decimal(price["asks"][0]["price"]),
             timestamp=datetime.fromisoformat(
@@ -558,18 +607,28 @@ class OANDABroker(BaseBroker):
 
     async def get_prices(self, symbols: List[str]) -> Dict[str, Tick]:
         """Get current prices for multiple symbols."""
-        normalized = [self.normalize_symbol(s) for s in symbols]
+        # Create mapping from OANDA symbol to original app symbol
+        symbol_mapping = {}
+        oanda_symbols = []
+        for s in symbols:
+            oanda_sym = self.normalize_symbol(s)
+            oanda_symbols.append(oanda_sym)
+            symbol_mapping[oanda_sym] = s  # Map OANDA symbol back to app symbol
 
         data = await self._request(
             "GET",
             f"/v3/accounts/{self.account_id}/pricing",
-            params={"instruments": ",".join(normalized)},
+            params={"instruments": ",".join(oanda_symbols)},
         )
 
         result = {}
         for price in data["prices"]:
-            result[price["instrument"]] = Tick(
-                symbol=price["instrument"],
+            oanda_sym = price["instrument"]
+            # Use the original app symbol (e.g., US500 instead of SPX500_USD)
+            app_symbol = symbol_mapping.get(oanda_sym, oanda_sym)
+
+            result[app_symbol] = Tick(
+                symbol=app_symbol,  # Use app symbol format
                 bid=Decimal(price["bids"][0]["price"]),
                 ask=Decimal(price["asks"][0]["price"]),
                 timestamp=datetime.fromisoformat(
@@ -581,10 +640,16 @@ class OANDABroker(BaseBroker):
 
     async def stream_prices(self, symbols: List[str]) -> AsyncIterator[Tick]:
         """Stream real-time prices using OANDA's streaming API."""
-        normalized = [self.normalize_symbol(s) for s in symbols]
+        # Create mapping from OANDA symbol to original app symbol
+        symbol_mapping = {}
+        oanda_symbols = []
+        for s in symbols:
+            oanda_sym = self.normalize_symbol(s)
+            oanda_symbols.append(oanda_sym)
+            symbol_mapping[oanda_sym] = s
 
         url = f"{self.stream_url}/v3/accounts/{self.account_id}/pricing/stream"
-        params = {"instruments": ",".join(normalized)}
+        params = {"instruments": ",".join(oanda_symbols)}
 
         async with httpx.AsyncClient(
             headers=self._get_headers(),
@@ -599,8 +664,10 @@ class OANDABroker(BaseBroker):
                         data = json.loads(line)
 
                         if data.get("type") == "PRICE":
+                            oanda_sym = data["instrument"]
+                            app_symbol = symbol_mapping.get(oanda_sym, oanda_sym)
                             yield Tick(
-                                symbol=data["instrument"],
+                                symbol=app_symbol,  # Use app symbol format
                                 bid=Decimal(data["bids"][0]["price"]),
                                 ask=Decimal(data["asks"][0]["price"]),
                                 timestamp=datetime.fromisoformat(
@@ -662,12 +729,34 @@ class OANDABroker(BaseBroker):
     # ==================== Utility Methods ====================
 
     def normalize_symbol(self, symbol: str) -> str:
-        """Convert symbol to OANDA format (e.g., EUR/USD -> EUR_USD)."""
-        return symbol.replace("/", "_").upper()
+        """
+        Convert symbol to OANDA format.
+
+        Uses SYMBOL_MAP for known mappings (indices, commodities, etc.)
+        Falls back to simple underscore replacement for forex pairs.
+        """
+        # First normalize the input
+        normalized = symbol.replace("/", "_").upper()
+
+        # Check if we have a specific mapping for this symbol
+        if normalized in self.SYMBOL_MAP:
+            return self.SYMBOL_MAP[normalized]
+
+        # Default: return as-is (forex pairs like EUR_USD work directly)
+        return normalized
 
     def denormalize_symbol(self, symbol: str) -> str:
-        """Convert OANDA symbol to standard format (e.g., EUR_USD -> EUR/USD)."""
-        return symbol.replace("_", "/")
+        """
+        Convert OANDA symbol to app format.
+
+        Uses REVERSE_SYMBOL_MAP for known mappings.
+        """
+        # Check reverse mapping first
+        if symbol in self.REVERSE_SYMBOL_MAP:
+            return self.REVERSE_SYMBOL_MAP[symbol]
+
+        # Default: return as-is
+        return symbol
 
     def _convert_order_type(self, order_type: OrderType) -> str:
         """Convert order type to OANDA format."""
