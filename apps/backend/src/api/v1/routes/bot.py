@@ -1,11 +1,17 @@
 """
 Bot Control API - Endpoints to manage the auto trading bot.
+Bot configuration is persisted to database.
 """
 
+import json
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.database import get_db
+from src.core.models import AppSettings
 from src.engines.trading.auto_trader import (
     get_auto_trader,
     BotConfig,
@@ -15,6 +21,82 @@ from src.engines.trading.auto_trader import (
 
 
 router = APIRouter(prefix="/bot", tags=["Bot Control"])
+
+
+# ============ Database Helper Functions ============
+
+async def get_bot_config_from_db(db: AsyncSession) -> Optional[dict]:
+    """Load bot config from database."""
+    result = await db.execute(
+        select(AppSettings).where(AppSettings.key == "bot_config")
+    )
+    setting = result.scalar_one_or_none()
+    if setting and setting.value:
+        try:
+            return json.loads(setting.value)
+        except Exception:
+            pass
+    return None
+
+
+async def save_bot_config_to_db(db: AsyncSession, config_dict: dict) -> None:
+    """Save bot config to database."""
+    result = await db.execute(
+        select(AppSettings).where(AppSettings.key == "bot_config")
+    )
+    setting = result.scalar_one_or_none()
+
+    config_json = json.dumps(config_dict)
+    if setting:
+        setting.value = config_json
+    else:
+        setting = AppSettings(key="bot_config", value=config_json)
+        db.add(setting)
+
+    await db.commit()
+
+
+def apply_config_to_bot(config_dict: dict) -> None:
+    """Apply loaded config to the bot instance."""
+    bot = get_auto_trader()
+
+    if "symbols" in config_dict:
+        bot.config.symbols = config_dict["symbols"]
+    if "analysis_mode" in config_dict:
+        try:
+            bot.config.analysis_mode = AnalysisMode(config_dict["analysis_mode"])
+        except ValueError:
+            pass
+    if "analysis_interval_seconds" in config_dict:
+        bot.config.analysis_interval_seconds = config_dict["analysis_interval_seconds"]
+    if "min_confidence" in config_dict:
+        bot.config.min_confidence = config_dict["min_confidence"]
+    if "min_models_agree" in config_dict:
+        bot.config.min_models_agree = config_dict["min_models_agree"]
+    if "min_confluence" in config_dict:
+        bot.config.min_confluence = config_dict["min_confluence"]
+    if "risk_per_trade_percent" in config_dict:
+        bot.config.risk_per_trade_percent = config_dict["risk_per_trade_percent"]
+    if "max_open_positions" in config_dict:
+        bot.config.max_open_positions = config_dict["max_open_positions"]
+    if "max_daily_trades" in config_dict:
+        bot.config.max_daily_trades = config_dict["max_daily_trades"]
+    if "max_daily_loss_percent" in config_dict:
+        bot.config.max_daily_loss_percent = config_dict["max_daily_loss_percent"]
+    if "trading_start_hour" in config_dict:
+        bot.config.trading_start_hour = config_dict["trading_start_hour"]
+    if "trading_end_hour" in config_dict:
+        bot.config.trading_end_hour = config_dict["trading_end_hour"]
+    if "trade_on_weekends" in config_dict:
+        bot.config.trade_on_weekends = config_dict["trade_on_weekends"]
+    if "telegram_enabled" in config_dict:
+        bot.config.telegram_enabled = config_dict["telegram_enabled"]
+    if "discord_enabled" in config_dict:
+        bot.config.discord_enabled = config_dict["discord_enabled"]
+    if "tradingview_headless" in config_dict:
+        bot.config.tradingview_headless = config_dict["tradingview_headless"]
+    if "tradingview_max_indicators" in config_dict:
+        bot.config.tradingview_max_indicators = config_dict["tradingview_max_indicators"]
 
 
 class BotConfigRequest(BaseModel):
@@ -109,8 +191,8 @@ async def resume_bot():
 
 
 @router.put("/config")
-async def update_config(config: BotConfigRequest):
-    """Update bot configuration."""
+async def update_config(config: BotConfigRequest, db: AsyncSession = Depends(get_db)):
+    """Update bot configuration. Persists to database."""
     bot = get_auto_trader()
     current_config = bot.config
 
@@ -186,8 +268,30 @@ async def update_config(config: BotConfigRequest):
 
     bot.configure(current_config)
 
+    # Save to database for persistence
+    config_dict = {
+        "symbols": current_config.symbols,
+        "analysis_mode": current_config.analysis_mode.value,
+        "analysis_interval_seconds": current_config.analysis_interval_seconds,
+        "min_confidence": current_config.min_confidence,
+        "min_models_agree": current_config.min_models_agree,
+        "min_confluence": current_config.min_confluence,
+        "risk_per_trade_percent": current_config.risk_per_trade_percent,
+        "max_open_positions": current_config.max_open_positions,
+        "max_daily_trades": current_config.max_daily_trades,
+        "max_daily_loss_percent": current_config.max_daily_loss_percent,
+        "trading_start_hour": current_config.trading_start_hour,
+        "trading_end_hour": current_config.trading_end_hour,
+        "trade_on_weekends": current_config.trade_on_weekends,
+        "telegram_enabled": current_config.telegram_enabled,
+        "discord_enabled": current_config.discord_enabled,
+        "tradingview_headless": current_config.tradingview_headless,
+        "tradingview_max_indicators": current_config.tradingview_max_indicators,
+    }
+    await save_bot_config_to_db(db, config_dict)
+
     return {
-        "message": "Configuration updated",
+        "message": "Configuration updated and saved",
         "config": bot.get_status()["config"]
     }
 

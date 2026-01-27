@@ -31,6 +31,21 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"⚠️ Could not load settings from database: {e}")
 
+    # Load bot configuration from database
+    try:
+        from src.core.database import async_session_maker
+        from src.api.v1.routes.bot import get_bot_config_from_db, apply_config_to_bot
+
+        async with async_session_maker() as session:
+            bot_config = await get_bot_config_from_db(session)
+            if bot_config:
+                apply_config_to_bot(bot_config)
+                print("✅ Bot configuration loaded from database")
+            else:
+                print("ℹ️ No saved bot configuration found, using defaults")
+    except Exception as e:
+        print(f"⚠️ Could not load bot configuration from database: {e}")
+
     print(f"🔥 Prometheus Trading Platform v{settings.VERSION} started")
     print(f"📊 Environment: {settings.ENVIRONMENT}")
     yield
