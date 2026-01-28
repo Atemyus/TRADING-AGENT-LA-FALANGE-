@@ -218,7 +218,7 @@ class AutoTrader:
 
             # Initialize broker
             print("[AutoTrader] Initializing broker connection...")
-            self.broker = await BrokerFactory.create_broker()
+            self.broker = BrokerFactory.create()
             await self.broker.connect()
             print("[AutoTrader] Broker connected")
 
