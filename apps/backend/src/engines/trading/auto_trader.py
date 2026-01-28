@@ -192,28 +192,39 @@ class AutoTrader:
         self.state.errors = []
 
         try:
+            print("[AutoTrader] Starting bot initialization...")
+
             # Initialize analyzer (standard multi-timeframe)
+            print("[AutoTrader] Initializing multi-timeframe analyzer...")
             self.analyzer = get_multi_timeframe_analyzer()
             await self.analyzer.initialize()
+            print("[AutoTrader] Multi-timeframe analyzer ready")
 
             # Initialize autonomous analyst (chart vision with AI freedom)
             if self.config.use_autonomous_analysis:
+                print("[AutoTrader] Initializing autonomous analyst...")
                 self.autonomous_analyst = get_autonomous_analyst()
                 await self.autonomous_analyst.initialize()
+                print("[AutoTrader] Autonomous analyst ready")
 
             # Initialize TradingView agent (full browser control)
             if self.config.use_tradingview_agent and TRADINGVIEW_AGENT_AVAILABLE:
+                print("[AutoTrader] Initializing TradingView agent...")
                 self.tradingview_agent = await get_tradingview_agent(
                     headless=self.config.tradingview_headless,
                     max_indicators=self.config.tradingview_max_indicators
                 )
+                print("[AutoTrader] TradingView agent ready")
 
             # Initialize broker
+            print("[AutoTrader] Initializing broker connection...")
             self.broker = await BrokerFactory.create_broker()
             await self.broker.connect()
+            print("[AutoTrader] Broker connected")
 
             # Initialize economic calendar service (news filter)
             if self.config.news_filter_enabled:
+                print("[AutoTrader] Initializing news filter...")
                 self.calendar_service = get_economic_calendar_service()
                 self.calendar_service.configure(NewsFilterConfig(
                     enabled=self.config.news_filter_enabled,
@@ -223,10 +234,15 @@ class AutoTrader:
                     minutes_before=self.config.news_minutes_before,
                     minutes_after=self.config.news_minutes_after,
                 ))
-                await self.calendar_service.fetch_events()
-                print(f"[AutoTrader] News filter enabled: {self.config.news_minutes_before}min before, {self.config.news_minutes_after}min after")
+                try:
+                    await self.calendar_service.fetch_events()
+                    print(f"[AutoTrader] News filter enabled: {self.config.news_minutes_before}min before, {self.config.news_minutes_after}min after")
+                except Exception as news_err:
+                    # Non-critical error - continue without news filter
+                    print(f"[AutoTrader] Warning: Could not fetch news events: {news_err}")
 
             # Start main loop
+            print("[AutoTrader] Starting main trading loop...")
             self._stop_event.clear()
             self._task = asyncio.create_task(self._main_loop())
             self.state.status = BotStatus.RUNNING
@@ -238,8 +254,12 @@ class AutoTrader:
             else:
                 analysis_type = "Standard"
             await self._notify(f"🤖 Bot started ({analysis_type} Analysis). Monitoring: {', '.join(self.config.symbols)}")
+            print(f"[AutoTrader] Bot started successfully with {analysis_type} analysis")
 
         except Exception as e:
+            import traceback
+            print(f"[AutoTrader] ERROR during start: {str(e)}")
+            print(f"[AutoTrader] Full traceback:\n{traceback.format_exc()}")
             self.state.status = BotStatus.ERROR
             self.state.errors.append({
                 "timestamp": datetime.utcnow().isoformat(),

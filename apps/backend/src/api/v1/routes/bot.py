@@ -172,6 +172,7 @@ async def get_bot_status():
 @router.post("/start")
 async def start_bot():
     """Start the auto trading bot."""
+    import traceback
     bot = get_auto_trader()
 
     if bot.state.status == BotStatus.RUNNING:
@@ -181,6 +182,9 @@ async def start_bot():
         await bot.start()
         return {"message": "Bot started successfully", "status": bot.state.status.value}
     except Exception as e:
+        # Log full traceback for debugging
+        error_traceback = traceback.format_exc()
+        print(f"[BOT START ERROR] Full traceback:\n{error_traceback}")
         raise HTTPException(status_code=500, detail=f"Failed to start bot: {str(e)}")
 
 
