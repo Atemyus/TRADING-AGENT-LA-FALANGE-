@@ -266,6 +266,16 @@ class AutoTrader:
                     # Non-critical error - continue without news filter
                     print(f"[AutoTrader] Warning: Could not fetch news events: {news_err}")
 
+            # Check API key configuration and warn in logs
+            if not settings.AIML_API_KEY:
+                warning_msg = "⚠️ AIML_API_KEY NON CONFIGURATA! Le analisi AI NON faranno chiamate API reali. I crediti API non scaleranno. Configura AIML_API_KEY nelle variabili d'ambiente."
+                print(f"[AutoTrader] {warning_msg}")
+                self._log_analysis("SYSTEM", "error", warning_msg)
+            else:
+                key_preview = settings.AIML_API_KEY[:8] + "..." if len(settings.AIML_API_KEY) > 8 else "***"
+                self._log_analysis("SYSTEM", "info", f"✅ AIML API Key configurata ({key_preview}) - Le chiamate AI saranno reali")
+                print(f"[AutoTrader] AIML API key configured: {key_preview}")
+
             # Start main loop
             print("[AutoTrader] Starting main trading loop...")
             self._stop_event.clear()
@@ -525,11 +535,16 @@ class AutoTrader:
                         model_name = getattr(r, 'model_display_name', getattr(r, 'model', 'Unknown'))
                         direction = getattr(r, 'direction', 'N/A')
                         confidence = getattr(r, 'confidence', 0)
+                        error = getattr(r, 'error', None)
                         reasoning = getattr(r, 'reasoning', '')[:200]
-                        self._log_analysis(symbol, "analysis", f"[{model_name}] {direction} ({confidence:.0f}%): {reasoning}", {
+                        # Show error prominently if present (e.g. missing API key)
+                        display_msg = f"[{model_name}] {direction} ({confidence:.0f}%): {error or reasoning}"
+                        log_type = "error" if error else "analysis"
+                        self._log_analysis(symbol, log_type, display_msg, {
                             "model": model_name,
                             "direction": direction,
                             "confidence": confidence,
+                            "error": error,
                         })
 
                     self._log_analysis(symbol, "analysis", f"Consenso: {consensus.get('direction', 'N/A')} - Confidence: {consensus.get('confidence', 0):.1f}% - Modelli: {consensus.get('models_agree', 0)}/{consensus.get('total_models', 0)}", {
@@ -555,16 +570,28 @@ class AutoTrader:
                     consensus = self.autonomous_analyst.calculate_consensus(results)
 
                     # Log each AI model's result
+                    api_errors = 0
                     for r in results:
                         model_name = getattr(r, 'model_display_name', getattr(r, 'model', 'Unknown'))
                         direction = getattr(r, 'direction', 'N/A')
                         confidence = getattr(r, 'confidence', 0)
+                        error = getattr(r, 'error', None)
                         reasoning = getattr(r, 'reasoning', '')[:200]
-                        self._log_analysis(symbol, "analysis", f"[{model_name}] {direction} ({confidence:.0f}%): {reasoning}", {
+                        # Show error prominently if present (e.g. missing API key)
+                        display_msg = f"[{model_name}] {direction} ({confidence:.0f}%): {error or reasoning}"
+                        log_type = "error" if error else "analysis"
+                        if error:
+                            api_errors += 1
+                        self._log_analysis(symbol, log_type, display_msg, {
                             "model": model_name,
                             "direction": direction,
                             "confidence": confidence,
+                            "error": error,
                         })
+
+                    # Warn if ALL models had errors (likely API key issue)
+                    if api_errors == len(results) and len(results) > 0:
+                        self._log_analysis(symbol, "error", f"⚠️ TUTTI i {len(results)} modelli AI hanno restituito errori! Verifica che AIML_API_KEY sia configurata correttamente nelle variabili d'ambiente.")
 
                     self._log_analysis(symbol, "analysis", f"Consenso: {consensus.get('direction', 'N/A')} - Confidence: {consensus.get('confidence', 0):.1f}% - Modelli: {consensus.get('models_agree', 0)}/{consensus.get('total_models', 0)}", {
                         "direction": consensus.get("direction"),

@@ -152,12 +152,13 @@ IMPORTANT: Be PRECISE with price levels. Read them directly from the chart. Refe
         display_name = MODEL_DISPLAY_NAMES.get(model, model.value)
 
         if not self.api_key:
+            print(f"[VisionAnalyzer] ⚠️ AIML API KEY NOT SET - No real API call for {model.value}. Set AIML_API_KEY env variable.")
             return VisionAnalysisResult(
                 model=model.value,
                 model_display_name=display_name,
                 direction="HOLD",
                 confidence=0,
-                error="AIML API key not configured"
+                error="⚠️ AIML API KEY NON CONFIGURATA - Nessuna chiamata API reale. Configura AIML_API_KEY nelle variabili d'ambiente."
             )
 
         start_time = datetime.now()
