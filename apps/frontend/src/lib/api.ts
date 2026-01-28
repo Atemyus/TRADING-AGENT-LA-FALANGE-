@@ -147,14 +147,45 @@ export interface AIServiceStatus {
   }>
 }
 
-export interface BotStatus {
-  is_running: boolean
-  mode: string
-  current_symbol: string | null
-  last_analysis: string | null
+export interface BotStatusConfig {
+  symbols: string[]
+  analysis_mode: string
+  min_confidence: number
+  risk_per_trade: number
+  max_positions: number
+  autonomous_analysis?: boolean
+  autonomous_timeframe?: string
+}
+
+export interface BotStatusStatistics {
+  analyses_today: number
   trades_today: number
-  pnl_today: string
-  uptime_seconds: number
+  daily_pnl: number
+  open_positions: number
+}
+
+export interface BotStatusPosition {
+  symbol: string
+  direction: string
+  entry: number
+  sl: number
+  tp: number
+  confidence: number
+}
+
+export interface BotStatusError {
+  timestamp: string
+  error: string
+}
+
+export interface BotStatus {
+  status: string
+  started_at: string | null
+  last_analysis_at: string | null
+  config: BotStatusConfig
+  statistics: BotStatusStatistics
+  open_positions: BotStatusPosition[]
+  recent_errors: BotStatusError[]
 }
 
 // TradingView Agent Types
