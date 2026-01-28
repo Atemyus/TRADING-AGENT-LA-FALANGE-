@@ -21,10 +21,17 @@ class PriceStreamingService:
 
     Prioritizes:
     1. Connected broker (real-time)
-    2. Simulated prices (for demo/testing)
+    2. Simulated prices (for demo/testing) - can be disabled
     """
 
-    def __init__(self):
+    def __init__(self, disable_simulation: bool = False):
+        """
+        Initialize the price streaming service.
+
+        Args:
+            disable_simulation: If True, only real broker data will be used.
+                               No simulated prices will be generated.
+        """
         self._broker: Optional[BaseBroker] = None
         self._streaming = False
         self._initialized = False  # Flag to track if initialization is complete
@@ -34,6 +41,7 @@ class PriceStreamingService:
         self._rate_limited = False  # Track if broker is rate limited
         self._failed_symbols: Set[str] = set()  # Symbols that failed to get from broker
         self._available_symbols: Set[str] = set()  # Symbols successfully fetched from broker
+        self._disable_simulation = disable_simulation  # If True, no simulated data
 
         # Base prices for simulation (when no broker) - ALL 74 symbols
         self._base_prices = {
@@ -171,7 +179,14 @@ class PriceStreamingService:
         """Get current data source name."""
         if self.is_broker_connected:
             return self._broker.name
+        if self._disable_simulation:
+            return "broker_only"
         return "simulated"
+
+    @property
+    def simulation_disabled(self) -> bool:
+        """Check if simulation is disabled."""
+        return self._disable_simulation
 
     @property
     def available_symbols(self) -> Set[str]:
@@ -244,6 +259,9 @@ class PriceStreamingService:
         if self.is_broker_connected:
             print("[PriceStreaming] Starting BROKER price stream")
             self._stream_task = asyncio.create_task(self._stream_from_broker())
+        elif self._disable_simulation:
+            print("[PriceStreaming] ⚠️ No broker connected and simulation disabled - NO PRICES WILL BE AVAILABLE")
+            print("[PriceStreaming] Connect a broker to get real price data")
         else:
             print("[PriceStreaming] Starting SIMULATED price stream")
             self._stream_task = asyncio.create_task(self._stream_simulated())
@@ -348,13 +366,19 @@ class PriceStreamingService:
                             print(f"[PriceStreaming] Backing off, next poll in {poll_interval}s")
 
                 # Generate simulated prices for symbols not available from broker
-                # Also generate for ALL symbols if rate limited
-                symbols_to_simulate = simulated_symbols if not self._rate_limited else symbols
-                for symbol in symbols_to_simulate:
-                    tick = self._generate_simulated_tick(symbol)
-                    if tick:
-                        self._current_prices[symbol] = tick
-                        await self._notify_subscribers(tick)
+                # Only if simulation is enabled
+                if not self._disable_simulation:
+                    # Also generate for ALL symbols if rate limited
+                    symbols_to_simulate = simulated_symbols if not self._rate_limited else symbols
+                    for symbol in symbols_to_simulate:
+                        tick = self._generate_simulated_tick(symbol)
+                        if tick:
+                            self._current_prices[symbol] = tick
+                            await self._notify_subscribers(tick)
+                elif simulated_symbols:
+                    # Log that these symbols won't have prices (simulation disabled)
+                    if tick_count == 0 or tick_count % 100 == 0:
+                        print(f"[PriceStreaming] Symbols without broker data (simulation disabled): {simulated_symbols}")
 
                 # Wait before next poll cycle
                 await asyncio.sleep(poll_interval if not self._rate_limited else 1.0)
@@ -573,8 +597,12 @@ async def get_price_streaming_service() -> PriceStreamingService:
     # Acquire lock to ensure only one initialization happens
     async with _init_lock:
         if _price_service is None:
-            print("[PriceStreaming] Creating new PriceStreamingService instance...")
-            _price_service = PriceStreamingService()
+            import os
+            # Disable simulation by default - only use real broker data
+            # Set ENABLE_PRICE_SIMULATION=true to enable simulated prices
+            disable_simulation = os.getenv("ENABLE_PRICE_SIMULATION", "false").lower() != "true"
+            print(f"[PriceStreaming] Creating new PriceStreamingService instance (simulation {'disabled' if disable_simulation else 'enabled'})...")
+            _price_service = PriceStreamingService(disable_simulation=disable_simulation)
             await _price_service.initialize()
             _init_complete.set()  # Signal that initialization is complete
             print(f"[PriceStreaming] Initialization complete. Broker connected: {_price_service.is_broker_connected}")

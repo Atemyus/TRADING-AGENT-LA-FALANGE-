@@ -481,9 +481,12 @@ async def get_streaming_status():
             "broker_configured": broker_configured,
             "broker_connected": price_service.is_broker_connected,
             "data_source": price_service.data_source,
+            "simulation_disabled": price_service.simulation_disabled,
             "streaming_active": price_service._streaming,
             "subscribed_symbols_count": len(price_service._subscribers),
             "subscribed_symbols": list(price_service._subscribers.keys())[:20],
+            "available_symbols": list(price_service.available_symbols)[:20],
+            "failed_symbols": list(price_service.failed_symbols)[:20],
             "cached_prices_count": len(cached_prices),
             "sample_prices": price_summary,
         }
@@ -511,6 +514,7 @@ async def get_available_symbols():
         return {
             "broker_connected": price_service.is_broker_connected,
             "data_source": price_service.data_source,
+            "simulation_disabled": price_service.simulation_disabled,
             "available_symbols": sorted(available),
             "available_count": len(available),
             "failed_symbols": sorted(failed),

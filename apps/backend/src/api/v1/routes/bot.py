@@ -93,6 +93,12 @@ def apply_config_to_bot(config_dict: dict) -> None:
         bot.config.telegram_enabled = config_dict["telegram_enabled"]
     if "discord_enabled" in config_dict:
         bot.config.discord_enabled = config_dict["discord_enabled"]
+    if "use_autonomous_analysis" in config_dict:
+        bot.config.use_autonomous_analysis = config_dict["use_autonomous_analysis"]
+    if "autonomous_timeframe" in config_dict:
+        bot.config.autonomous_timeframe = config_dict["autonomous_timeframe"]
+    if "use_tradingview_agent" in config_dict:
+        bot.config.use_tradingview_agent = config_dict["use_tradingview_agent"]
     if "tradingview_headless" in config_dict:
         bot.config.tradingview_headless = config_dict["tradingview_headless"]
     if "tradingview_max_indicators" in config_dict:
@@ -116,7 +122,11 @@ class BotConfigRequest(BaseModel):
     trade_on_weekends: Optional[bool] = None
     telegram_enabled: Optional[bool] = None
     discord_enabled: Optional[bool] = None
+    # Autonomous Analysis settings
+    use_autonomous_analysis: Optional[bool] = None
+    autonomous_timeframe: Optional[str] = None
     # TradingView AI Agent settings
+    use_tradingview_agent: Optional[bool] = None
     tradingview_headless: Optional[bool] = None
     tradingview_max_indicators: Optional[int] = None
 
@@ -257,7 +267,20 @@ async def update_config(config: BotConfigRequest, db: AsyncSession = Depends(get
     if config.discord_enabled is not None:
         current_config.discord_enabled = config.discord_enabled
 
+    # Autonomous Analysis settings
+    if config.use_autonomous_analysis is not None:
+        current_config.use_autonomous_analysis = config.use_autonomous_analysis
+
+    if config.autonomous_timeframe is not None:
+        valid_timeframes = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"]
+        if config.autonomous_timeframe not in valid_timeframes:
+            raise HTTPException(status_code=400, detail=f"Invalid timeframe. Valid options: {valid_timeframes}")
+        current_config.autonomous_timeframe = config.autonomous_timeframe
+
     # TradingView AI Agent settings
+    if config.use_tradingview_agent is not None:
+        current_config.use_tradingview_agent = config.use_tradingview_agent
+
     if config.tradingview_headless is not None:
         current_config.tradingview_headless = config.tradingview_headless
 
@@ -285,6 +308,9 @@ async def update_config(config: BotConfigRequest, db: AsyncSession = Depends(get
         "trade_on_weekends": current_config.trade_on_weekends,
         "telegram_enabled": current_config.telegram_enabled,
         "discord_enabled": current_config.discord_enabled,
+        "use_autonomous_analysis": current_config.use_autonomous_analysis,
+        "autonomous_timeframe": current_config.autonomous_timeframe,
+        "use_tradingview_agent": current_config.use_tradingview_agent,
         "tradingview_headless": current_config.tradingview_headless,
         "tradingview_max_indicators": current_config.tradingview_max_indicators,
     }
@@ -318,7 +344,11 @@ async def get_config():
         "trade_on_weekends": config.trade_on_weekends,
         "telegram_enabled": config.telegram_enabled,
         "discord_enabled": config.discord_enabled,
+        # Autonomous Analysis settings
+        "use_autonomous_analysis": config.use_autonomous_analysis,
+        "autonomous_timeframe": config.autonomous_timeframe,
         # TradingView AI Agent settings
+        "use_tradingview_agent": config.use_tradingview_agent,
         "tradingview_headless": config.tradingview_headless,
         "tradingview_max_indicators": config.tradingview_max_indicators,
     }

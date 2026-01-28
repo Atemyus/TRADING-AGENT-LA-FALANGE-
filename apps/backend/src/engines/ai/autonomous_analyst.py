@@ -205,6 +205,7 @@ IMPORTANT:
 - Express YOUR unique perspective
 - If you see no trade, say HOLD with reasoning
 - Reference specific data points from the provided information
+- SCRIVI TUTTO IN ITALIANO: Tutta l'analisi, il reasoning, le osservazioni e le descrizioni devono essere scritte ESCLUSIVAMENTE in lingua italiana. Non usare inglese.
 """
 
 
