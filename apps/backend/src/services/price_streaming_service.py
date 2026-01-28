@@ -279,12 +279,21 @@ class PriceStreamingService:
         """Stream prices from connected broker using polling for real-time sync."""
         print(f"[PriceStreaming] _stream_from_broker started for broker: {self._broker.name if self._broker else 'None'}")
         tick_count = 0
-        base_poll_interval = 2.0  # Poll every 2 seconds to reduce API calls
+        base_poll_interval = 5.0  # Poll every 5 seconds to avoid rate limiting
         poll_interval = base_poll_interval
         # Use instance-level tracking for symbols
         self._failed_symbols = set()  # Reset on start
         self._available_symbols = set()  # Reset on start
         consecutive_errors = 0  # Track consecutive errors for backoff
+
+        # Discover which symbols the broker actually supports
+        supported_symbols = set()
+        if hasattr(self._broker, 'get_supported_symbols'):
+            supported_symbols = set(self._broker.get_supported_symbols())
+            if supported_symbols:
+                print(f"[PriceStreaming] Broker supports {len(supported_symbols)} symbols: {list(supported_symbols)[:10]}...")
+            else:
+                print("[PriceStreaming] No pre-mapped symbols yet, will discover during polling")
 
         while self._streaming and self.is_broker_connected:
             try:
@@ -293,8 +302,12 @@ class PriceStreamingService:
                     await asyncio.sleep(poll_interval)
                     continue
 
-                # Split symbols into broker-available and simulation-fallback
-                broker_symbols = [s for s in symbols if s not in self._failed_symbols]
+                # Only poll symbols that broker supports (if we know which ones)
+                # Otherwise try all symbols until we discover which ones work
+                if supported_symbols:
+                    broker_symbols = [s for s in symbols if s in supported_symbols and s not in self._failed_symbols]
+                else:
+                    broker_symbols = [s for s in symbols if s not in self._failed_symbols]
                 simulated_symbols = [s for s in symbols if s in self._failed_symbols]
 
                 # Get prices from broker for available symbols
@@ -364,10 +377,9 @@ class PriceStreamingService:
                             print(f"[PriceStreaming] Backing off, next poll in {poll_interval}s")
 
                 # Generate simulated prices for symbols not available from broker
-                # Always use simulation as fallback for failed symbols (even if global simulation is disabled)
-                # This ensures the UI always has prices to show
-                symbols_to_simulate = simulated_symbols if not self._rate_limited else symbols
-                if symbols_to_simulate:
+                # Only if simulation is enabled
+                if not self._disable_simulation:
+                    symbols_to_simulate = simulated_symbols if not self._rate_limited else symbols
                     for symbol in symbols_to_simulate:
                         tick = self._generate_simulated_tick(symbol)
                         if tick:

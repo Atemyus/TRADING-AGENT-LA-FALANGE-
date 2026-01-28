@@ -254,10 +254,9 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
   // Convert selected symbol format
   const selectedValue = selectedSymbol?.replace('/', '_')
 
-  // Show all prices that have data (broker + fallback)
-  const activePrices = prices.filter(p => p.mid !== '--' && p.mid !== '')
-  const realCount = activePrices.filter(p => p.isReal).length
-  const totalCount = activePrices.length
+  // Show ONLY real broker prices
+  const activePrices = prices.filter(p => p.isReal && p.mid !== '--' && p.mid !== '')
+  const realCount = activePrices.length
 
   return (
     <>
@@ -272,7 +271,7 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <span className="text-sm text-dark-400">
-            {totalCount} Asset{totalCount !== 1 ? 's' : ''}{realCount > 0 ? ` (${realCount} Live)` : ''}
+            {realCount} Asset{realCount !== 1 ? 's' : ''} Reali
           </span>
         </div>
         <div className="flex items-center gap-2 text-xs">
@@ -404,8 +403,8 @@ export function PriceTickerCompact({ onSelect, selectedSymbol }: { onSelect?: (s
     return createEmptyPrice(symbol)
   })
 
-  // Show all prices that have data
-  const filteredPrices = prices.filter(p => p.isReal || (p.mid !== '--' && p.mid !== ''))
+  // Show only real broker prices
+  const filteredPrices = prices.filter(p => p.isReal && p.mid !== '--' && p.mid !== '')
 
   return (
     <div className="flex gap-4 overflow-x-auto py-2 scrollbar-hide">

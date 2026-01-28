@@ -211,7 +211,7 @@ class MetaTraderBroker(BaseBroker):
     # Cache TTLs (in seconds)
     ACCOUNT_INFO_CACHE_TTL = 30  # Cache account info for 30 seconds
     POSITIONS_CACHE_TTL = 15  # Cache positions for 15 seconds
-    PRICES_CACHE_TTL = 2  # Cache prices for 2 seconds
+    PRICES_CACHE_TTL = 8  # Cache prices for 8 seconds (prevents rate limiting)
     ORDERS_CACHE_TTL = 10  # Cache orders for 10 seconds
 
     def __init__(
@@ -905,19 +905,37 @@ class MetaTraderBroker(BaseBroker):
                 return order
         return None
 
+    def get_supported_symbols(self) -> List[str]:
+        """Get list of internal symbols that have been successfully mapped to broker symbols."""
+        supported = []
+        for our_symbol, broker_sym in self._symbol_map.items():
+            # Check if this was a real mapping (not just fallback)
+            if broker_sym in self._broker_symbols:
+                supported.append(our_symbol)
+        return supported
+
     async def get_prices(self, symbols: List[str]) -> Dict[str, Tick]:
-        """Get current prices for multiple symbols."""
+        """Get current prices for multiple symbols with rate-limit-safe batching."""
         if not self._connected:
             await self.connect()
 
         prices = {}
         errors = []
-        for symbol in symbols:
-            try:
-                tick = await self.get_current_price(symbol)
-                prices[symbol] = tick
-            except Exception as e:
-                errors.append(f"{symbol}: {str(e)[:50]}")
+
+        # Process in batches of 5 with small delay to avoid rate limiting
+        batch_size = 5
+        for i in range(0, len(symbols), batch_size):
+            batch = symbols[i:i + batch_size]
+            for symbol in batch:
+                try:
+                    tick = await self.get_current_price(symbol)
+                    prices[symbol] = tick
+                except Exception as e:
+                    errors.append(f"{symbol}: {str(e)[:50]}")
+
+            # Small delay between batches to avoid rate limiting
+            if i + batch_size < len(symbols):
+                await asyncio.sleep(0.3)
 
         # Log errors for first few symbols only (to avoid spam)
         if errors and len(prices) == 0:
