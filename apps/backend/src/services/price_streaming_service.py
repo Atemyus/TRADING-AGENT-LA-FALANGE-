@@ -259,11 +259,9 @@ class PriceStreamingService:
         if self.is_broker_connected:
             print("[PriceStreaming] Starting BROKER price stream")
             self._stream_task = asyncio.create_task(self._stream_from_broker())
-        elif self._disable_simulation:
-            print("[PriceStreaming] ⚠️ No broker connected and simulation disabled - NO PRICES WILL BE AVAILABLE")
-            print("[PriceStreaming] Connect a broker to get real price data")
         else:
-            print("[PriceStreaming] Starting SIMULATED price stream")
+            # Always start simulated stream as fallback so UI has prices
+            print("[PriceStreaming] Starting SIMULATED price stream (no broker connected)")
             self._stream_task = asyncio.create_task(self._stream_simulated())
 
     async def stop_streaming(self):
@@ -366,19 +364,15 @@ class PriceStreamingService:
                             print(f"[PriceStreaming] Backing off, next poll in {poll_interval}s")
 
                 # Generate simulated prices for symbols not available from broker
-                # Only if simulation is enabled
-                if not self._disable_simulation:
-                    # Also generate for ALL symbols if rate limited
-                    symbols_to_simulate = simulated_symbols if not self._rate_limited else symbols
+                # Always use simulation as fallback for failed symbols (even if global simulation is disabled)
+                # This ensures the UI always has prices to show
+                symbols_to_simulate = simulated_symbols if not self._rate_limited else symbols
+                if symbols_to_simulate:
                     for symbol in symbols_to_simulate:
                         tick = self._generate_simulated_tick(symbol)
                         if tick:
                             self._current_prices[symbol] = tick
                             await self._notify_subscribers(tick)
-                elif simulated_symbols:
-                    # Log that these symbols won't have prices (simulation disabled)
-                    if tick_count == 0 or tick_count % 100 == 0:
-                        print(f"[PriceStreaming] Symbols without broker data (simulation disabled): {simulated_symbols}")
 
                 # Wait before next poll cycle
                 await asyncio.sleep(poll_interval if not self._rate_limited else 1.0)
@@ -457,7 +451,7 @@ class PriceStreamingService:
                 print(f"Simulated streaming error: {e}")
                 await asyncio.sleep(1)
 
-    def _get_simulation_params(self, symbol: str, base: Decimal) -> tuple[Decimal, Decimal]:
+    def _get_simulation_params(self, symbol: str, base: Decimal):
         """Get fluctuation and spread parameters based on symbol type."""
         # Forex pairs
         if any(x in symbol for x in ["EUR_", "GBP_", "USD_", "AUD_", "NZD_", "CAD_", "CHF_", "JPY"]):

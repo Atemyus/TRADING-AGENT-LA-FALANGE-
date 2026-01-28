@@ -136,6 +136,16 @@ class BotConfig:
 
 
 @dataclass
+class AnalysisLogEntry:
+    """Log entry for AI analysis activity."""
+    timestamp: datetime
+    symbol: str
+    log_type: str  # "info", "analysis", "trade", "skip", "error", "news"
+    message: str
+    details: Optional[Dict[str, Any]] = None
+
+
+@dataclass
 class BotState:
     """Current state of the bot."""
     status: BotStatus = BotStatus.STOPPED
@@ -147,6 +157,7 @@ class BotState:
     open_positions: List[TradeRecord] = field(default_factory=list)
     trade_history: List[TradeRecord] = field(default_factory=list)
     errors: List[Dict[str, Any]] = field(default_factory=list)
+    analysis_logs: List[AnalysisLogEntry] = field(default_factory=list)  # AI reasoning logs
 
 
 class AutoTrader:
@@ -177,6 +188,20 @@ class AutoTrader:
     def configure(self, config: BotConfig):
         """Update bot configuration."""
         self.config = config
+
+    def _log_analysis(self, symbol: str, log_type: str, message: str, details: Optional[Dict[str, Any]] = None):
+        """Add an analysis log entry visible from the frontend."""
+        entry = AnalysisLogEntry(
+            timestamp=datetime.utcnow(),
+            symbol=symbol,
+            log_type=log_type,
+            message=message,
+            details=details,
+        )
+        self.state.analysis_logs.append(entry)
+        # Keep last 100 entries
+        if len(self.state.analysis_logs) > 100:
+            self.state.analysis_logs = self.state.analysis_logs[-100:]
 
     def add_callback(self, callback: Callable):
         """Add a callback for trade notifications."""
@@ -324,6 +349,16 @@ class AutoTrader:
                 for p in self.state.open_positions
             ],
             "recent_errors": self.state.errors[-5:],
+            "analysis_logs": [
+                {
+                    "timestamp": log.timestamp.isoformat(),
+                    "symbol": log.symbol,
+                    "type": log.log_type,
+                    "message": log.message,
+                    "details": log.details,
+                }
+                for log in self.state.analysis_logs[-30:]  # Last 30 entries
+            ],
         }
 
     async def _main_loop(self):
@@ -449,64 +484,122 @@ class AutoTrader:
         # Refresh news calendar periodically
         await self._refresh_news_calendar()
 
+        self._log_analysis("ALL", "info", f"Inizio ciclo analisi per {len(self.config.symbols)} asset: {', '.join(self.config.symbols)}")
+
         for symbol in self.config.symbols:
             try:
                 # Skip if max positions reached
                 if len(self.state.open_positions) >= self.config.max_open_positions:
+                    self._log_analysis(symbol, "skip", f"Max posizioni raggiunte ({self.config.max_open_positions})")
                     continue
 
                 # Skip if already have position in this symbol
                 if any(p.symbol == symbol for p in self.state.open_positions):
+                    self._log_analysis(symbol, "skip", "Posizione già aperta su questo asset")
                     continue
 
                 # NEWS FILTER: Skip if blocked by upcoming/recent news
                 news_blocked, blocking_event = self._is_news_blocked(symbol)
                 if news_blocked and blocking_event:
+                    self._log_analysis(symbol, "news", f"Bloccato per news: {blocking_event.title} ({blocking_event.currency}, {blocking_event.impact.value})")
                     print(f"[AutoTrader] ⚠️ Skipping {symbol} due to news: {blocking_event.title} ({blocking_event.currency}, {blocking_event.impact.value})")
                     continue
 
+                self._log_analysis(symbol, "info", f"Avvio analisi AI per {symbol}...")
+
                 # Use TradingView AI Agent (full browser control with multi-timeframe)
                 if self.config.use_tradingview_agent and self.tradingview_agent:
-                    # Convert symbol format (EUR/USD -> EURUSD)
                     tv_symbol = symbol.replace("/", "")
-                    # Get mode as lowercase string (e.g., AnalysisMode.PREMIUM -> "premium")
                     mode_str = self.config.analysis_mode.value.lower()
 
-                    # Run multi-timeframe analysis on TradingView
-                    # Each AI will change timeframes directly on TradingView.com
+                    self._log_analysis(symbol, "analysis", f"TradingView Agent: analisi {mode_str} su {tv_symbol}")
+
                     consensus = await self.tradingview_agent.analyze_with_mode(
                         symbol=tv_symbol,
                         mode=mode_str
                     )
                     results = consensus.get("all_results", [])
 
-                    # Check if trade conditions are met (including TF alignment)
+                    # Log each AI model's result
+                    for r in results:
+                        model_name = getattr(r, 'model_display_name', getattr(r, 'model', 'Unknown'))
+                        direction = getattr(r, 'direction', 'N/A')
+                        confidence = getattr(r, 'confidence', 0)
+                        reasoning = getattr(r, 'reasoning', '')[:200]
+                        self._log_analysis(symbol, "analysis", f"[{model_name}] {direction} ({confidence:.0f}%): {reasoning}", {
+                            "model": model_name,
+                            "direction": direction,
+                            "confidence": confidence,
+                        })
+
+                    self._log_analysis(symbol, "analysis", f"Consenso: {consensus.get('direction', 'N/A')} - Confidence: {consensus.get('confidence', 0):.1f}% - Modelli: {consensus.get('models_agree', 0)}/{consensus.get('total_models', 0)}", {
+                        "direction": consensus.get("direction"),
+                        "confidence": consensus.get("confidence", 0),
+                        "models_agree": consensus.get("models_agree", 0),
+                    })
+
                     if self._should_enter_tradingview_trade(consensus):
+                        self._log_analysis(symbol, "trade", f"TRADE: {consensus.get('direction')} {symbol} @ confidence {consensus.get('confidence', 0):.1f}%")
                         await self._execute_tradingview_trade(symbol, consensus, results)
+                    else:
+                        self._log_analysis(symbol, "skip", f"Condizioni non soddisfatte (min confidence: {self.config.min_confidence}%)")
 
                 # Use Autonomous Analysis (each AI chooses its own indicators/strategy)
                 elif self.config.use_autonomous_analysis and self.autonomous_analyst:
+                    self._log_analysis(symbol, "analysis", f"Autonomous Analysis: timeframe {self.config.autonomous_timeframe}")
+
                     results = await self.autonomous_analyst.analyze_all_models(
                         symbol=symbol,
                         timeframe=self.config.autonomous_timeframe
                     )
                     consensus = self.autonomous_analyst.calculate_consensus(results)
 
-                    # Check if trade conditions are met
+                    # Log each AI model's result
+                    for r in results:
+                        model_name = getattr(r, 'model_display_name', getattr(r, 'model', 'Unknown'))
+                        direction = getattr(r, 'direction', 'N/A')
+                        confidence = getattr(r, 'confidence', 0)
+                        reasoning = getattr(r, 'reasoning', '')[:200]
+                        self._log_analysis(symbol, "analysis", f"[{model_name}] {direction} ({confidence:.0f}%): {reasoning}", {
+                            "model": model_name,
+                            "direction": direction,
+                            "confidence": confidence,
+                        })
+
+                    self._log_analysis(symbol, "analysis", f"Consenso: {consensus.get('direction', 'N/A')} - Confidence: {consensus.get('confidence', 0):.1f}% - Modelli: {consensus.get('models_agree', 0)}/{consensus.get('total_models', 0)}", {
+                        "direction": consensus.get("direction"),
+                        "confidence": consensus.get("confidence", 0),
+                        "models_agree": consensus.get("models_agree", 0),
+                    })
+
                     if self._should_enter_autonomous_trade(consensus):
+                        self._log_analysis(symbol, "trade", f"TRADE: {consensus.get('direction')} {symbol} @ confidence {consensus.get('confidence', 0):.1f}%")
                         await self._execute_autonomous_trade(symbol, consensus, results)
+                    else:
+                        self._log_analysis(symbol, "skip", f"Condizioni non soddisfatte (min confidence: {self.config.min_confidence}%)")
                 else:
                     # Standard multi-timeframe analysis
+                    self._log_analysis(symbol, "analysis", f"Standard multi-timeframe analysis ({self.config.analysis_mode.value})")
+
                     result = await self.analyzer.analyze(
                         symbol=symbol,
                         mode=self.config.analysis_mode
                     )
 
-                    # Check if trade conditions are met
+                    self._log_analysis(symbol, "analysis", f"Risultato: {result.final_direction} - Confidence: {result.final_confidence:.1f}% - Confluence: {result.confluence_score:.1f}%", {
+                        "direction": result.final_direction,
+                        "confidence": result.final_confidence,
+                        "confluence": result.confluence_score,
+                    })
+
                     if self._should_enter_trade(result):
+                        self._log_analysis(symbol, "trade", f"TRADE: {result.final_direction} {symbol}")
                         await self._execute_trade(result)
+                    else:
+                        self._log_analysis(symbol, "skip", f"Condizioni non soddisfatte")
 
             except Exception as e:
+                self._log_analysis(symbol, "error", f"Errore: {str(e)}")
                 self.state.errors.append({
                     "timestamp": datetime.utcnow().isoformat(),
                     "symbol": symbol,

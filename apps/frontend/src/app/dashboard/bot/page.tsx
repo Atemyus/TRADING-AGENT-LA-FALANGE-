@@ -21,6 +21,11 @@ import {
   CheckCircle,
   XCircle,
   Eye,
+  Brain,
+  MessageSquare,
+  Ban,
+  Newspaper,
+  ArrowUpCircle,
 } from "lucide-react";
 import { botApi } from "@/lib/api";
 
@@ -29,6 +34,132 @@ const TradingViewWidget = dynamic(
   () => import("@/components/charts/TradingViewWidget"),
   { ssr: false, loading: () => <div className="h-[300px] bg-slate-900 rounded-xl animate-pulse" /> }
 );
+
+// ============ AI Reasoning Panel ============
+
+interface AnalysisLog {
+  timestamp: string;
+  symbol: string;
+  type: string;
+  message: string;
+  details: Record<string, unknown> | null;
+}
+
+function AIReasoningPanel() {
+  const [logs, setLogs] = React.useState<AnalysisLog[]>([]);
+  const [autoScroll, setAutoScroll] = React.useState(true);
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+  const prevLengthRef = React.useRef(0);
+
+  // Poll for logs every 3 seconds
+  React.useEffect(() => {
+    const fetchLogs = async () => {
+      try {
+        const data = await botApi.getLogs(50);
+        setLogs(data.logs);
+      } catch {
+        // silently ignore
+      }
+    };
+    fetchLogs();
+    const interval = setInterval(fetchLogs, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Auto-scroll to bottom when new logs arrive
+  React.useEffect(() => {
+    if (autoScroll && scrollRef.current && logs.length > prevLengthRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+    prevLengthRef.current = logs.length;
+  }, [logs, autoScroll]);
+
+  const getLogIcon = (type: string) => {
+    switch (type) {
+      case 'analysis': return <Brain size={14} className="text-purple-400" />;
+      case 'trade': return <ArrowUpCircle size={14} className="text-green-400" />;
+      case 'skip': return <Ban size={14} className="text-yellow-400" />;
+      case 'error': return <XCircle size={14} className="text-red-400" />;
+      case 'news': return <Newspaper size={14} className="text-orange-400" />;
+      default: return <MessageSquare size={14} className="text-slate-400" />;
+    }
+  };
+
+  const getLogColor = (type: string) => {
+    switch (type) {
+      case 'analysis': return 'text-purple-300';
+      case 'trade': return 'text-green-300';
+      case 'skip': return 'text-yellow-300';
+      case 'error': return 'text-red-300';
+      case 'news': return 'text-orange-300';
+      default: return 'text-slate-300';
+    }
+  };
+
+  return (
+    <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold flex items-center gap-2">
+          <Brain size={20} className="text-purple-400" />
+          AI Reasoning - Analisi in Tempo Reale
+        </h3>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-slate-400">{logs.length} log</span>
+          <button
+            onClick={() => setAutoScroll(!autoScroll)}
+            className={`text-xs px-2 py-1 rounded ${autoScroll ? 'bg-purple-500/20 text-purple-400' : 'bg-slate-700 text-slate-400'}`}
+          >
+            Auto-scroll {autoScroll ? 'ON' : 'OFF'}
+          </button>
+          <div className="flex items-center gap-1">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+            <span className="text-xs text-green-400">Live</span>
+          </div>
+        </div>
+      </div>
+      <div
+        ref={scrollRef}
+        className="bg-slate-900/80 rounded-lg p-3 max-h-[400px] overflow-y-auto font-mono text-xs space-y-1 border border-slate-700/50"
+        onScroll={() => {
+          if (scrollRef.current) {
+            const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
+            setAutoScroll(scrollHeight - scrollTop - clientHeight < 50);
+          }
+        }}
+      >
+        {logs.length === 0 ? (
+          <div className="text-center text-slate-500 py-8">
+            <Brain size={32} className="mx-auto mb-2 opacity-50" />
+            <p>In attesa delle analisi AI...</p>
+            <p className="text-xs mt-1">I log appariranno quando il bot inizia l&apos;analisi</p>
+          </div>
+        ) : (
+          logs.map((log, i) => (
+            <div
+              key={`${log.timestamp}-${i}`}
+              className={`flex items-start gap-2 py-1 px-2 rounded hover:bg-slate-800/50 ${
+                log.type === 'trade' ? 'bg-green-500/5 border-l-2 border-green-500' :
+                log.type === 'error' ? 'bg-red-500/5 border-l-2 border-red-500' :
+                ''
+              }`}
+            >
+              <span className="flex-shrink-0 mt-0.5">{getLogIcon(log.type)}</span>
+              <span className="text-slate-500 flex-shrink-0">
+                {new Date(log.timestamp).toLocaleTimeString('it-IT')}
+              </span>
+              <span className="text-cyan-400 flex-shrink-0 font-bold">
+                [{log.symbol}]
+              </span>
+              <span className={getLogColor(log.type)}>
+                {log.message}
+              </span>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
 
 // Reusable Toggle Component
 function Toggle({
@@ -867,6 +998,11 @@ export default function BotControlPage() {
             </div>
           </div>
         </motion.div>
+      )}
+
+      {/* AI Reasoning Panel - Live Analysis Logs */}
+      {currentStatus.status === 'running' && (
+        <AIReasoningPanel />
       )}
 
       {/* Open Positions */}

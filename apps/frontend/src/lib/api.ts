@@ -553,6 +553,32 @@ export const botApi = {
   getConfig: async () => {
     return fetchApi('/api/v1/bot/config')
   },
+
+  /**
+   * Get AI analysis logs
+   */
+  getLogs: async (limit: number = 30): Promise<{
+    logs: Array<{
+      timestamp: string
+      symbol: string
+      type: string
+      message: string
+      details: Record<string, unknown> | null
+    }>
+    total: number
+    bot_status: string
+  }> => {
+    return fetchApi(`/api/v1/bot/logs?limit=${limit}`)
+  },
+
+  /**
+   * Force reset bot state
+   */
+  reset: async () => {
+    return fetchApi('/api/v1/bot/reset', {
+      method: 'POST',
+    })
+  },
 }
 
 // ============ Settings API ============

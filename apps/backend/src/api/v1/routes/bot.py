@@ -490,6 +490,27 @@ async def get_open_positions():
     return {"positions": positions}
 
 
+@router.get("/logs")
+async def get_analysis_logs(limit: int = 30):
+    """Get recent AI analysis logs from the bot."""
+    bot = get_auto_trader()
+    logs = bot.state.analysis_logs[-limit:]
+    return {
+        "logs": [
+            {
+                "timestamp": log.timestamp.isoformat(),
+                "symbol": log.symbol,
+                "type": log.log_type,
+                "message": log.message,
+                "details": log.details,
+            }
+            for log in logs
+        ],
+        "total": len(bot.state.analysis_logs),
+        "bot_status": bot.state.status.value,
+    }
+
+
 @router.get("/news/upcoming")
 async def get_upcoming_news(hours: int = 24, impact: Optional[str] = None):
     """
