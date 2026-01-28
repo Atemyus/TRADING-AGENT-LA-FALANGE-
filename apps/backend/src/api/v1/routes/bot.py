@@ -103,6 +103,19 @@ def apply_config_to_bot(config_dict: dict) -> None:
         bot.config.tradingview_headless = config_dict["tradingview_headless"]
     if "tradingview_max_indicators" in config_dict:
         bot.config.tradingview_max_indicators = config_dict["tradingview_max_indicators"]
+    # News Filter settings
+    if "news_filter_enabled" in config_dict:
+        bot.config.news_filter_enabled = config_dict["news_filter_enabled"]
+    if "news_filter_high_impact" in config_dict:
+        bot.config.news_filter_high_impact = config_dict["news_filter_high_impact"]
+    if "news_filter_medium_impact" in config_dict:
+        bot.config.news_filter_medium_impact = config_dict["news_filter_medium_impact"]
+    if "news_filter_low_impact" in config_dict:
+        bot.config.news_filter_low_impact = config_dict["news_filter_low_impact"]
+    if "news_minutes_before" in config_dict:
+        bot.config.news_minutes_before = config_dict["news_minutes_before"]
+    if "news_minutes_after" in config_dict:
+        bot.config.news_minutes_after = config_dict["news_minutes_after"]
 
 
 class BotConfigRequest(BaseModel):
@@ -129,6 +142,13 @@ class BotConfigRequest(BaseModel):
     use_tradingview_agent: Optional[bool] = None
     tradingview_headless: Optional[bool] = None
     tradingview_max_indicators: Optional[int] = None
+    # News Filter settings
+    news_filter_enabled: Optional[bool] = None
+    news_filter_high_impact: Optional[bool] = None
+    news_filter_medium_impact: Optional[bool] = None
+    news_filter_low_impact: Optional[bool] = None
+    news_minutes_before: Optional[int] = None
+    news_minutes_after: Optional[int] = None
 
 
 class BotStatusResponse(BaseModel):
@@ -289,6 +309,29 @@ async def update_config(config: BotConfigRequest, db: AsyncSession = Depends(get
             raise HTTPException(status_code=400, detail="Max indicators must be between 1 and 25")
         current_config.tradingview_max_indicators = config.tradingview_max_indicators
 
+    # News Filter settings
+    if config.news_filter_enabled is not None:
+        current_config.news_filter_enabled = config.news_filter_enabled
+
+    if config.news_filter_high_impact is not None:
+        current_config.news_filter_high_impact = config.news_filter_high_impact
+
+    if config.news_filter_medium_impact is not None:
+        current_config.news_filter_medium_impact = config.news_filter_medium_impact
+
+    if config.news_filter_low_impact is not None:
+        current_config.news_filter_low_impact = config.news_filter_low_impact
+
+    if config.news_minutes_before is not None:
+        if not 0 <= config.news_minutes_before <= 120:
+            raise HTTPException(status_code=400, detail="Minutes before must be between 0 and 120")
+        current_config.news_minutes_before = config.news_minutes_before
+
+    if config.news_minutes_after is not None:
+        if not 0 <= config.news_minutes_after <= 120:
+            raise HTTPException(status_code=400, detail="Minutes after must be between 0 and 120")
+        current_config.news_minutes_after = config.news_minutes_after
+
     bot.configure(current_config)
 
     # Save to database for persistence
@@ -313,6 +356,13 @@ async def update_config(config: BotConfigRequest, db: AsyncSession = Depends(get
         "use_tradingview_agent": current_config.use_tradingview_agent,
         "tradingview_headless": current_config.tradingview_headless,
         "tradingview_max_indicators": current_config.tradingview_max_indicators,
+        # News Filter settings
+        "news_filter_enabled": current_config.news_filter_enabled,
+        "news_filter_high_impact": current_config.news_filter_high_impact,
+        "news_filter_medium_impact": current_config.news_filter_medium_impact,
+        "news_filter_low_impact": current_config.news_filter_low_impact,
+        "news_minutes_before": current_config.news_minutes_before,
+        "news_minutes_after": current_config.news_minutes_after,
     }
     await save_bot_config_to_db(db, config_dict)
 
@@ -351,6 +401,13 @@ async def get_config():
         "use_tradingview_agent": config.use_tradingview_agent,
         "tradingview_headless": config.tradingview_headless,
         "tradingview_max_indicators": config.tradingview_max_indicators,
+        # News Filter settings
+        "news_filter_enabled": config.news_filter_enabled,
+        "news_filter_high_impact": config.news_filter_high_impact,
+        "news_filter_medium_impact": config.news_filter_medium_impact,
+        "news_filter_low_impact": config.news_filter_low_impact,
+        "news_minutes_before": config.news_minutes_before,
+        "news_minutes_after": config.news_minutes_after,
     }
 
 
@@ -401,3 +458,70 @@ async def get_open_positions():
         })
 
     return {"positions": positions}
+
+
+@router.get("/news/upcoming")
+async def get_upcoming_news(hours: int = 24, impact: Optional[str] = None):
+    """
+    Get upcoming economic news events.
+
+    Args:
+        hours: How many hours to look ahead (default: 24)
+        impact: Filter by impact level ("high", "medium", "low", or None for all)
+    """
+    from src.services.economic_calendar_service import (
+        get_economic_calendar_service,
+        NewsImpact,
+    )
+
+    service = get_economic_calendar_service()
+
+    # Refresh if needed
+    await service.fetch_events()
+
+    # Filter by impact if specified
+    impact_filter = None
+    if impact:
+        impact_map = {
+            "high": [NewsImpact.HIGH],
+            "medium": [NewsImpact.MEDIUM],
+            "low": [NewsImpact.LOW],
+            "high_medium": [NewsImpact.HIGH, NewsImpact.MEDIUM],
+        }
+        impact_filter = impact_map.get(impact.lower())
+
+    events = service.get_upcoming_events(hours_ahead=hours, impact_filter=impact_filter)
+
+    return {
+        "events": [e.to_dict() for e in events],
+        "count": len(events),
+        "hours_ahead": hours,
+        "filter_config": {
+            "enabled": service.config.enabled,
+            "filter_high": service.config.filter_high_impact,
+            "filter_medium": service.config.filter_medium_impact,
+            "minutes_before": service.config.minutes_before,
+            "minutes_after": service.config.minutes_after,
+        }
+    }
+
+
+@router.get("/news/check/{symbol}")
+async def check_news_for_symbol(symbol: str):
+    """
+    Check if a symbol is blocked by news.
+
+    Returns whether trading should be avoided and the causing event if any.
+    """
+    from src.services.economic_calendar_service import get_economic_calendar_service
+
+    service = get_economic_calendar_service()
+    await service.fetch_events()
+
+    should_avoid, event = service.should_avoid_trading(symbol)
+
+    return {
+        "symbol": symbol,
+        "blocked": should_avoid,
+        "reason": event.to_dict() if event else None,
+    }

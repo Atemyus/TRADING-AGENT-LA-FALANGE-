@@ -41,6 +41,13 @@ except ImportError:
 from src.engines.trading.broker_factory import BrokerFactory
 from src.engines.trading.base_broker import BaseBroker, OrderRequest, OrderType, OrderSide
 from src.core.config import settings
+from src.services.economic_calendar_service import (
+    EconomicCalendarService,
+    NewsFilterConfig,
+    get_economic_calendar_service,
+    EconomicEvent,
+    NewsImpact,
+)
 
 
 class BotStatus(str, Enum):
@@ -115,6 +122,14 @@ class BotConfig:
     trading_end_hour: int = 21    # Stop trading at 21 UTC
     trade_on_weekends: bool = False
 
+    # News Filter - Avoid trading during high-impact economic events
+    news_filter_enabled: bool = True
+    news_filter_high_impact: bool = True   # Filter high impact news
+    news_filter_medium_impact: bool = True  # Filter medium impact news
+    news_filter_low_impact: bool = False    # Filter low impact news (usually False)
+    news_minutes_before: int = 30  # Don't trade X minutes before news
+    news_minutes_after: int = 30   # Don't trade X minutes after news
+
     # Notifications
     telegram_enabled: bool = False
     discord_enabled: bool = False
@@ -153,9 +168,11 @@ class AutoTrader:
         self.autonomous_analyst: Optional[AutonomousAnalyst] = None
         self.tradingview_agent: Optional[TradingViewAIAgent] = None
         self.broker: Optional[BaseBroker] = None
+        self.calendar_service: Optional[EconomicCalendarService] = None
         self._task: Optional[asyncio.Task] = None
         self._stop_event = asyncio.Event()
         self._callbacks: List[Callable] = []
+        self._last_news_refresh: Optional[datetime] = None
 
     def configure(self, config: BotConfig):
         """Update bot configuration."""
@@ -194,6 +211,20 @@ class AutoTrader:
             # Initialize broker
             self.broker = await BrokerFactory.create_broker()
             await self.broker.connect()
+
+            # Initialize economic calendar service (news filter)
+            if self.config.news_filter_enabled:
+                self.calendar_service = get_economic_calendar_service()
+                self.calendar_service.configure(NewsFilterConfig(
+                    enabled=self.config.news_filter_enabled,
+                    filter_high_impact=self.config.news_filter_high_impact,
+                    filter_medium_impact=self.config.news_filter_medium_impact,
+                    filter_low_impact=self.config.news_filter_low_impact,
+                    minutes_before=self.config.news_minutes_before,
+                    minutes_after=self.config.news_minutes_after,
+                ))
+                await self.calendar_service.fetch_events()
+                print(f"[AutoTrader] News filter enabled: {self.config.news_minutes_before}min before, {self.config.news_minutes_after}min after")
 
             # Start main loop
             self._stop_event.clear()
@@ -366,10 +397,37 @@ class AutoTrader:
                     "error": f"Position management failed: {str(e)}"
                 })
 
+    async def _refresh_news_calendar(self):
+        """Refresh economic calendar periodically."""
+        if not self.calendar_service:
+            return
+
+        now = datetime.utcnow()
+        # Refresh every hour
+        if self._last_news_refresh is None or (now - self._last_news_refresh).total_seconds() > 3600:
+            await self.calendar_service.fetch_events()
+            self._last_news_refresh = now
+            print("[AutoTrader] Economic calendar refreshed")
+
+    def _is_news_blocked(self, symbol: str) -> tuple[bool, Optional[EconomicEvent]]:
+        """
+        Check if trading is blocked due to upcoming/recent news.
+
+        Returns:
+            Tuple of (is_blocked, causing_event)
+        """
+        if not self.config.news_filter_enabled or not self.calendar_service:
+            return False, None
+
+        return self.calendar_service.should_avoid_trading(symbol)
+
     async def _analyze_and_trade(self):
         """Analyze all symbols and execute trades if conditions met."""
         # First manage existing positions (BE, Trailing Stop)
         await self._manage_open_positions()
+
+        # Refresh news calendar periodically
+        await self._refresh_news_calendar()
 
         for symbol in self.config.symbols:
             try:
@@ -379,6 +437,12 @@ class AutoTrader:
 
                 # Skip if already have position in this symbol
                 if any(p.symbol == symbol for p in self.state.open_positions):
+                    continue
+
+                # NEWS FILTER: Skip if blocked by upcoming/recent news
+                news_blocked, blocking_event = self._is_news_blocked(symbol)
+                if news_blocked and blocking_event:
+                    print(f"[AutoTrader] ⚠️ Skipping {symbol} due to news: {blocking_event.title} ({blocking_event.currency}, {blocking_event.impact.value})")
                     continue
 
                 # Use TradingView AI Agent (full browser control with multi-timeframe)
