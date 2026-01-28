@@ -216,26 +216,26 @@ export default function BotControlPage() {
   const fetchStatus = useCallback(async () => {
     try {
       const data = await botApi.getStatus();
-      // Map the API response to match our BotStatus interface
+      // API returns: status, started_at, last_analysis_at, config, statistics, open_positions, recent_errors
       setStatus({
-        status: data.is_running ? 'running' : 'stopped',
-        started_at: null,
-        last_analysis_at: data.last_analysis || null,
-        config: {
-          symbols: [data.current_symbol || 'EUR/USD'],
-          analysis_mode: data.mode || 'standard',
+        status: data.status || 'stopped',
+        started_at: data.started_at || null,
+        last_analysis_at: data.last_analysis_at || null,
+        config: data.config || {
+          symbols: ['EUR/USD'],
+          analysis_mode: 'standard',
           min_confidence: 75,
           risk_per_trade: 1,
           max_positions: 3,
         },
-        statistics: {
+        statistics: data.statistics || {
           analyses_today: 0,
-          trades_today: data.trades_today || 0,
-          daily_pnl: parseFloat(data.pnl_today) || 0,
+          trades_today: 0,
+          daily_pnl: 0,
           open_positions: 0,
         },
-        open_positions: [],
-        recent_errors: [],
+        open_positions: data.open_positions || [],
+        recent_errors: data.recent_errors || [],
       });
     } catch {
       setStatus(demoStatus);
