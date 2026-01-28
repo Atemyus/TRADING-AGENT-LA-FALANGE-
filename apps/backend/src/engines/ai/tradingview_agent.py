@@ -65,6 +65,18 @@ class Indicator(str, Enum):
     OBV = "OBV"
     SUPERTREND = "Supertrend"
     PIVOT_POINTS = "Pivot Points"
+    # Advanced indicators
+    PIVOT_FIBONACCI = "Pivot Points Fibonacci"
+    PIVOT_CAMARILLA = "Pivot Points Camarilla"
+    PIVOT_WOODIE = "Pivot Points Woodie"
+    AUTO_FIB = "Auto Fib Retracement"
+    AUTO_FIB_EXT = "Auto Fib Extension"
+    LIQUIDITY_LEVELS = "Liquidity Levels"
+    ORDER_BLOCKS = "Order Blocks"
+    FAIR_VALUE_GAP = "Fair Value Gap"
+    MARKET_STRUCTURE = "Market Structure"
+    SUPPLY_DEMAND = "Supply and Demand"
+    SMART_MONEY = "Smart Money Concepts"
 
 
 @dataclass
@@ -1065,13 +1077,25 @@ Il tuo stile di analisi preferito: {preferences.get('style', 'mixed')}
 Il tuo focus preferito: {preferences.get('focus', 'analisi generale')}
 
 Guarda questo grafico e decidi quali indicatori vuoi aggiungere.
-Puoi scegliere tra: RSI, MACD, EMA, SMA, Bollinger Bands, Stochastic, ADX, ATR, Ichimoku, VWAP, Volume, Supertrend
+Puoi scegliere tra QUALSIASI indicatore disponibile su TradingView:
+
+**Indicatori Base:**
+RSI, MACD, EMA, SMA, Bollinger Bands, Stochastic, ADX, ATR, Ichimoku Cloud, VWAP, Volume, OBV, Supertrend
+
+**Pivot Points:**
+Pivot Points, Pivot Points Fibonacci, Pivot Points Camarilla, Pivot Points Woodie
+
+**Fibonacci:**
+Auto Fib Retracement, Auto Fib Extension, Fib Retracement
+
+**Smart Money Concepts:**
+Order Blocks, Fair Value Gap, Liquidity Levels, Market Structure, Supply and Demand, Smart Money Concepts
 
 IMPORTANTE: Puoi aggiungere un MASSIMO di {max_ind} indicatori (limite del piano TradingView).
 Scegli i {max_ind} indicatori più utili per il tuo stile di analisi.
 
 Rispondi SOLO con un array JSON di nomi di indicatori (max {max_ind}), es.:
-["RSI", "EMA"]
+["RSI", "VWAP"]
 """
 
         try:
@@ -1132,33 +1156,39 @@ Il grafico è 1920x1080 pixel. L'area principale del grafico è approssimativame
 - X: da 100 a 1800 (da sinistra a destra, da prezzi più vecchi a più recenti)
 - Y: da 100 a 900 (in alto prezzi più alti, in basso prezzi più bassi)
 
-Guarda il grafico e identifica i livelli tecnici chiave e i pattern da disegnare:
-1. Trendline (collega swing high o swing low)
-2. Livelli orizzontali di supporto/resistenza
-3. Zone (rettangoli per order block, domanda/offerta, consolidamento)
-4. Ritracciamenti di Fibonacci (da swing high a swing low o viceversa)
-5. Canali Pitchfork (se vedi un chiaro pattern a 3 punti)
+## ANALISI SMART MONEY CONCEPTS
+Cerca e identifica:
+1. **Order Blocks (OB)**: L'ultima candela ribassista prima di un forte movimento rialzista (OB rialzista) o viceversa
+2. **Fair Value Gaps (FVG)**: Gap di prezzo tra tre candele consecutive (imbalance)
+3. **Liquidity Pools**: Zone con molti stop loss (equal highs/lows)
+4. **Smart Money Traps (Inducement)**: False rotture create per cacciare gli stop dei retail
+5. **Break of Structure (BOS)**: Rottura di un massimo/minimo significativo
+6. **Change of Character (CHoCH)**: Primo segnale di cambio trend
 
-TIPI DI DISEGNO DISPONIBILI:
+## STRUMENTI DI DISEGNO DISPONIBILI
 - "trendline": Collega due punti (start_x, start_y, end_x, end_y)
-- "horizontal_line": Disegna a un livello di prezzo specifico (posizione y)
-- "rectangle": Disegna una zona (x1, y1, x2, y2)
-- "fibonacci": Ritracciamento di Fibonacci (start_x, start_y, end_x, end_y)
+- "horizontal_line": Livello di prezzo specifico (posizione y)
+- "rectangle": Zona (x1, y1, x2, y2) - per Order Blocks, Supply/Demand, FVG
+- "fibonacci": Ritracciamento/Estensione Fibonacci (start_x, start_y, end_x, end_y)
+  - Livelli chiave: 23.6%, 38.2%, 50%, 61.8% (Golden Ratio), 78.6%
+  - Estensioni: 127.2%, 161.8%, 200%, 261.8%
 - "pitchfork": Pitchfork di Andrew - 3 punti (x1, y1, x2, y2, x3, y3)
+  - Punto 1: Pivot point (inizio del trend)
+  - Punto 2: Prima reazione (swing high/low)
+  - Punto 3: Seconda reazione (pullback)
 
-Rispondi SOLO con un array JSON di disegni:
-
-Esempio:
+## ESEMPIO OUTPUT
 [
-  {{"type": "trendline", "start_x": 200, "start_y": 400, "end_x": 800, "end_y": 300, "label": "Trendline rialzista"}},
-  {{"type": "horizontal_line", "y": 350, "label": "Livello di resistenza chiave"}},
-  {{"type": "rectangle", "x1": 600, "y1": 400, "x2": 750, "y2": 480, "label": "Order Block rialzista"}},
-  {{"type": "fibonacci", "start_x": 300, "start_y": 200, "end_x": 700, "end_y": 600, "label": "Ritracciamento Fib da swing high"}},
-  {{"type": "pitchfork", "x1": 200, "y1": 500, "x2": 400, "y2": 300, "x3": 600, "y3": 450, "label": "Canale pitchfork ascendente"}}
+  {{"type": "rectangle", "x1": 600, "y1": 400, "x2": 750, "y2": 480, "label": "🔵 Bullish Order Block - zona di domanda istituzionale"}},
+  {{"type": "rectangle", "x1": 400, "y1": 200, "x2": 500, "y2": 250, "label": "🔴 Bearish FVG - imbalance da colmare"}},
+  {{"type": "horizontal_line", "y": 350, "label": "💧 Liquidity Pool - stop loss dei retail"}},
+  {{"type": "fibonacci", "start_x": 300, "start_y": 600, "end_x": 700, "end_y": 200, "label": "📐 Fib Retracement - 61.8% = golden zone"}},
+  {{"type": "pitchfork", "x1": 200, "y1": 500, "x2": 400, "y2": 300, "x3": 600, "y3": 450, "label": "🔱 Andrew's Pitchfork - canale di prezzo"}},
+  {{"type": "trendline", "start_x": 200, "start_y": 400, "end_x": 800, "end_y": 300, "label": "📈 Trendline strutturale"}}
 ]
 
-Disegna 3-5 elementi tecnici chiave che supportano la tua analisi. Sii preciso con le coordinate.
-Rispondi solo con l'array JSON, nessun altro testo.
+Disegna 4-6 elementi tecnici chiave. Sii preciso con le coordinate.
+Rispondi SOLO con l'array JSON, nessun altro testo.
 """
 
         try:

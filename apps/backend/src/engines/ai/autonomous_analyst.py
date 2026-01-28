@@ -103,6 +103,7 @@ You have FULL FREEDOM to choose:
 1. **Your Trading Style**: Scalping, Day Trading, Swing Trading, Position Trading
 2. **Your Analysis Method**: Technical Analysis, Smart Money Concepts (SMC), Price Action, Indicator-Based, or ANY combination
 3. **Which Indicators to Focus On**: You can use any visible indicators or request mental calculations
+4. **Advanced Tools**: Fibonacci, Pitchfork, Pivot Points (Standard, Fibonacci, Camarilla, Woodie)
 
 ## AVAILABLE TOOLS & DATA
 
@@ -111,9 +112,28 @@ You have FULL FREEDOM to choose:
 
 ### Pre-Calculated Indicators:
 {indicators}
+- VWAP (Volume Weighted Average Price)
+- EMA (9, 21, 50, 200)
+- RSI (7, 14)
+- MACD, Stochastic, ADX, ATR
+- Bollinger Bands
 
 ### Smart Money Concepts (SMC) Analysis:
 {smc_data}
+- Order Blocks (OB)
+- Fair Value Gaps (FVG)
+- Liquidity Pools
+- Market Structure (BOS/CHoCH)
+- Smart Money Traps (Inducement) - Bull Traps, Bear Traps, Stop Hunts
+
+### Fibonacci Levels:
+Automatically calculated retracement (23.6%, 38.2%, 50%, 61.8%, 78.6%) and extension levels (127.2%, 161.8%, 200%, 261.8%)
+
+### Pivot Points:
+- Standard (PP, R1-R3, S1-S3)
+- Fibonacci Pivots
+- Camarilla Pivots
+- Woodie Pivots
 
 ### Chart Image:
 The chart shows {chart_description}
@@ -591,6 +611,31 @@ class AutonomousAnalyst:
             lines.append("\nSupply/Demand Zones:")
             for zone in smc.supply_demand[:3]:
                 lines.append(f"  {zone.type.upper()}: {zone.zone_low:.5f} - {zone.zone_high:.5f}")
+
+        # Fibonacci Levels
+        if hasattr(smc, 'fibonacci') and smc.fibonacci:
+            fib = smc.fibonacci
+            lines.append("\nFibonacci Levels:")
+            lines.append(f"  Swing: {fib.swing_low:.5f} → {fib.swing_high:.5f} ({fib.direction})")
+            lines.append(f"  Retracements: 38.2%={fib.retracement_382:.5f}, 50%={fib.retracement_500:.5f}, 61.8%={fib.retracement_618:.5f}")
+            lines.append(f"  Extensions: 127.2%={fib.extension_1272:.5f}, 161.8%={fib.extension_1618:.5f}")
+
+        # Smart Money Traps
+        if hasattr(smc, 'smart_money_traps') and smc.smart_money_traps:
+            lines.append("\nSmart Money Traps (Inducement):")
+            for trap in smc.smart_money_traps[:3]:
+                lines.append(f"  {trap.trap_type.upper()}: {trap.price_level:.5f} - {trap.description}")
+
+        # Pivot Points
+        if hasattr(smc, 'pivot_points') and smc.pivot_points:
+            lines.append("\nPivot Points:")
+            pp = smc.pivot_points
+            if 'PP' in pp:
+                lines.append(f"  Standard: PP={pp.get('PP', 0):.5f}, R1={pp.get('R1', 0):.5f}, S1={pp.get('S1', 0):.5f}")
+            if 'Fib_PP' in pp:
+                lines.append(f"  Fibonacci: PP={pp.get('Fib_PP', 0):.5f}, R1={pp.get('Fib_R1', 0):.5f}, S1={pp.get('Fib_S1', 0):.5f}")
+            if 'Cam_R3' in pp:
+                lines.append(f"  Camarilla: R3={pp.get('Cam_R3', 0):.5f}, S3={pp.get('Cam_S3', 0):.5f}")
 
         return "\n".join(lines) if lines else "No SMC analysis available"
 
