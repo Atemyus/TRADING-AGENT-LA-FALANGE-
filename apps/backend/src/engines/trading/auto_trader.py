@@ -11,7 +11,7 @@ This bot:
 """
 
 import asyncio
-from typing import Optional, List, Dict, Any, Callable
+from typing import Optional, List, Dict, Any, Callable, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
@@ -409,7 +409,7 @@ class AutoTrader:
             self._last_news_refresh = now
             print("[AutoTrader] Economic calendar refreshed")
 
-    def _is_news_blocked(self, symbol: str) -> tuple[bool, Optional[EconomicEvent]]:
+    def _is_news_blocked(self, symbol: str) -> Tuple[bool, Optional[EconomicEvent]]:
         """
         Check if trading is blocked due to upcoming/recent news.
 

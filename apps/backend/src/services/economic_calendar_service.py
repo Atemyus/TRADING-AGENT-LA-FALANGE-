@@ -14,7 +14,7 @@ import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 import httpx
 from bs4 import BeautifulSoup
 import json
@@ -341,7 +341,7 @@ class EconomicCalendarService:
         self,
         symbol: str,
         check_time: Optional[datetime] = None
-    ) -> tuple[bool, Optional[EconomicEvent]]:
+    ) -> Tuple[bool, Optional[EconomicEvent]]:
         """
         Check if trading should be avoided due to upcoming news.
 
