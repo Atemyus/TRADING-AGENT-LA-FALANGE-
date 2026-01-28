@@ -200,6 +200,32 @@ async def stop_bot():
     return {"message": "Bot stopped successfully", "status": bot.state.status.value}
 
 
+@router.post("/reset")
+async def reset_bot():
+    """Force reset the bot state. Use when bot is stuck."""
+    import src.engines.trading.auto_trader as auto_trader_module
+
+    bot = get_auto_trader()
+
+    # Force stop any running tasks
+    if bot._task:
+        bot._task.cancel()
+        try:
+            await bot._task
+        except Exception:
+            pass
+
+    # Reset state
+    bot.state.status = BotStatus.STOPPED
+    bot.state.started_at = None
+    bot._task = None
+
+    # Clear singleton to get fresh instance next time
+    auto_trader_module._auto_trader = None
+
+    return {"message": "Bot reset successfully", "status": "stopped"}
+
+
 @router.post("/pause")
 async def pause_bot():
     """Pause trading (monitoring continues)."""
