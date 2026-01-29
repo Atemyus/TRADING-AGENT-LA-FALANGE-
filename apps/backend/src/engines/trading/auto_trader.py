@@ -97,12 +97,9 @@ class BotConfig:
     analysis_mode: AnalysisMode = AnalysisMode.PREMIUM
     analysis_interval_seconds: int = 300  # 5 minutes
 
-    # Autonomous Analysis - Each AI chooses its own indicators and strategy
-    use_autonomous_analysis: bool = False  # Disabilitato - usa TradingView Agent
-    autonomous_timeframe: str = "15m"     # Timeframe for autonomous analysis
-
-    # TradingView AI Agent - Full browser control (MODALITÀ PRINCIPALE)
-    use_tradingview_agent: bool = True    # Usa TradingView reale con browser automation
+    # TradingView AI Agent - UNICO motore di analisi
+    # Usa Playwright per aprire TradingView.com reale e fare screenshot
+    # Ogni AI analizza i grafici reali e dà il suo verdetto
     tradingview_headless: bool = True     # Run browser in headless mode
     tradingview_max_indicators: int = 3   # Max indicators (3=Basic, 5=Essential, 10=Plus, 25=Premium)
 
@@ -219,41 +216,28 @@ class AutoTrader:
         try:
             print("[AutoTrader] Starting bot initialization...")
 
-            # Initialize analyzer (standard multi-timeframe)
+            # Initialize analyzer (standard multi-timeframe - kept for potential future use)
             print("[AutoTrader] Initializing multi-timeframe analyzer...")
             self.analyzer = get_multi_timeframe_analyzer()
             await self.analyzer.initialize()
             print("[AutoTrader] Multi-timeframe analyzer ready")
 
-            # Initialize TradingView agent (full browser control - MODALITÀ PRINCIPALE)
-            if self.config.use_tradingview_agent:
-                if TRADINGVIEW_AGENT_AVAILABLE:
-                    try:
-                        print("[AutoTrader] Initializing TradingView Agent (Playwright browser)...")
-                        self._log_analysis("SYSTEM", "info", "🌐 Avvio TradingView Agent con browser Playwright...")
-                        self.tradingview_agent = await get_tradingview_agent(
-                            headless=self.config.tradingview_headless,
-                            max_indicators=self.config.tradingview_max_indicators
-                        )
-                        self._log_analysis("SYSTEM", "info", "✅ TradingView Agent pronto - analisi su dati reali TradingView")
-                        print("[AutoTrader] TradingView agent ready")
-                    except Exception as tv_err:
-                        self._log_analysis("SYSTEM", "error", f"⚠️ TradingView Agent fallito: {str(tv_err)} - Fallback su Autonomous Analysis")
-                        print(f"[AutoTrader] TradingView Agent init failed: {tv_err}")
-                        self.tradingview_agent = None
-                        self.config.use_autonomous_analysis = True
-                else:
-                    self._log_analysis("SYSTEM", "error", "⚠️ Playwright non installato - Fallback su Autonomous Analysis")
-                    print("[AutoTrader] WARNING: Playwright not available, falling back to Autonomous Analysis")
-                    self.config.use_autonomous_analysis = True
+            # Initialize TradingView Agent - UNICO motore di analisi
+            print("[AutoTrader] Initializing TradingView Agent (Playwright browser)...")
+            self._log_analysis("SYSTEM", "info", "🌐 Avvio TradingView Agent con browser Playwright...")
 
-            # Initialize autonomous analyst (fallback se TradingView non disponibile)
-            if self.config.use_autonomous_analysis:
-                print("[AutoTrader] Initializing autonomous analyst (fallback)...")
-                self._log_analysis("SYSTEM", "info", "📊 Avvio Autonomous Analysis (fallback)")
-                self.autonomous_analyst = get_autonomous_analyst()
-                await self.autonomous_analyst.initialize()
-                print("[AutoTrader] Autonomous analyst ready")
+            if not TRADINGVIEW_AGENT_AVAILABLE:
+                error_msg = "❌ Playwright non disponibile. Installa con: pip install playwright && playwright install chromium"
+                self._log_analysis("SYSTEM", "error", error_msg)
+                print(f"[AutoTrader] FATAL: {error_msg}")
+                raise RuntimeError(error_msg)
+
+            self.tradingview_agent = await get_tradingview_agent(
+                headless=self.config.tradingview_headless,
+                max_indicators=self.config.tradingview_max_indicators
+            )
+            self._log_analysis("SYSTEM", "info", "✅ TradingView Agent pronto - analisi su dati reali TradingView")
+            print("[AutoTrader] TradingView Agent ready")
 
             # Initialize broker
             print("[AutoTrader] Initializing broker connection...")
@@ -296,14 +280,8 @@ class AutoTrader:
             self._task = asyncio.create_task(self._main_loop())
             self.state.status = BotStatus.RUNNING
 
-            if self.config.use_tradingview_agent and TRADINGVIEW_AGENT_AVAILABLE:
-                analysis_type = "TradingView AI Agent"
-            elif self.config.use_autonomous_analysis:
-                analysis_type = "Autonomous Vision"
-            else:
-                analysis_type = "Standard"
-            await self._notify(f"🤖 Bot started ({analysis_type} Analysis). Monitoring: {', '.join(self.config.symbols)}")
-            print(f"[AutoTrader] Bot started successfully with {analysis_type} analysis")
+            await self._notify(f"🤖 Bot started (TradingView AI Agent). Monitoring: {', '.join(self.config.symbols)}")
+            print(f"[AutoTrader] Bot started successfully with TradingView AI Agent")
 
         except Exception as e:
             import traceback
@@ -352,8 +330,7 @@ class AutoTrader:
                 "min_confidence": self.config.min_confidence,
                 "risk_per_trade": self.config.risk_per_trade_percent,
                 "max_positions": self.config.max_open_positions,
-                "autonomous_analysis": self.config.use_autonomous_analysis,
-                "autonomous_timeframe": self.config.autonomous_timeframe if self.config.use_autonomous_analysis else None,
+                "analysis_engine": "TradingView AI Agent",
             },
             "statistics": {
                 "analyses_today": self.state.analyses_today,
@@ -539,113 +516,45 @@ class AutoTrader:
 
                 self._log_analysis(symbol, "info", f"Avvio analisi AI per {symbol}...")
 
-                # Use TradingView AI Agent (full browser control with multi-timeframe)
-                if self.config.use_tradingview_agent and self.tradingview_agent:
-                    tv_symbol = symbol.replace("/", "").replace("_", "")
-                    mode_str = self.config.analysis_mode.value.lower()
+                # TradingView AI Agent - UNICO motore di analisi
+                tv_symbol = symbol.replace("/", "").replace("_", "")
+                mode_str = self.config.analysis_mode.value.lower()
 
-                    self._log_analysis(symbol, "analysis", f"TradingView Agent: analisi {mode_str} su {tv_symbol}")
+                self._log_analysis(symbol, "analysis", f"TradingView Agent: analisi {mode_str} su {tv_symbol}")
 
-                    consensus = await self.tradingview_agent.analyze_with_mode(
-                        symbol=tv_symbol,
-                        mode=mode_str
-                    )
-                    results = consensus.get("all_results", [])
+                consensus = await self.tradingview_agent.analyze_with_mode(
+                    symbol=tv_symbol,
+                    mode=mode_str
+                )
+                results = consensus.get("all_results", [])
 
-                    # Log each AI model's result
-                    for r in results:
-                        model_name = getattr(r, 'model_display_name', getattr(r, 'model', 'Unknown'))
-                        direction = getattr(r, 'direction', 'N/A')
-                        confidence = getattr(r, 'confidence', 0)
-                        error = getattr(r, 'error', None)
-                        reasoning = getattr(r, 'reasoning', '')[:200]
-                        # Show error prominently if present (e.g. missing API key)
-                        display_msg = f"[{model_name}] {direction} ({confidence:.0f}%): {error or reasoning}"
-                        log_type = "error" if error else "analysis"
-                        self._log_analysis(symbol, log_type, display_msg, {
-                            "model": model_name,
-                            "direction": direction,
-                            "confidence": confidence,
-                            "error": error,
-                        })
-
-                    self._log_analysis(symbol, "analysis", f"Consenso: {consensus.get('direction', 'N/A')} - Confidence: {consensus.get('confidence', 0):.1f}% - Modelli: {consensus.get('models_agree', 0)}/{consensus.get('total_models', 0)}", {
-                        "direction": consensus.get("direction"),
-                        "confidence": consensus.get("confidence", 0),
-                        "models_agree": consensus.get("models_agree", 0),
+                # Log ogni risultato di ciascun modello AI
+                for r in results:
+                    model_name = getattr(r, 'model_display_name', getattr(r, 'model', 'Unknown'))
+                    direction = getattr(r, 'direction', 'N/A')
+                    confidence = getattr(r, 'confidence', 0)
+                    error = getattr(r, 'error', None)
+                    reasoning = getattr(r, 'reasoning', '')[:200]
+                    display_msg = f"[{model_name}] {direction} ({confidence:.0f}%): {error or reasoning}"
+                    log_type = "error" if error else "analysis"
+                    self._log_analysis(symbol, log_type, display_msg, {
+                        "model": model_name,
+                        "direction": direction,
+                        "confidence": confidence,
+                        "error": error,
                     })
 
-                    if self._should_enter_tradingview_trade(consensus):
-                        self._log_analysis(symbol, "trade", f"TRADE: {consensus.get('direction')} {symbol} @ confidence {consensus.get('confidence', 0):.1f}%")
-                        await self._execute_tradingview_trade(symbol, consensus, results)
-                    else:
-                        self._log_analysis(symbol, "skip", f"Condizioni non soddisfatte (min confidence: {self.config.min_confidence}%)")
+                self._log_analysis(symbol, "analysis", f"Consenso: {consensus.get('direction', 'N/A')} - Confidence: {consensus.get('confidence', 0):.1f}% - Modelli: {consensus.get('models_agree', 0)}/{consensus.get('total_models', 0)}", {
+                    "direction": consensus.get("direction"),
+                    "confidence": consensus.get("confidence", 0),
+                    "models_agree": consensus.get("models_agree", 0),
+                })
 
-                # Use Autonomous Analysis (each AI chooses its own indicators/strategy)
-                elif self.config.use_autonomous_analysis and self.autonomous_analyst:
-                    self._log_analysis(symbol, "analysis", f"Autonomous Analysis: timeframe {self.config.autonomous_timeframe}")
-
-                    results = await self.autonomous_analyst.analyze_all_models(
-                        symbol=symbol,
-                        timeframe=self.config.autonomous_timeframe
-                    )
-                    consensus = self.autonomous_analyst.calculate_consensus(results)
-
-                    # Log each AI model's result
-                    api_errors = 0
-                    for r in results:
-                        model_name = getattr(r, 'model_display_name', getattr(r, 'model', 'Unknown'))
-                        direction = getattr(r, 'direction', 'N/A')
-                        confidence = getattr(r, 'confidence', 0)
-                        error = getattr(r, 'error', None)
-                        reasoning = getattr(r, 'reasoning', '')[:200]
-                        # Show error prominently if present (e.g. missing API key)
-                        display_msg = f"[{model_name}] {direction} ({confidence:.0f}%): {error or reasoning}"
-                        log_type = "error" if error else "analysis"
-                        if error:
-                            api_errors += 1
-                        self._log_analysis(symbol, log_type, display_msg, {
-                            "model": model_name,
-                            "direction": direction,
-                            "confidence": confidence,
-                            "error": error,
-                        })
-
-                    # Warn if ALL models had errors (likely API key issue)
-                    if api_errors == len(results) and len(results) > 0:
-                        self._log_analysis(symbol, "error", f"⚠️ TUTTI i {len(results)} modelli AI hanno restituito errori! Verifica che AIML_API_KEY sia configurata correttamente nelle variabili d'ambiente.")
-
-                    self._log_analysis(symbol, "analysis", f"Consenso: {consensus.get('direction', 'N/A')} - Confidence: {consensus.get('confidence', 0):.1f}% - Modelli: {consensus.get('models_agree', 0)}/{consensus.get('total_models', 0)}", {
-                        "direction": consensus.get("direction"),
-                        "confidence": consensus.get("confidence", 0),
-                        "models_agree": consensus.get("models_agree", 0),
-                    })
-
-                    if self._should_enter_autonomous_trade(consensus):
-                        self._log_analysis(symbol, "trade", f"TRADE: {consensus.get('direction')} {symbol} @ confidence {consensus.get('confidence', 0):.1f}%")
-                        await self._execute_autonomous_trade(symbol, consensus, results)
-                    else:
-                        self._log_analysis(symbol, "skip", f"Condizioni non soddisfatte (min confidence: {self.config.min_confidence}%)")
+                if self._should_enter_tradingview_trade(consensus):
+                    self._log_analysis(symbol, "trade", f"TRADE: {consensus.get('direction')} {symbol} @ confidence {consensus.get('confidence', 0):.1f}%")
+                    await self._execute_tradingview_trade(symbol, consensus, results)
                 else:
-                    # Standard multi-timeframe analysis
-                    self._log_analysis(symbol, "analysis", f"Standard multi-timeframe analysis ({self.config.analysis_mode.value})")
-
-                    result = await self.analyzer.analyze(
-                        symbol=symbol,
-                        mode=self.config.analysis_mode
-                    )
-
-                    self._log_analysis(symbol, "analysis", f"Risultato: {result.final_direction} - Confidence: {result.final_confidence:.1f}% - Confluence: {result.confluence_score:.1f}%", {
-                        "direction": result.final_direction,
-                        "confidence": result.final_confidence,
-                        "confluence": result.confluence_score,
-                    })
-
-                    if self._should_enter_trade(result):
-                        self._log_analysis(symbol, "trade", f"TRADE: {result.final_direction} {symbol}")
-                        await self._execute_trade(result)
-                    else:
-                        self._log_analysis(symbol, "skip", f"Condizioni non soddisfatte")
+                    self._log_analysis(symbol, "skip", f"Condizioni non soddisfatte (min confidence: {self.config.min_confidence}%)")
 
             except Exception as e:
                 self._log_analysis(symbol, "error", f"Errore: {str(e)}")
@@ -749,7 +658,7 @@ class AutoTrader:
                     units=units,
                     timestamp=datetime.utcnow(),
                     confidence=consensus["confidence"],
-                    timeframes_analyzed=[self.config.autonomous_timeframe],
+                    timeframes_analyzed=consensus.get("timeframes", ["15"]),
                     models_agreed=consensus["models_agree"],
                     total_models=consensus["total_models"],
                     break_even_trigger=consensus.get("break_even_trigger"),
@@ -899,7 +808,7 @@ class AutoTrader:
                     units=units,
                     timestamp=datetime.utcnow(),
                     confidence=consensus["confidence"],
-                    timeframes_analyzed=[self.config.autonomous_timeframe],
+                    timeframes_analyzed=consensus.get("timeframes", ["15"]),
                     models_agreed=consensus["models_agree"],
                     total_models=consensus["total_models"],
                     # Advanced trade management
