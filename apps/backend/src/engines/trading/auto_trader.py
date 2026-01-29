@@ -98,11 +98,11 @@ class BotConfig:
     analysis_interval_seconds: int = 300  # 5 minutes
 
     # Autonomous Analysis - Each AI chooses its own indicators and strategy
-    use_autonomous_analysis: bool = True  # Use chart vision with AI autonomy
+    use_autonomous_analysis: bool = False  # Disabilitato - usa TradingView Agent
     autonomous_timeframe: str = "15m"     # Timeframe for autonomous analysis
 
-    # TradingView AI Agent - Full browser control
-    use_tradingview_agent: bool = False   # Use real TradingView with browser automation
+    # TradingView AI Agent - Full browser control (MODALITÀ PRINCIPALE)
+    use_tradingview_agent: bool = True    # Usa TradingView reale con browser automation
     tradingview_headless: bool = True     # Run browser in headless mode
     tradingview_max_indicators: int = 3   # Max indicators (3=Basic, 5=Essential, 10=Plus, 25=Premium)
 
@@ -225,21 +225,35 @@ class AutoTrader:
             await self.analyzer.initialize()
             print("[AutoTrader] Multi-timeframe analyzer ready")
 
-            # Initialize autonomous analyst (chart vision with AI freedom)
+            # Initialize TradingView agent (full browser control - MODALITÀ PRINCIPALE)
+            if self.config.use_tradingview_agent:
+                if TRADINGVIEW_AGENT_AVAILABLE:
+                    try:
+                        print("[AutoTrader] Initializing TradingView Agent (Playwright browser)...")
+                        self._log_analysis("SYSTEM", "info", "🌐 Avvio TradingView Agent con browser Playwright...")
+                        self.tradingview_agent = await get_tradingview_agent(
+                            headless=self.config.tradingview_headless,
+                            max_indicators=self.config.tradingview_max_indicators
+                        )
+                        self._log_analysis("SYSTEM", "info", "✅ TradingView Agent pronto - analisi su dati reali TradingView")
+                        print("[AutoTrader] TradingView agent ready")
+                    except Exception as tv_err:
+                        self._log_analysis("SYSTEM", "error", f"⚠️ TradingView Agent fallito: {str(tv_err)} - Fallback su Autonomous Analysis")
+                        print(f"[AutoTrader] TradingView Agent init failed: {tv_err}")
+                        self.tradingview_agent = None
+                        self.config.use_autonomous_analysis = True
+                else:
+                    self._log_analysis("SYSTEM", "error", "⚠️ Playwright non installato - Fallback su Autonomous Analysis")
+                    print("[AutoTrader] WARNING: Playwright not available, falling back to Autonomous Analysis")
+                    self.config.use_autonomous_analysis = True
+
+            # Initialize autonomous analyst (fallback se TradingView non disponibile)
             if self.config.use_autonomous_analysis:
-                print("[AutoTrader] Initializing autonomous analyst...")
+                print("[AutoTrader] Initializing autonomous analyst (fallback)...")
+                self._log_analysis("SYSTEM", "info", "📊 Avvio Autonomous Analysis (fallback)")
                 self.autonomous_analyst = get_autonomous_analyst()
                 await self.autonomous_analyst.initialize()
                 print("[AutoTrader] Autonomous analyst ready")
-
-            # Initialize TradingView agent (full browser control)
-            if self.config.use_tradingview_agent and TRADINGVIEW_AGENT_AVAILABLE:
-                print("[AutoTrader] Initializing TradingView agent...")
-                self.tradingview_agent = await get_tradingview_agent(
-                    headless=self.config.tradingview_headless,
-                    max_indicators=self.config.tradingview_max_indicators
-                )
-                print("[AutoTrader] TradingView agent ready")
 
             # Initialize broker
             print("[AutoTrader] Initializing broker connection...")
@@ -527,7 +541,7 @@ class AutoTrader:
 
                 # Use TradingView AI Agent (full browser control with multi-timeframe)
                 if self.config.use_tradingview_agent and self.tradingview_agent:
-                    tv_symbol = symbol.replace("/", "")
+                    tv_symbol = symbol.replace("/", "").replace("_", "")
                     mode_str = self.config.analysis_mode.value.lower()
 
                     self._log_analysis(symbol, "analysis", f"TradingView Agent: analisi {mode_str} su {tv_symbol}")
