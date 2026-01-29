@@ -618,31 +618,47 @@ class AutoTrader:
         """Execute a trade based on TradingView AI agent consensus."""
         try:
             from decimal import Decimal
+            import traceback
+
+            self._log_analysis(symbol, "trade", f"📋 Esecuzione trade {consensus.get('direction')} su {symbol}...")
+
+            # Verifica che stop_loss e take_profit siano presenti
+            stop_loss = consensus.get("stop_loss")
+            take_profit = consensus.get("take_profit")
+
+            if stop_loss is None or take_profit is None:
+                self._log_analysis(symbol, "error", f"❌ Trade annullato: SL={stop_loss}, TP={take_profit} — mancano SL/TP nel consenso")
+                return
 
             # Get current price
+            self._log_analysis(symbol, "info", f"Recupero prezzo corrente per {symbol}...")
             tick = await self.broker.get_current_price(symbol)
             current_price = float(tick.mid)
+            self._log_analysis(symbol, "info", f"Prezzo corrente: {current_price}")
 
             # Calculate position size
             account_info = await self.broker.get_account_info()
             account_balance = float(account_info.balance)
 
             risk_amount = account_balance * (self.config.risk_per_trade_percent / 100)
-            sl_distance = abs(current_price - consensus["stop_loss"])
+            sl_distance = abs(current_price - float(stop_loss))
 
             if sl_distance == 0:
+                self._log_analysis(symbol, "error", f"❌ Trade annullato: distanza SL = 0 (prezzo={current_price}, SL={stop_loss})")
                 return
 
             units = risk_amount / sl_distance
             side = OrderSide.BUY if consensus["direction"] == "LONG" else OrderSide.SELL
+
+            self._log_analysis(symbol, "trade", f"📊 Ordine: {side.value} {units:.2f} unità | SL: {stop_loss} | TP: {take_profit} | Rischio: {self.config.risk_per_trade_percent}% (${risk_amount:.2f})")
 
             order = OrderRequest(
                 symbol=symbol,
                 side=side,
                 order_type=OrderType.MARKET,
                 size=Decimal(str(units)),
-                stop_loss=Decimal(str(consensus["stop_loss"])),
-                take_profit=Decimal(str(consensus["take_profit"])),
+                stop_loss=Decimal(str(stop_loss)),
+                take_profit=Decimal(str(take_profit)),
             )
 
             order_result = await self.broker.place_order(order)
@@ -654,8 +670,8 @@ class AutoTrader:
                     symbol=symbol,
                     direction=consensus["direction"],
                     entry_price=fill_price,
-                    stop_loss=consensus["stop_loss"],
-                    take_profit=consensus["take_profit"],
+                    stop_loss=float(stop_loss),
+                    take_profit=float(take_profit),
                     units=units,
                     timestamp=datetime.utcnow(),
                     confidence=consensus["confidence"],
@@ -668,10 +684,18 @@ class AutoTrader:
 
                 self.state.open_positions.append(trade)
                 self.state.trades_today += 1
+                self._log_analysis(symbol, "trade", f"✅ TRADE ESEGUITO: {side.value} {symbol} @ {fill_price} | SL: {stop_loss} | TP: {take_profit} | ID: {order_result.order_id}")
 
                 await self._notify_tradingview_trade(trade, consensus, results)
+            elif order_result.is_rejected:
+                self._log_analysis(symbol, "error", f"❌ ORDINE RIFIUTATO dal broker: {order_result.error_message or 'motivo sconosciuto'}")
+            else:
+                self._log_analysis(symbol, "info", f"⏳ Ordine in stato: {order_result.status.value} — ID: {order_result.order_id}")
 
         except Exception as e:
+            error_detail = traceback.format_exc()
+            self._log_analysis(symbol, "error", f"❌ Esecuzione trade fallita: {str(e)}")
+            print(f"[AutoTrader] Trade execution error for {symbol}:\n{error_detail}")
             self.state.errors.append({
                 "timestamp": datetime.utcnow().isoformat(),
                 "symbol": symbol,
