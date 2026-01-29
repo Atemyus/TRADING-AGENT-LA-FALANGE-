@@ -200,6 +200,59 @@ class AutoTrader:
         if len(self.state.analysis_logs) > 500:
             self.state.analysis_logs = self.state.analysis_logs[-500:]
 
+    def _get_pip_size(self, symbol: str) -> float:
+        """Restituisce la dimensione di 1 pip per lo strumento."""
+        sym = symbol.upper().replace("/", "").replace("_", "")
+
+        # JPY pairs: 1 pip = 0.01
+        if "JPY" in sym:
+            return 0.01
+        # Oro: 1 pip = 0.10 ($)
+        if "XAU" in sym or "GOLD" in sym:
+            return 0.10
+        # Indici: 1 pip = 1.0 punto
+        if any(idx in sym for idx in ["US30", "US500", "NAS100", "DE40", "UK100", "JP225", "FR40", "EU50"]):
+            return 1.0
+        # Forex standard: 1 pip = 0.0001
+        return 0.0001
+
+    def _calculate_pip_info(self, symbol: str, current_price: float, sl_distance: float) -> tuple:
+        """
+        Calcola la distanza SL in pips e il valore di 1 pip per 1 lotto standard.
+        Restituisce (sl_pips, pip_value_per_lot).
+        """
+        sym = symbol.upper().replace("/", "").replace("_", "")
+        pip_size = self._get_pip_size(symbol)
+        sl_pips = sl_distance / pip_size
+
+        # Valore pip per 1 lotto standard
+        if "XAU" in sym or "GOLD" in sym:
+            # Oro: 1 lotto = 100 oz, 1 pip ($0.10) × 100 oz = $10 per pip/lotto
+            pip_value = 10.0
+        elif any(idx in sym for idx in ["US30", "US500", "NAS100", "DE40", "UK100", "JP225", "FR40", "EU50"]):
+            # Indici: 1 lotto = 1 contratto, 1 punto = $1 (varia, usiamo approssimazione)
+            if "US30" in sym:
+                pip_value = 1.0  # $1 per punto per contratto
+            elif "US500" in sym or "NAS100" in sym:
+                pip_value = 1.0
+            elif "DE40" in sym or "EU50" in sym or "FR40" in sym:
+                pip_value = 1.0  # €1 per punto ≈ $1
+            elif "UK100" in sym:
+                pip_value = 1.0  # £1 per punto ≈ $1.25
+            else:
+                pip_value = 1.0
+        elif "JPY" in sym:
+            # JPY pairs: 1 pip (0.01) × 100,000 unità / prezzo ≈ $6.7 (varia)
+            pip_value = (0.01 * 100000) / current_price if current_price > 0 else 6.7
+        else:
+            # Forex standard (EUR/USD, GBP/USD, ecc.):
+            # 1 pip (0.0001) × 100,000 unità = $10 per pip/lotto (coppie con USD come quote)
+            # Per coppie come EUR/GBP dove USD non è quote, sarebbe diverso
+            # Ma la maggior parte dei broker converte automaticamente in USD
+            pip_value = 10.0
+
+        return (sl_pips, pip_value)
+
     def add_callback(self, callback: Callable):
         """Add a callback for trade notifications."""
         self._callbacks.append(callback)
@@ -669,7 +722,7 @@ class AutoTrader:
                     take_profit = round(current_price - (sl_dist * 2), 5)
                     self._log_analysis(symbol, "info", f"TP corretto a: {take_profit} (R:R 1:2)")
 
-            # ====== CALCOLO POSIZIONE ======
+            # ====== CALCOLO POSIZIONE (basato su valore pip) ======
             account_info = await self.broker.get_account_info()
             account_balance = float(account_info.balance)
 
@@ -680,23 +733,51 @@ class AutoTrader:
                 self._log_analysis(symbol, "error", f"❌ Trade annullato: distanza SL = 0 (prezzo={current_price}, SL={stop_loss})")
                 return
 
-            # Calcola unità e converti in lotti per MetaTrader
-            # Forex: 1 lotto = 100,000 unità | Oro: 1 lotto = 100 oz | Indici: 1 lotto = 1 contratto
-            units = risk_amount / sl_distance
+            # Calcola distanza SL in pips e valore pip per 1 lotto standard
+            sl_pips, pip_value = self._calculate_pip_info(symbol, current_price, sl_distance)
 
-            if "XAU" in symbol or "GOLD" in symbol:
-                lot_size = units / 100
-            elif any(idx in symbol for idx in ["US30", "US500", "NAS100", "DE40", "UK100", "JP225", "FR40", "EU50"]):
-                lot_size = units
+            self._log_analysis(symbol, "info", f"📐 SL distanza: {sl_pips:.1f} pips | Valore pip/lotto: ${pip_value:.2f} | Rischio max: ${risk_amount:.2f}")
+
+            # Formula: Size = Rischio ($) / (SL pips × Valore pip per 1 lotto)
+            lot_size = risk_amount / (sl_pips * pip_value)
+            lot_size = round(lot_size, 2)
+
+            MIN_LOT = 0.01
+
+            # Se la size calcolata è sotto il minimo, bisogna stringere lo SL
+            if lot_size < MIN_LOT:
+                # SL massimo consentito con 0.01 lotti per non superare il rischio
+                max_sl_pips = risk_amount / (MIN_LOT * pip_value)
+                old_sl_pips = sl_pips
+
+                self._log_analysis(symbol, "info", f"⚠️ Size calcolata ({lot_size}) < minimo (0.01) — riduco SL da {old_sl_pips:.1f} a {max_sl_pips:.1f} pips")
+
+                # Ricalcola SL più stretto
+                pip_size = self._get_pip_size(symbol)
+                new_sl_distance = max_sl_pips * pip_size
+
+                if direction == "LONG":
+                    stop_loss = round(current_price - new_sl_distance, 5)
+                    # Ricalcola TP con R:R 1:2
+                    take_profit = round(current_price + (new_sl_distance * 2), 5)
+                else:
+                    stop_loss = round(current_price + new_sl_distance, 5)
+                    take_profit = round(current_price - (new_sl_distance * 2), 5)
+
+                lot_size = MIN_LOT
+                sl_pips = max_sl_pips
+
+                self._log_analysis(symbol, "info", f"✅ SL/TP ricalcolati — SL: {stop_loss} ({sl_pips:.1f} pips) | TP: {take_profit} | Size: {lot_size} lotti")
             else:
-                lot_size = units / 100000  # Forex
+                lot_size = max(MIN_LOT, lot_size)
 
-            # Arrotonda: minimo 0.01 lotti (micro lotto)
-            lot_size = max(0.01, round(lot_size, 2))
+            # Calcolo rischio effettivo
+            actual_risk = lot_size * sl_pips * pip_value
+            risk_pct = (actual_risk / account_balance) * 100
 
             side = OrderSide.BUY if direction == "LONG" else OrderSide.SELL
 
-            self._log_analysis(symbol, "trade", f"📊 Ordine: {side.value} {lot_size} lotti ({units:.0f} unità) | SL: {stop_loss} | TP: {take_profit} | Rischio: {self.config.risk_per_trade_percent}% (${risk_amount:.2f})")
+            self._log_analysis(symbol, "trade", f"📊 Ordine: {side.value} {lot_size} lotti | SL: {stop_loss} ({sl_pips:.1f} pips) | TP: {take_profit} | Rischio: ${actual_risk:.2f} ({risk_pct:.2f}%)")
 
             order = OrderRequest(
                 symbol=symbol,
@@ -718,7 +799,7 @@ class AutoTrader:
                     entry_price=fill_price,
                     stop_loss=stop_loss,
                     take_profit=take_profit,
-                    units=units,
+                    units=lot_size,
                     timestamp=datetime.utcnow(),
                     confidence=consensus["confidence"],
                     timeframes_analyzed=consensus.get("timeframes", ["15"]),
