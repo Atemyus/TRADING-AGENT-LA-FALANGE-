@@ -486,6 +486,10 @@ class AutoTrader:
 
         return self.calendar_service.should_avoid_trading(symbol)
 
+    def _normalize_symbol(self, symbol: str) -> str:
+        """Normalizza simbolo da formato UI (EUR/USD) a formato interno (EUR_USD)."""
+        return symbol.replace("/", "_")
+
     async def _analyze_and_trade(self):
         """Analyze all symbols and execute trades if conditions met."""
         # First manage existing positions (BE, Trailing Stop)
@@ -494,9 +498,13 @@ class AutoTrader:
         # Refresh news calendar periodically
         await self._refresh_news_calendar()
 
-        self._log_analysis("ALL", "info", f"Inizio ciclo analisi per {len(self.config.symbols)} asset: {', '.join(self.config.symbols)}")
+        # Normalizza simboli da formato UI (EUR/USD) a formato interno (EUR_USD)
+        # Il formato interno corrisponde alle chiavi di SYMBOL_ALIASES del broker
+        symbols = [self._normalize_symbol(s) for s in self.config.symbols]
 
-        for symbol in self.config.symbols:
+        self._log_analysis("ALL", "info", f"Inizio ciclo analisi per {len(symbols)} asset: {', '.join(symbols)}")
+
+        for symbol in symbols:
             try:
                 # Skip if max positions reached
                 if len(self.state.open_positions) >= self.config.max_open_positions:

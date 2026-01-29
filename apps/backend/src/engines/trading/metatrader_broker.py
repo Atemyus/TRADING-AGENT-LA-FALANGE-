@@ -343,7 +343,11 @@ class MetaTraderBroker(BaseBroker):
         Examples:
             EUR_USD -> EURUSD (or EURUSDm, EURUSD., etc. depending on broker)
             XAU_USD -> GOLD (or XAUUSD, GOLDm, etc.)
+            EUR/USD -> EUR_USD -> EURUSD (also accepts slash format)
         """
+        # Normalize: accept both EUR/USD and EUR_USD
+        symbol = symbol.replace("/", "_")
+
         # If already mapped, return the mapped symbol
         if symbol in self._symbol_map:
             return self._symbol_map[symbol]
