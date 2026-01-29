@@ -686,18 +686,34 @@ class MetaTraderBroker(BaseBroker):
             order_id = str(result.get("orderId", result.get("positionId", "")))
             is_filled = bool(result.get("positionId"))
             string_code = result.get("stringCode", "")
+            numeric_code = result.get("numericCode")
             error_msg = result.get("errorMessage", result.get("message", ""))
+
+            # Log full response for debugging
+            print(f"[MetaTrader] Full response keys: {list(result.keys())}")
+            print(f"[MetaTrader] stringCode={string_code}, numericCode={numeric_code}, orderId={order_id}, positionId={result.get('positionId')}")
 
             # MetaApi retcode: controlla se è un errore reale
             # TRADE_RETCODE_DONE (10009) = successo
             # TRADE_RETCODE_PLACED (10008) = ordine piazzato
-            # Tutto il resto con "RETCODE" e senza positionId/orderId = errore
-            is_success_code = string_code in ("TRADE_RETCODE_DONE", "TRADE_RETCODE_PLACED", "")
+            # TRADE_RETCODE_DONE_PARTIAL (10010) = parzialmente eseguito
+            # Stringa vuota = risposta senza codice (di solito OK)
+            SUCCESS_CODES = {
+                "TRADE_RETCODE_DONE",
+                "TRADE_RETCODE_PLACED",
+                "TRADE_RETCODE_DONE_PARTIAL",
+                "",
+            }
+            # Numeric success codes from MT5
+            SUCCESS_NUMERIC = {10008, 10009, 10010}
+
+            is_success_code = string_code in SUCCESS_CODES or (numeric_code in SUCCESS_NUMERIC if numeric_code else False)
             has_order = bool(order_id)
 
-            if not is_filled and not is_success_code:
-                reject_reason = error_msg or string_code or "motivo sconosciuto"
-                print(f"[MetaTrader] Order REJECTED - stringCode: {string_code}, error: {error_msg}")
+            # If we have a positionId or orderId, the order went through even with unknown code
+            if not is_filled and not is_success_code and not has_order:
+                reject_reason = error_msg or string_code or f"Unknown trade return code (numericCode={numeric_code})"
+                print(f"[MetaTrader] Order REJECTED - stringCode: {string_code}, numericCode: {numeric_code}, error: {error_msg}")
                 return OrderResult(
                     order_id=order_id,
                     symbol=order.symbol,
@@ -708,6 +724,10 @@ class MetaTraderBroker(BaseBroker):
                     filled_size=Decimal("0"),
                     error_message=str(reject_reason),
                 )
+
+            # If we have an order/position ID but unknown code, treat as success with warning
+            if has_order and not is_success_code:
+                print(f"[MetaTrader] WARNING: Unknown stringCode '{string_code}' (numericCode={numeric_code}) but order exists - treating as success")
 
             status = OrderStatus.FILLED if is_filled else (OrderStatus.PENDING if has_order else OrderStatus.REJECTED)
             print(f"[MetaTrader] Order status: {status.value} | stringCode: {string_code} | orderId: {order_id}")

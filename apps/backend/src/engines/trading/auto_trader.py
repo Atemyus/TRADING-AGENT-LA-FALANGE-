@@ -701,20 +701,29 @@ class AutoTrader:
             self._log_analysis(symbol, "info", f"Prezzo corrente: {current_price}")
 
             # ====== VALIDAZIONE SL/TP rispetto alla direzione ======
+            MAX_RR_RATIO = 2.0  # Max Risk:Reward ratio (1:2) — TP non oltre 2x la distanza SL
+
             if direction == "LONG":
                 # LONG: SL deve essere SOTTO il prezzo, TP deve essere SOPRA
                 if stop_loss >= current_price:
                     self._log_analysis(symbol, "error", f"⚠️ SL ({stop_loss}) >= prezzo ({current_price}) per LONG — SL invertito/invalido, correggo...")
-                    # Usa una distanza di default basata sul prezzo (0.5%)
                     stop_loss = round(current_price * 0.995, 5)
                     self._log_analysis(symbol, "info", f"SL corretto a: {stop_loss} (0.5% sotto prezzo)")
 
+                sl_dist = current_price - stop_loss
+
                 if take_profit <= current_price:
                     self._log_analysis(symbol, "error", f"⚠️ TP ({take_profit}) <= prezzo ({current_price}) per LONG — TP invertito/invalido, correggo...")
-                    # Calcola TP proporzionale: distanza SL * 2 (R:R 1:2)
-                    sl_dist = current_price - stop_loss
-                    take_profit = round(current_price + (sl_dist * 2), 5)
-                    self._log_analysis(symbol, "info", f"TP corretto a: {take_profit} (R:R 1:2)")
+                    take_profit = round(current_price + (sl_dist * MAX_RR_RATIO), 5)
+                    self._log_analysis(symbol, "info", f"TP corretto a: {take_profit} (R:R 1:{MAX_RR_RATIO})")
+                else:
+                    # Cap TP: se il TP è troppo lontano (oltre MAX_RR_RATIO x SL), limitalo
+                    tp_dist = take_profit - current_price
+                    actual_rr = tp_dist / sl_dist if sl_dist > 0 else 0
+                    if actual_rr > MAX_RR_RATIO:
+                        old_tp = take_profit
+                        take_profit = round(current_price + (sl_dist * MAX_RR_RATIO), 5)
+                        self._log_analysis(symbol, "info", f"📏 TP troppo lontano ({old_tp}, R:R 1:{actual_rr:.1f}) → cappato a {take_profit} (R:R 1:{MAX_RR_RATIO})")
 
             elif direction == "SHORT":
                 # SHORT: SL deve essere SOPRA il prezzo, TP deve essere SOTTO
@@ -723,11 +732,20 @@ class AutoTrader:
                     stop_loss = round(current_price * 1.005, 5)
                     self._log_analysis(symbol, "info", f"SL corretto a: {stop_loss} (0.5% sopra prezzo)")
 
+                sl_dist = stop_loss - current_price
+
                 if take_profit >= current_price:
                     self._log_analysis(symbol, "error", f"⚠️ TP ({take_profit}) >= prezzo ({current_price}) per SHORT — TP invertito/invalido, correggo...")
-                    sl_dist = stop_loss - current_price
-                    take_profit = round(current_price - (sl_dist * 2), 5)
-                    self._log_analysis(symbol, "info", f"TP corretto a: {take_profit} (R:R 1:2)")
+                    take_profit = round(current_price - (sl_dist * MAX_RR_RATIO), 5)
+                    self._log_analysis(symbol, "info", f"TP corretto a: {take_profit} (R:R 1:{MAX_RR_RATIO})")
+                else:
+                    # Cap TP: se il TP è troppo lontano (oltre MAX_RR_RATIO x SL), limitalo
+                    tp_dist = current_price - take_profit
+                    actual_rr = tp_dist / sl_dist if sl_dist > 0 else 0
+                    if actual_rr > MAX_RR_RATIO:
+                        old_tp = take_profit
+                        take_profit = round(current_price - (sl_dist * MAX_RR_RATIO), 5)
+                        self._log_analysis(symbol, "info", f"📏 TP troppo lontano ({old_tp}, R:R 1:{actual_rr:.1f}) → cappato a {take_profit} (R:R 1:{MAX_RR_RATIO})")
 
             # ====== CALCOLO POSIZIONE (basato su valore pip) ======
             account_info = await self.broker.get_account_info()
@@ -799,6 +817,23 @@ class AutoTrader:
 
             if order_result.is_filled:
                 fill_price = float(order_result.average_fill_price) if order_result.average_fill_price else current_price
+
+                # Break Even: usa il valore AI se disponibile, altrimenti default a 50% della distanza TP
+                be_trigger = consensus.get("break_even_trigger")
+                trailing_pips = consensus.get("trailing_stop_pips")
+                if be_trigger is None:
+                    # Default BE: quando il prezzo raggiunge il 50% del TP
+                    tp_distance = abs(take_profit - fill_price)
+                    if direction == "LONG":
+                        be_trigger = round(fill_price + (tp_distance * 0.5), 5)
+                    else:
+                        be_trigger = round(fill_price - (tp_distance * 0.5), 5)
+                    self._log_analysis(symbol, "info", f"🔒 Break Even auto impostato a {be_trigger} (50% del TP)")
+                if trailing_pips is None:
+                    # Default trailing: 15 pips dopo il BE
+                    trailing_pips = 15.0
+                    self._log_analysis(symbol, "info", f"📈 Trailing Stop auto: {trailing_pips} pips dopo BE")
+
                 trade = TradeRecord(
                     id=order_result.order_id,
                     symbol=symbol,
@@ -812,8 +847,8 @@ class AutoTrader:
                     timeframes_analyzed=consensus.get("timeframes", ["15"]),
                     models_agreed=consensus["models_agree"],
                     total_models=consensus["total_models"],
-                    break_even_trigger=consensus.get("break_even_trigger"),
-                    trailing_stop_pips=consensus.get("trailing_stop_pips"),
+                    break_even_trigger=be_trigger,
+                    trailing_stop_pips=trailing_pips,
                 )
 
                 self.state.open_positions.append(trade)

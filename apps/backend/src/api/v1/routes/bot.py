@@ -370,6 +370,13 @@ async def update_config(config: BotConfigRequest, db: AsyncSession = Depends(get
             raise HTTPException(status_code=400, detail="Minutes after must be between 0 and 120")
         current_config.news_minutes_after = config.news_minutes_after
 
+    # AI Models toggle
+    if config.enabled_models is not None:
+        valid_models = ["chatgpt", "gemini", "grok", "qwen", "llama", "ernie"]
+        enabled = [m for m in config.enabled_models if m in valid_models]
+        if enabled:
+            current_config.enabled_models = enabled
+
     bot.configure(current_config)
 
     # Save to database for persistence
@@ -394,6 +401,8 @@ async def update_config(config: BotConfigRequest, db: AsyncSession = Depends(get
         "use_tradingview_agent": current_config.use_tradingview_agent,
         "tradingview_headless": current_config.tradingview_headless,
         "tradingview_max_indicators": current_config.tradingview_max_indicators,
+        # AI Models
+        "enabled_models": current_config.enabled_models,
         # News Filter settings
         "news_filter_enabled": current_config.news_filter_enabled,
         "news_filter_high_impact": current_config.news_filter_high_impact,
