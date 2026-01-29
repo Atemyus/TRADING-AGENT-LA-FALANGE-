@@ -985,31 +985,32 @@ export default function BotControlPage() {
                       { key: "llama", name: "Llama 4 Scout", style: "Momentum / Stochastic" },
                       { key: "ernie", name: "ERNIE 4.5 VL", style: "Price Action / Volume" },
                     ].map((model) => {
-                      const isEnabled = currentConfig.enabled_models?.includes(model.key) ?? true;
-                      const enabledCount = currentConfig.enabled_models?.length ?? 6;
-                      const isLastEnabled = isEnabled && enabledCount <= 1;
+                      const ALL_MODELS = ["chatgpt", "gemini", "grok", "qwen", "llama", "ernie"];
+                      const currentModels = currentConfig.enabled_models && currentConfig.enabled_models.length > 0
+                        ? currentConfig.enabled_models
+                        : ALL_MODELS;
+                      const isEnabled = currentModels.includes(model.key);
+                      const isLastEnabled = isEnabled && currentModels.length <= 1;
 
                       return (
-                        <div key={model.key} className="flex items-center justify-between py-1">
-                          <div>
-                            <span className={`text-sm ${isEnabled ? "text-white" : "text-slate-500"}`}>
+                        <div key={model.key} className="flex items-center justify-between py-1.5 px-2 rounded-lg hover:bg-slate-700/50">
+                          <div className="flex flex-col">
+                            <span className={`text-sm font-medium ${isEnabled ? "text-white" : "text-slate-500 line-through"}`}>
                               {model.name}
                             </span>
-                            <span className={`text-xs ml-2 ${isEnabled ? "text-slate-400" : "text-slate-600"}`}>
+                            <span className={`text-xs ${isEnabled ? "text-slate-400" : "text-slate-600"}`}>
                               {model.style}
                             </span>
                           </div>
                           <Toggle
                             enabled={isEnabled}
+                            disabled={isLastEnabled}
                             onChange={() => {
-                              if (isLastEnabled) return; // Almeno 1 modello deve restare attivo
-                              const current = currentConfig.enabled_models ?? [
-                                "chatgpt", "gemini", "grok", "qwen", "llama", "ernie"
-                              ];
+                              if (isLastEnabled) return;
                               const updated = isEnabled
-                                ? current.filter((k: string) => k !== model.key)
-                                : [...current, model.key];
-                              handleConfigUpdate({ enabled_models: updated } as Partial<BotConfig>);
+                                ? currentModels.filter((k: string) => k !== model.key)
+                                : [...currentModels, model.key];
+                              handleConfigUpdate({ enabled_models: updated });
                             }}
                           />
                         </div>

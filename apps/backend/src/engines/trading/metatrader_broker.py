@@ -685,10 +685,19 @@ class MetaTraderBroker(BaseBroker):
 
             order_id = str(result.get("orderId", result.get("positionId", "")))
             is_filled = bool(result.get("positionId"))
-            error_msg = result.get("stringCode", result.get("errorMessage", result.get("message", "")))
+            string_code = result.get("stringCode", "")
+            error_msg = result.get("errorMessage", result.get("message", ""))
 
-            if not is_filled and error_msg:
-                print(f"[MetaTrader] Order not filled - error: {error_msg}")
+            # MetaApi retcode: controlla se è un errore reale
+            # TRADE_RETCODE_DONE (10009) = successo
+            # TRADE_RETCODE_PLACED (10008) = ordine piazzato
+            # Tutto il resto con "RETCODE" e senza positionId/orderId = errore
+            is_success_code = string_code in ("TRADE_RETCODE_DONE", "TRADE_RETCODE_PLACED", "")
+            has_order = bool(order_id)
+
+            if not is_filled and not is_success_code:
+                reject_reason = error_msg or string_code or "motivo sconosciuto"
+                print(f"[MetaTrader] Order REJECTED - stringCode: {string_code}, error: {error_msg}")
                 return OrderResult(
                     order_id=order_id,
                     symbol=order.symbol,
@@ -697,15 +706,18 @@ class MetaTraderBroker(BaseBroker):
                     status=OrderStatus.REJECTED,
                     size=order.size,
                     filled_size=Decimal("0"),
-                    error_message=str(error_msg),
+                    error_message=str(reject_reason),
                 )
+
+            status = OrderStatus.FILLED if is_filled else (OrderStatus.PENDING if has_order else OrderStatus.REJECTED)
+            print(f"[MetaTrader] Order status: {status.value} | stringCode: {string_code} | orderId: {order_id}")
 
             return OrderResult(
                 order_id=order_id,
                 symbol=order.symbol,
                 side=order.side,
                 order_type=order.order_type,
-                status=OrderStatus.FILLED if is_filled else OrderStatus.PENDING,
+                status=status,
                 size=order.size,
                 filled_size=order.size if is_filled else Decimal("0"),
                 price=order.price,
