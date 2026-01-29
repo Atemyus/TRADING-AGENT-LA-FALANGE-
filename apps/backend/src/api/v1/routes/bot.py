@@ -103,6 +103,12 @@ def apply_config_to_bot(config_dict: dict) -> None:
         bot.config.tradingview_headless = config_dict["tradingview_headless"]
     if "tradingview_max_indicators" in config_dict:
         bot.config.tradingview_max_indicators = config_dict["tradingview_max_indicators"]
+    # AI Models
+    if "enabled_models" in config_dict:
+        valid_models = ["chatgpt", "gemini", "grok", "qwen", "llama", "ernie"]
+        enabled = [m for m in config_dict["enabled_models"] if m in valid_models]
+        if enabled:  # Almeno 1 modello deve restare abilitato
+            bot.config.enabled_models = enabled
     # News Filter settings
     if "news_filter_enabled" in config_dict:
         bot.config.news_filter_enabled = config_dict["news_filter_enabled"]
@@ -142,6 +148,8 @@ class BotConfigRequest(BaseModel):
     use_tradingview_agent: Optional[bool] = None
     tradingview_headless: Optional[bool] = None
     tradingview_max_indicators: Optional[int] = None
+    # AI Models - enable/disable individual models
+    enabled_models: Optional[List[str]] = None
     # News Filter settings
     news_filter_enabled: Optional[bool] = None
     news_filter_high_impact: Optional[bool] = None
@@ -431,6 +439,8 @@ async def get_config():
         "use_tradingview_agent": config.use_tradingview_agent,
         "tradingview_headless": config.tradingview_headless,
         "tradingview_max_indicators": config.tradingview_max_indicators,
+        # AI Models
+        "enabled_models": config.enabled_models,
         # News Filter settings
         "news_filter_enabled": config.news_filter_enabled,
         "news_filter_high_impact": config.news_filter_high_impact,

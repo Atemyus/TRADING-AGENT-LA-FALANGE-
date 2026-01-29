@@ -238,6 +238,8 @@ interface BotConfig {
   // TradingView AI Agent (always enabled - the only analysis method)
   tradingview_headless: boolean;
   tradingview_max_indicators: number;
+  // AI Models
+  enabled_models: string[];
 }
 
 const AVAILABLE_SYMBOLS = [
@@ -342,6 +344,7 @@ export default function BotControlPage() {
     // TradingView AI Agent - full browser control (always enabled)
     tradingview_headless: true,
     tradingview_max_indicators: 2,  // TradingView Free plan limit
+    enabled_models: ["chatgpt", "gemini", "grok", "qwen", "llama", "ernie"],
   };
 
   const fetchStatus = useCallback(async () => {
@@ -967,6 +970,56 @@ export default function BotControlPage() {
                 <p className="text-xs text-slate-500 mt-2">
                   AI can add indicators, draw zones/trendlines, and take screenshots on TradingView.com
                 </p>
+
+                {/* AI Models Toggle */}
+                <div className="mt-4 pt-3 border-t border-purple-500/30">
+                  <label className="block text-sm font-medium mb-3">
+                    Modelli AI Attivi
+                  </label>
+                  <div className="space-y-2">
+                    {[
+                      { key: "chatgpt", name: "ChatGPT 5.2", style: "SMC / Order Blocks" },
+                      { key: "gemini", name: "Gemini 3 Pro", style: "Trend / MACD" },
+                      { key: "grok", name: "Grok 4.1 Fast", style: "Volatility / Bollinger" },
+                      { key: "qwen", name: "Qwen3 VL", style: "Ichimoku / RSI" },
+                      { key: "llama", name: "Llama 4 Scout", style: "Momentum / Stochastic" },
+                      { key: "ernie", name: "ERNIE 4.5 VL", style: "Price Action / Volume" },
+                    ].map((model) => {
+                      const isEnabled = currentConfig.enabled_models?.includes(model.key) ?? true;
+                      const enabledCount = currentConfig.enabled_models?.length ?? 6;
+                      const isLastEnabled = isEnabled && enabledCount <= 1;
+
+                      return (
+                        <div key={model.key} className="flex items-center justify-between py-1">
+                          <div>
+                            <span className={`text-sm ${isEnabled ? "text-white" : "text-slate-500"}`}>
+                              {model.name}
+                            </span>
+                            <span className={`text-xs ml-2 ${isEnabled ? "text-slate-400" : "text-slate-600"}`}>
+                              {model.style}
+                            </span>
+                          </div>
+                          <Toggle
+                            enabled={isEnabled}
+                            onChange={() => {
+                              if (isLastEnabled) return; // Almeno 1 modello deve restare attivo
+                              const current = currentConfig.enabled_models ?? [
+                                "chatgpt", "gemini", "grok", "qwen", "llama", "ernie"
+                              ];
+                              const updated = isEnabled
+                                ? current.filter((k: string) => k !== model.key)
+                                : [...current, model.key];
+                              handleConfigUpdate({ enabled_models: updated } as Partial<BotConfig>);
+                            }}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-slate-500 mt-2">
+                    Almeno 1 modello deve restare attivo. I modelli disabilitati non verranno utilizzati nelle analisi.
+                  </p>
+                </div>
               </div>
             </div>
 

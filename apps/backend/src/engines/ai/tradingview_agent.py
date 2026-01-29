@@ -1534,6 +1534,7 @@ IMPORTANTE: Scrivi TUTTO in ITALIANO (key_observations, reasoning).
         self,
         symbol: str,
         mode: str = "standard",
+        enabled_models: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Run multi-timeframe analysis based on the selected mode.
@@ -1546,13 +1547,22 @@ IMPORTANTE: Scrivi TUTTO in ITALIANO (key_observations, reasoning).
 
         Each AI analyzes ALL timeframes for the mode, changing TF on TradingView.
         AI calls are parallelized per timeframe for faster execution.
+
+        Args:
+            enabled_models: List of model keys to use. If None, uses all available.
         """
         mode_config = self.MODE_CONFIG.get(mode, self.MODE_CONFIG["standard"])
         timeframes = mode_config["timeframes"]
         num_models = mode_config["num_models"]
 
-        # Select which models to use based on mode
-        model_keys = list(self.VISION_MODELS.keys())[:num_models]
+        # Select which models to use — filter by enabled_models if provided
+        all_model_keys = list(self.VISION_MODELS.keys())
+        if enabled_models:
+            # Keep only enabled models, preserving order
+            all_model_keys = [k for k in all_model_keys if k in enabled_models]
+
+        # Limit to num_models based on mode
+        model_keys = all_model_keys[:num_models]
 
         all_results: List[TradingViewAnalysisResult] = []
         timeframe_analyses: Dict[str, List[TradingViewAnalysisResult]] = {tf: [] for tf in timeframes}

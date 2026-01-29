@@ -103,6 +103,11 @@ class BotConfig:
     tradingview_headless: bool = True     # Run browser in headless mode
     tradingview_max_indicators: int = 3   # Max indicators (3=Basic, 5=Essential, 10=Plus, 25=Premium)
 
+    # AI Models - abilita/disabilita singoli modelli
+    enabled_models: List[str] = field(default_factory=lambda: [
+        "chatgpt", "gemini", "grok", "qwen", "llama", "ernie"
+    ])
+
     # Entry requirements
     min_confidence: float = 70.0  # Minimum consensus confidence to enter
     min_models_agree: int = 4     # Minimum models agreeing on direction (4 out of 6)
@@ -384,6 +389,7 @@ class AutoTrader:
                 "risk_per_trade": self.config.risk_per_trade_percent,
                 "max_positions": self.config.max_open_positions,
                 "analysis_engine": "TradingView AI Agent",
+                "enabled_models": self.config.enabled_models,
             },
             "statistics": {
                 "analyses_today": self.state.analyses_today,
@@ -577,7 +583,8 @@ class AutoTrader:
 
                 consensus = await self.tradingview_agent.analyze_with_mode(
                     symbol=tv_symbol,
-                    mode=mode_str
+                    mode=mode_str,
+                    enabled_models=self.config.enabled_models
                 )
                 results = consensus.get("all_results", [])
 
