@@ -675,26 +675,46 @@ class MetaTraderBroker(BaseBroker):
             payload["takeProfit"] = float(order.take_profit)
 
         try:
+            print(f"[MetaTrader] Placing order: {payload}")
             result = await self._request(
                 "POST",
                 f"/users/current/accounts/{self.account_id}/trade",
                 json=payload,
             )
+            print(f"[MetaTrader] Order response: {result}")
+
+            order_id = str(result.get("orderId", result.get("positionId", "")))
+            is_filled = bool(result.get("positionId"))
+            error_msg = result.get("stringCode", result.get("errorMessage", result.get("message", "")))
+
+            if not is_filled and error_msg:
+                print(f"[MetaTrader] Order not filled - error: {error_msg}")
+                return OrderResult(
+                    order_id=order_id,
+                    symbol=order.symbol,
+                    side=order.side,
+                    order_type=order.order_type,
+                    status=OrderStatus.REJECTED,
+                    size=order.size,
+                    filled_size=Decimal("0"),
+                    error_message=str(error_msg),
+                )
 
             return OrderResult(
-                order_id=str(result.get("orderId", result.get("positionId", ""))),
+                order_id=order_id,
                 symbol=order.symbol,
                 side=order.side,
                 order_type=order.order_type,
-                status=OrderStatus.FILLED if result.get("positionId") else OrderStatus.PENDING,
+                status=OrderStatus.FILLED if is_filled else OrderStatus.PENDING,
                 size=order.size,
-                filled_size=order.size if result.get("positionId") else Decimal("0"),
+                filled_size=order.size if is_filled else Decimal("0"),
                 price=order.price,
                 average_fill_price=Decimal(str(result.get("openPrice", 0))) if result.get("openPrice") else None,
                 commission=Decimal(str(result.get("commission", 0))),
             )
 
         except Exception as e:
+            print(f"[MetaTrader] Order EXCEPTION: {str(e)}")
             return OrderResult(
                 order_id="",
                 symbol=order.symbol,

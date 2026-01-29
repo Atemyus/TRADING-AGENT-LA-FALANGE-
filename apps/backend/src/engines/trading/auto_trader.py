@@ -680,16 +680,29 @@ class AutoTrader:
                 self._log_analysis(symbol, "error", f"❌ Trade annullato: distanza SL = 0 (prezzo={current_price}, SL={stop_loss})")
                 return
 
+            # Calcola unità e converti in lotti per MetaTrader
+            # Forex: 1 lotto = 100,000 unità | Oro: 1 lotto = 100 oz | Indici: 1 lotto = 1 contratto
             units = risk_amount / sl_distance
+
+            if "XAU" in symbol or "GOLD" in symbol:
+                lot_size = units / 100
+            elif any(idx in symbol for idx in ["US30", "US500", "NAS100", "DE40", "UK100", "JP225", "FR40", "EU50"]):
+                lot_size = units
+            else:
+                lot_size = units / 100000  # Forex
+
+            # Arrotonda: minimo 0.01 lotti (micro lotto)
+            lot_size = max(0.01, round(lot_size, 2))
+
             side = OrderSide.BUY if direction == "LONG" else OrderSide.SELL
 
-            self._log_analysis(symbol, "trade", f"📊 Ordine: {side.value} {units:.2f} unità | SL: {stop_loss} | TP: {take_profit} | Rischio: {self.config.risk_per_trade_percent}% (${risk_amount:.2f})")
+            self._log_analysis(symbol, "trade", f"📊 Ordine: {side.value} {lot_size} lotti ({units:.0f} unità) | SL: {stop_loss} | TP: {take_profit} | Rischio: {self.config.risk_per_trade_percent}% (${risk_amount:.2f})")
 
             order = OrderRequest(
                 symbol=symbol,
                 side=side,
                 order_type=OrderType.MARKET,
-                size=Decimal(str(round(units, 2))),
+                size=Decimal(str(lot_size)),
                 stop_loss=Decimal(str(stop_loss)),
                 take_profit=Decimal(str(take_profit)),
             )
