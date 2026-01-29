@@ -548,6 +548,20 @@ class MetaTraderBroker(BaseBroker):
                 f"/users/current/accounts/{self.account_id}/account-information",
             )
 
+            # Calculate realized P&L today from deal history
+            realized_today = Decimal("0")
+            try:
+                deals = await self.get_deals_history()
+                for deal in deals:
+                    profit = deal.get("profit", 0)
+                    if profit and deal.get("type") in ("DEAL_TYPE_SELL", "DEAL_TYPE_BUY", "sell", "buy"):
+                        realized_today += Decimal(str(profit))
+                    # Also add swap and commission
+                    realized_today += Decimal(str(deal.get("swap", 0)))
+                    realized_today += Decimal(str(deal.get("commission", 0)))
+            except Exception as e:
+                print(f"[MetaTrader] Error calculating daily P&L: {e}")
+
             account_info = AccountInfo(
                 account_id=self.account_id,
                 balance=Decimal(str(info.get("balance", 0))),
@@ -555,7 +569,7 @@ class MetaTraderBroker(BaseBroker):
                 margin_used=Decimal(str(info.get("margin", 0))),
                 margin_available=Decimal(str(info.get("freeMargin", 0))),
                 unrealized_pnl=Decimal(str(info.get("equity", 0) - info.get("balance", 0))),
-                realized_pnl_today=Decimal("0"),  # MetaApi doesn't provide daily P&L directly
+                realized_pnl_today=realized_today,
                 currency=info.get("currency", "USD"),
                 leverage=info.get("leverage", 1),
             )
@@ -960,6 +974,52 @@ class MetaTraderBroker(BaseBroker):
             if order.order_id == order_id:
                 return order
         return None
+
+    DEALS_CACHE_TTL = 60  # Cache deals for 60 seconds
+
+    async def get_deals_history(self, start_time: Optional[str] = None) -> List[Dict]:
+        """
+        Get closed deal history from MetaApi.
+
+        Args:
+            start_time: ISO 8601 start time. Defaults to start of today (UTC).
+
+        Returns:
+            List of deal dictionaries with profit, symbol, type, etc.
+        """
+        if not self._connected:
+            await self.connect()
+
+        cache_key = f"deals_{start_time or 'today'}"
+        cached = self._get_cache(cache_key)
+        if cached is not None:
+            return cached
+
+        if self._is_rate_limited():
+            if cache_key in self._cache:
+                return self._cache[cache_key]["data"]
+            return []
+
+        try:
+            if not start_time:
+                from datetime import datetime as dt, timezone
+                today = dt.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+                start_time = today.isoformat()
+
+            result = await self._request(
+                "GET",
+                f"/users/current/accounts/{self.account_id}/history-deals/time/{start_time}/0",
+            )
+
+            deals = result if isinstance(result, list) else result.get("deals", result.get("items", []))
+            self._set_cache(cache_key, deals, self.DEALS_CACHE_TTL)
+            return deals
+
+        except Exception as e:
+            print(f"[MetaTrader] Error fetching deal history: {e}")
+            if cache_key in self._cache:
+                return self._cache[cache_key]["data"]
+            return []
 
     def get_supported_symbols(self) -> List[str]:
         """Get list of internal symbols that have been successfully mapped to broker symbols."""

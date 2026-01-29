@@ -21,8 +21,9 @@ import { PriceTicker } from '@/components/trading/PriceTicker'
 import { PositionsTable } from '@/components/trading/PositionsTable'
 import { OrderHistory } from '@/components/trading/OrderHistory'
 import { StatCard } from '@/components/common/StatCard'
-import { aiApi, analyticsApi, tradingApi } from '@/lib/api'
+import { aiApi, analyticsApi, tradingApi, botApi } from '@/lib/api'
 import type { AccountSummary, ConsensusResult, PerformanceMetrics } from '@/lib/api'
+import type { Position } from '@/components/trading/PositionsTable'
 import { usePriceStream } from '@/hooks/useWebSocket'
 
 // Dynamic import for TradingView chart to avoid SSR issues
@@ -53,6 +54,8 @@ export default function DashboardPage() {
   const [consensusResult, setConsensusResult] = useState<ConsensusResult | null>(null)
   const [account, setAccount] = useState<AccountSummary | null>(null)
   const [performance, setPerformance] = useState<PerformanceMetrics | null>(null)
+  const [positions, setPositions] = useState<Position[]>([])
+  const [orders, setOrders] = useState<import('@/components/trading/OrderHistory').Order[]>([])
   const [currentPrice, setCurrentPrice] = useState<number>(0)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -63,7 +66,7 @@ export default function DashboardPage() {
   // Use WebSocket for real-time price streaming
   const { prices: streamPrices, isConnected: isPriceConnected } = usePriceStream([wsSymbol])
 
-  // Fetch account data
+  // Fetch all dashboard data
   const fetchAccountData = useCallback(async () => {
     try {
       const [accountData, performanceData] = await Promise.all([
@@ -77,6 +80,50 @@ export default function DashboardPage() {
       console.error('Failed to fetch account data:', err)
       setError('Could not connect to backend. Configure broker in Settings.')
     }
+
+    // Fetch positions from broker (separate try to not block account data)
+    try {
+      const posData = await tradingApi.getPositions()
+      const mapped: Position[] = posData.positions.map((p: import('@/lib/api').Position) => ({
+        id: p.position_id,
+        symbol: p.symbol,
+        side: p.side as 'long' | 'short',
+        size: p.size,
+        entryPrice: p.entry_price,
+        currentPrice: p.current_price,
+        pnl: parseFloat(p.unrealized_pnl),
+        pnlPercent: parseFloat(p.unrealized_pnl_percent || '0'),
+        stopLoss: p.stop_loss || undefined,
+        takeProfit: p.take_profit || undefined,
+        leverage: p.leverage || 1,
+        marginUsed: p.margin_used,
+        openedAt: p.opened_at,
+      }))
+      setPositions(mapped)
+    } catch (err) {
+      console.error('Failed to fetch positions:', err)
+    }
+
+    // Fetch trade history from bot as order history
+    try {
+      const tradeData = await botApi.getTrades(50)
+      const mapped: import('@/components/trading/OrderHistory').Order[] = tradeData.trades.map((t) => ({
+        id: t.id,
+        symbol: t.symbol,
+        side: (t.direction === 'LONG' ? 'buy' : 'sell') as 'buy' | 'sell',
+        type: 'market' as const,
+        size: String(t.units),
+        price: String(t.entry_price),
+        status: t.status === 'open' ? 'pending' as const :
+                t.profit_loss !== null ? 'filled' as const : 'cancelled' as const,
+        pnl: t.profit_loss ?? undefined,
+        closedAt: t.exit_timestamp ?? undefined,
+        createdAt: t.timestamp,
+      }))
+      setOrders(mapped)
+    } catch (err) {
+      console.error('Failed to fetch trade history:', err)
+    }
   }, [])
 
   // Update current price from WebSocket stream
@@ -89,7 +136,7 @@ export default function DashboardPage() {
     }
   }, [streamPrices, wsSymbol])
 
-  // Initial data load
+  // Initial data load + auto-refresh every 15 seconds
   useEffect(() => {
     const loadData = async () => {
       setIsLoading(true)
@@ -97,6 +144,13 @@ export default function DashboardPage() {
       setIsLoading(false)
     }
     loadData()
+
+    // Auto-refresh dashboard data
+    const interval = setInterval(() => {
+      fetchAccountData()
+    }, 15000) // 15 seconds
+
+    return () => clearInterval(interval)
   }, [fetchAccountData])
 
   // Run AI analysis - calls real backend
@@ -246,10 +300,15 @@ export default function DashboardPage() {
         {/* Positions Table */}
         <motion.div variants={itemVariants}>
           <PositionsTable
+            positions={positions}
             onClose={(id) => {
-              tradingApi.closePosition(id).then(() => {
-                fetchAccountData()
-              }).catch(console.error)
+              // Find position symbol by id
+              const pos = positions.find(p => p.id === id)
+              if (pos) {
+                tradingApi.closePosition(pos.symbol).then(() => {
+                  fetchAccountData()
+                }).catch(console.error)
+              }
             }}
             onModify={(id) => console.log('Modify position:', id)}
           />
@@ -257,7 +316,7 @@ export default function DashboardPage() {
 
         {/* Order History */}
         <motion.div variants={itemVariants}>
-          <OrderHistory />
+          <OrderHistory orders={orders} />
         </motion.div>
       </div>
 

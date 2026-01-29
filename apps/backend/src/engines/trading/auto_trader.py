@@ -455,7 +455,65 @@ class AutoTrader:
                 await asyncio.sleep(60)  # Wait before retrying
 
     async def _manage_open_positions(self):
-        """Manage open positions: Break Even, Trailing Stop, Partial TP."""
+        """Manage open positions: sync with broker, Break Even, Trailing Stop."""
+        # ====== SYNC: rimuovi posizioni chiuse dal broker ======
+        try:
+            broker_positions = await self.broker.get_positions()
+            broker_symbols = {p.symbol for p in broker_positions}
+            # Also map symbols without suffix (e.g., EURUSDm -> EURUSD)
+            broker_symbols_clean = set()
+            for s in broker_symbols:
+                broker_symbols_clean.add(s)
+                # Remove common broker suffixes
+                for suffix in ('m', '.a', '.b', '.c', '.i', '.e', '_SB', '.pro', '.raw'):
+                    if s.endswith(suffix):
+                        broker_symbols_clean.add(s[:-len(suffix)])
+
+            closed_trades = []
+            for trade in self.state.open_positions:
+                # Normalize trade symbol for comparison
+                trade_symbol_variants = {trade.symbol}
+                normalized = trade.symbol.replace("_", "").replace("/", "")
+                trade_symbol_variants.add(normalized)
+
+                # Check if any variant exists in broker positions
+                is_still_open = bool(trade_symbol_variants & broker_symbols_clean)
+
+                if not is_still_open:
+                    # Position closed by broker (SL/TP hit or manual close)
+                    trade.status = "closed"
+                    trade.exit_timestamp = datetime.utcnow()
+
+                    # Try to get final P&L from current price
+                    try:
+                        tick = await self.broker.get_current_price(trade.symbol)
+                        exit_price = float(tick.mid)
+                        trade.exit_price = exit_price
+                        if trade.direction == "LONG":
+                            trade.profit_loss = (exit_price - trade.entry_price) * trade.units
+                        else:
+                            trade.profit_loss = (trade.entry_price - exit_price) * trade.units
+                    except Exception:
+                        trade.exit_price = None
+                        trade.profit_loss = None
+
+                    closed_trades.append(trade)
+                    self.state.trade_history.append(trade)
+                    self._log_analysis(trade.symbol, "trade",
+                        f"📕 Posizione CHIUSA (rilevata dal broker) | P&L: {trade.profit_loss or 'N/A'}")
+
+            # Remove closed trades from open_positions
+            if closed_trades:
+                self.state.open_positions = [
+                    t for t in self.state.open_positions if t not in closed_trades
+                ]
+                self._log_analysis("ALL", "info",
+                    f"🔄 Sync broker: {len(closed_trades)} posizioni chiuse rimosse, {len(self.state.open_positions)} ancora aperte")
+
+        except Exception as e:
+            print(f"[AutoTrader] Error syncing positions with broker: {e}")
+
+        # ====== Gestione posizioni aperte: BE, Trailing Stop ======
         for trade in self.state.open_positions:
             try:
                 tick = await self.broker.get_current_price(trade.symbol)

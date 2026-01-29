@@ -555,6 +555,30 @@ export const botApi = {
   },
 
   /**
+   * Get bot trade history
+   */
+  getTrades: async (limit: number = 50): Promise<{
+    trades: Array<{
+      id: string
+      symbol: string
+      direction: string
+      entry_price: number
+      exit_price: number | null
+      stop_loss: number
+      take_profit: number
+      units: number
+      timestamp: string
+      exit_timestamp: string | null
+      confidence: number
+      status: string
+      profit_loss: number | null
+    }>
+    total: number
+  }> => {
+    return fetchApi(`/api/v1/bot/trades?limit=${limit}`)
+  },
+
+  /**
    * Get AI analysis logs
    */
   getLogs: async (limit: number = 30): Promise<{
