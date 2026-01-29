@@ -620,7 +620,8 @@ class AutoTrader:
             from decimal import Decimal
             import traceback
 
-            self._log_analysis(symbol, "trade", f"📋 Esecuzione trade {consensus.get('direction')} su {symbol}...")
+            direction = consensus.get("direction", "HOLD")
+            self._log_analysis(symbol, "trade", f"📋 Esecuzione trade {direction} su {symbol}...")
 
             # Verifica che stop_loss e take_profit siano presenti
             stop_loss = consensus.get("stop_loss")
@@ -630,25 +631,57 @@ class AutoTrader:
                 self._log_analysis(symbol, "error", f"❌ Trade annullato: SL={stop_loss}, TP={take_profit} — mancano SL/TP nel consenso")
                 return
 
+            stop_loss = float(stop_loss)
+            take_profit = float(take_profit)
+
             # Get current price
             self._log_analysis(symbol, "info", f"Recupero prezzo corrente per {symbol}...")
             tick = await self.broker.get_current_price(symbol)
             current_price = float(tick.mid)
             self._log_analysis(symbol, "info", f"Prezzo corrente: {current_price}")
 
-            # Calculate position size
+            # ====== VALIDAZIONE SL/TP rispetto alla direzione ======
+            if direction == "LONG":
+                # LONG: SL deve essere SOTTO il prezzo, TP deve essere SOPRA
+                if stop_loss >= current_price:
+                    self._log_analysis(symbol, "error", f"⚠️ SL ({stop_loss}) >= prezzo ({current_price}) per LONG — SL invertito/invalido, correggo...")
+                    # Usa una distanza di default basata sul prezzo (0.5%)
+                    stop_loss = round(current_price * 0.995, 5)
+                    self._log_analysis(symbol, "info", f"SL corretto a: {stop_loss} (0.5% sotto prezzo)")
+
+                if take_profit <= current_price:
+                    self._log_analysis(symbol, "error", f"⚠️ TP ({take_profit}) <= prezzo ({current_price}) per LONG — TP invertito/invalido, correggo...")
+                    # Calcola TP proporzionale: distanza SL * 2 (R:R 1:2)
+                    sl_dist = current_price - stop_loss
+                    take_profit = round(current_price + (sl_dist * 2), 5)
+                    self._log_analysis(symbol, "info", f"TP corretto a: {take_profit} (R:R 1:2)")
+
+            elif direction == "SHORT":
+                # SHORT: SL deve essere SOPRA il prezzo, TP deve essere SOTTO
+                if stop_loss <= current_price:
+                    self._log_analysis(symbol, "error", f"⚠️ SL ({stop_loss}) <= prezzo ({current_price}) per SHORT — SL invertito/invalido, correggo...")
+                    stop_loss = round(current_price * 1.005, 5)
+                    self._log_analysis(symbol, "info", f"SL corretto a: {stop_loss} (0.5% sopra prezzo)")
+
+                if take_profit >= current_price:
+                    self._log_analysis(symbol, "error", f"⚠️ TP ({take_profit}) >= prezzo ({current_price}) per SHORT — TP invertito/invalido, correggo...")
+                    sl_dist = stop_loss - current_price
+                    take_profit = round(current_price - (sl_dist * 2), 5)
+                    self._log_analysis(symbol, "info", f"TP corretto a: {take_profit} (R:R 1:2)")
+
+            # ====== CALCOLO POSIZIONE ======
             account_info = await self.broker.get_account_info()
             account_balance = float(account_info.balance)
 
             risk_amount = account_balance * (self.config.risk_per_trade_percent / 100)
-            sl_distance = abs(current_price - float(stop_loss))
+            sl_distance = abs(current_price - stop_loss)
 
             if sl_distance == 0:
                 self._log_analysis(symbol, "error", f"❌ Trade annullato: distanza SL = 0 (prezzo={current_price}, SL={stop_loss})")
                 return
 
             units = risk_amount / sl_distance
-            side = OrderSide.BUY if consensus["direction"] == "LONG" else OrderSide.SELL
+            side = OrderSide.BUY if direction == "LONG" else OrderSide.SELL
 
             self._log_analysis(symbol, "trade", f"📊 Ordine: {side.value} {units:.2f} unità | SL: {stop_loss} | TP: {take_profit} | Rischio: {self.config.risk_per_trade_percent}% (${risk_amount:.2f})")
 
@@ -656,7 +689,7 @@ class AutoTrader:
                 symbol=symbol,
                 side=side,
                 order_type=OrderType.MARKET,
-                size=Decimal(str(units)),
+                size=Decimal(str(round(units, 2))),
                 stop_loss=Decimal(str(stop_loss)),
                 take_profit=Decimal(str(take_profit)),
             )
@@ -668,10 +701,10 @@ class AutoTrader:
                 trade = TradeRecord(
                     id=order_result.order_id,
                     symbol=symbol,
-                    direction=consensus["direction"],
+                    direction=direction,
                     entry_price=fill_price,
-                    stop_loss=float(stop_loss),
-                    take_profit=float(take_profit),
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
                     units=units,
                     timestamp=datetime.utcnow(),
                     confidence=consensus["confidence"],
@@ -690,7 +723,7 @@ class AutoTrader:
             elif order_result.is_rejected:
                 self._log_analysis(symbol, "error", f"❌ ORDINE RIFIUTATO dal broker: {order_result.error_message or 'motivo sconosciuto'}")
             else:
-                self._log_analysis(symbol, "info", f"⏳ Ordine in stato: {order_result.status.value} — ID: {order_result.order_id}")
+                self._log_analysis(symbol, "error", f"⚠️ Ordine in stato: {order_result.status.value} — ID: {order_result.order_id or 'vuoto'} — possibile errore broker")
 
         except Exception as e:
             error_detail = traceback.format_exc()
