@@ -701,7 +701,7 @@ class AutoTrader:
             self._log_analysis(symbol, "info", f"Prezzo corrente: {current_price}")
 
             # ====== VALIDAZIONE SL/TP rispetto alla direzione ======
-            MAX_RR_RATIO = 2.0  # Max Risk:Reward ratio (1:2) — TP non oltre 2x la distanza SL
+            MAX_RR_RATIO = 3.0  # Max Risk:Reward ratio (1:3) — TP non oltre 3x la distanza SL
 
             if direction == "LONG":
                 # LONG: SL deve essere SOTTO il prezzo, TP deve essere SOPRA
