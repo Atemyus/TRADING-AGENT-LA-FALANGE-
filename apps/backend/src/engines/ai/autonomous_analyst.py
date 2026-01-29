@@ -241,6 +241,7 @@ class AutonomousAnalyst:
         symbol: str,
         timeframe: str = "15m",
         chart_preset: str = "complete",
+        prefetched_data: Optional[Any] = None,
     ) -> AutonomousAnalysisResult:
         """
         Run autonomous analysis with a single AI model.
@@ -269,8 +270,10 @@ class AutonomousAnalyst:
         start_time = datetime.now()
 
         try:
-            # 1. Fetch market data
-            market_data = await self.market_data.get_market_data(symbol, timeframe, 100)
+            # 1. Fetch market data (use prefetched if available to avoid rate limits)
+            market_data = prefetched_data
+            if market_data is None:
+                market_data = await self.market_data.get_market_data(symbol, timeframe, 100)
 
             if not market_data or not market_data.candles:
                 return AutonomousAnalysisResult(
@@ -389,8 +392,21 @@ class AutonomousAnalyst:
         Run autonomous analysis with all AI models in parallel.
         Each model independently decides its analysis approach.
         """
+        await self.initialize()
+
         if models is None:
             models = list(AIModel)
+
+        # Pre-fetch market data UNA SOLA VOLTA per evitare rate limiting Yahoo (429)
+        prefetched_data = None
+        try:
+            prefetched_data = await self.market_data.get_market_data(symbol, timeframe, 100)
+            if prefetched_data and prefetched_data.candles:
+                print(f"[AutonomousAnalyst] Pre-fetched {len(prefetched_data.candles)} candles for {symbol}/{timeframe}")
+            else:
+                print(f"[AutonomousAnalyst] ⚠️ No candle data for {symbol}/{timeframe}")
+        except Exception as e:
+            print(f"[AutonomousAnalyst] ⚠️ Failed to pre-fetch market data for {symbol}: {e}")
 
         # Each model gets a different chart preset for diverse perspectives
         presets = ["momentum", "trend", "smc", "complete", "volatility", "smc"]
@@ -400,7 +416,8 @@ class AutonomousAnalyst:
                 model,
                 symbol,
                 timeframe,
-                presets[i % len(presets)]
+                presets[i % len(presets)],
+                prefetched_data=prefetched_data,
             )
             for i, model in enumerate(models)
         ]

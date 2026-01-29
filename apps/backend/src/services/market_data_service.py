@@ -208,19 +208,29 @@ class MarketDataService:
                 print(f"Twelve Data fetch failed: {e}")
 
         if data is None:
-            # Fallback to Yahoo Finance
-            try:
-                yahoo_sym = self._get_yahoo_symbol(symbol)
-                print(f"[MarketData] Fetching {symbol} from Yahoo Finance (yahoo_symbol={yahoo_sym}, timeframe={timeframe})")
-                data = await self._fetch_yahoo(symbol, timeframe, bars)
-                if data and data.candles:
-                    print(f"[MarketData] Got {len(data.candles)} candles for {symbol} from Yahoo")
-                else:
-                    print(f"[MarketData] Yahoo returned no candles for {symbol}")
-            except Exception as e:
-                print(f"[MarketData] Yahoo Finance fetch failed for {symbol}: {e}")
-                # Return empty data with static price
-                data = self._get_fallback_data(symbol, timeframe)
+            # Fallback to Yahoo Finance - con retry per 429 rate limit
+            yahoo_sym = self._get_yahoo_symbol(symbol)
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    if attempt > 0:
+                        wait_time = 2 ** attempt  # 2s, 4s
+                        print(f"[MarketData] Retry {attempt+1}/{max_retries} per {symbol} dopo {wait_time}s...")
+                        await asyncio.sleep(wait_time)
+                    print(f"[MarketData] Fetching {symbol} from Yahoo Finance (yahoo_symbol={yahoo_sym}, timeframe={timeframe})")
+                    data = await self._fetch_yahoo(symbol, timeframe, bars)
+                    if data and data.candles:
+                        print(f"[MarketData] Got {len(data.candles)} candles for {symbol} from Yahoo")
+                    else:
+                        print(f"[MarketData] Yahoo returned no candles for {symbol}")
+                    break  # Successo, esci dal retry loop
+                except Exception as e:
+                    error_msg = str(e)
+                    print(f"[MarketData] Yahoo Finance fetch failed for {symbol} (attempt {attempt+1}): {e}")
+                    if "429" in error_msg and attempt < max_retries - 1:
+                        continue  # Ritenta
+                    # Ultimo tentativo fallito o errore non-429
+                    data = self._get_fallback_data(symbol, timeframe)
 
         # Cache the result
         self._cache[cache_key] = (data, datetime.utcnow())

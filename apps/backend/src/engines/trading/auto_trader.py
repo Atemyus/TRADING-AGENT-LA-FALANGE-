@@ -641,6 +641,9 @@ class AutoTrader:
                     "error": str(e)
                 })
 
+            # Pausa tra i simboli per evitare rate limit Yahoo Finance
+            await asyncio.sleep(2)
+
     def _should_enter_trade(self, result: MultiTimeframeResult) -> bool:
         """Check if analysis result meets trading criteria."""
         # Must have a direction (not HOLD)
