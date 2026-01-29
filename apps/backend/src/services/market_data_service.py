@@ -145,10 +145,21 @@ class MarketDataService:
         self._cache: Dict[str, Tuple[MarketData, datetime]] = {}
         self._cache_ttl = timedelta(seconds=30)  # Cache for 30 seconds
 
+    def _normalize_symbol(self, symbol: str) -> str:
+        """Normalize symbol to internal underscore format (EUR/USD -> EUR_USD)."""
+        normalized = symbol.replace("/", "_")
+        return normalized
+
     def _get_yahoo_symbol(self, symbol: str) -> str:
         """Convert internal symbol to Yahoo Finance format."""
+        normalized = self._normalize_symbol(symbol)
+        if normalized in SYMBOL_MAPPINGS:
+            return SYMBOL_MAPPINGS[normalized]["yahoo"]
         if symbol in SYMBOL_MAPPINGS:
             return SYMBOL_MAPPINGS[symbol]["yahoo"]
+        # Try common forex pattern: EUR/USD -> EURUSD=X
+        if "/" in symbol:
+            return symbol.replace("/", "") + "=X"
         return symbol
 
     def _get_cache_key(self, symbol: str, timeframe: str) -> str:
@@ -199,9 +210,15 @@ class MarketDataService:
         if data is None:
             # Fallback to Yahoo Finance
             try:
+                yahoo_sym = self._get_yahoo_symbol(symbol)
+                print(f"[MarketData] Fetching {symbol} from Yahoo Finance (yahoo_symbol={yahoo_sym}, timeframe={timeframe})")
                 data = await self._fetch_yahoo(symbol, timeframe, bars)
+                if data and data.candles:
+                    print(f"[MarketData] Got {len(data.candles)} candles for {symbol} from Yahoo")
+                else:
+                    print(f"[MarketData] Yahoo returned no candles for {symbol}")
             except Exception as e:
-                print(f"Yahoo Finance fetch failed: {e}")
+                print(f"[MarketData] Yahoo Finance fetch failed for {symbol}: {e}")
                 # Return empty data with static price
                 data = self._get_fallback_data(symbol, timeframe)
 
@@ -304,7 +321,8 @@ class MarketDataService:
         if not self.twelve_data_api_key:
             raise ValueError("Twelve Data API key not configured")
 
-        twelve_symbol = SYMBOL_MAPPINGS.get(symbol, {}).get("twelve", symbol)
+        normalized = self._normalize_symbol(symbol)
+        twelve_symbol = SYMBOL_MAPPINGS.get(normalized, SYMBOL_MAPPINGS.get(symbol, {})).get("twelve", symbol)
 
         url = "https://api.twelvedata.com/time_series"
         params = {
@@ -381,7 +399,8 @@ class MarketDataService:
             "ETH_USD": Decimal("2650"),
         }
 
-        price = fallback_prices.get(symbol, Decimal("1.0"))
+        normalized = self._normalize_symbol(symbol)
+        price = fallback_prices.get(normalized, fallback_prices.get(symbol, Decimal("1.0")))
 
         return MarketData(
             symbol=symbol,
