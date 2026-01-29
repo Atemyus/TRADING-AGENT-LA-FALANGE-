@@ -196,9 +196,9 @@ class AutoTrader:
             details=details,
         )
         self.state.analysis_logs.append(entry)
-        # Keep last 100 entries
-        if len(self.state.analysis_logs) > 100:
-            self.state.analysis_logs = self.state.analysis_logs[-100:]
+        # Keep last 500 entries
+        if len(self.state.analysis_logs) > 500:
+            self.state.analysis_logs = self.state.analysis_logs[-500:]
 
     def add_callback(self, callback: Callable):
         """Add a callback for trade notifications."""
@@ -534,7 +534,7 @@ class AutoTrader:
                     direction = getattr(r, 'direction', 'N/A')
                     confidence = getattr(r, 'confidence', 0)
                     error = getattr(r, 'error', None)
-                    reasoning = getattr(r, 'reasoning', '')[:200]
+                    reasoning = getattr(r, 'reasoning', '')
                     display_msg = f"[{model_name}] {direction} ({confidence:.0f}%): {error or reasoning}"
                     log_type = "error" if error else "analysis"
                     self._log_analysis(symbol, log_type, display_msg, {
@@ -542,6 +542,7 @@ class AutoTrader:
                         "direction": direction,
                         "confidence": confidence,
                         "error": error,
+                        "reasoning": reasoning,
                     })
 
                 self._log_analysis(symbol, "analysis", f"Consenso: {consensus.get('direction', 'N/A')} - Confidence: {consensus.get('confidence', 0):.1f}% - Modelli: {consensus.get('models_agree', 0)}/{consensus.get('total_models', 0)}", {
