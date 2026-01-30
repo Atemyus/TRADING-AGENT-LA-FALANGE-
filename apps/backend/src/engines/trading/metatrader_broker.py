@@ -685,7 +685,16 @@ class MetaTraderBroker(BaseBroker):
             "symbol": broker_symbol,
             "actionType": action_type,
             "volume": float(order.size),
+            # Filling modes in priority order - MetaApi will use the first one supported by the broker
+            "fillingModes": ["ORDER_FILLING_FOK", "ORDER_FILLING_IOC"],
+            # Magic number for trade identification (La Falange bot)
+            "magic": 777555,
+            "comment": "LaFalange",
         }
+
+        # Add slippage for market orders (in pips)
+        if order.order_type == OrderType.MARKET:
+            payload["slippage"] = 10  # Allow up to 10 points of slippage
 
         # Add price for limit/stop orders
         if order.order_type in [OrderType.LIMIT, OrderType.STOP] and order.price:
@@ -697,61 +706,98 @@ class MetaTraderBroker(BaseBroker):
         if order.take_profit:
             payload["takeProfit"] = float(order.take_profit)
 
-        try:
-            print(f"[MetaTrader] Placing order: {payload}")
-            result = await self._request(
-                "POST",
-                f"/users/current/accounts/{self.account_id}/trade",
-                json=payload,
-            )
-            print(f"[MetaTrader] Order response: {result}")
+        # Map known MT5 error stringCodes to human-readable messages
+        MT5_ERROR_MESSAGES = {
+            "TRADE_RETCODE_INVALID": "Richiesta non valida",
+            "TRADE_RETCODE_INVALID_STOPS": "SL/TP non validi (troppo vicini al prezzo o livello non permesso dal broker)",
+            "TRADE_RETCODE_INVALID_VOLUME": "Volume non valido (controlla lotto min/max/step del simbolo)",
+            "TRADE_RETCODE_INVALID_PRICE": "Prezzo non valido",
+            "TRADE_RETCODE_INVALID_FILL": "Tipo di riempimento non supportato",
+            "TRADE_RETCODE_NO_MONEY": "Margine insufficiente per aprire la posizione",
+            "TRADE_RETCODE_MARKET_CLOSED": "Mercato chiuso",
+            "TRADE_RETCODE_TRADE_DISABLED": "Trading disabilitato sul simbolo",
+            "TRADE_RETCODE_TOO_MANY_REQUESTS": "Troppe richieste",
+            "TRADE_RETCODE_LIMIT_ORDERS": "Troppi ordini limite pendenti",
+            "TRADE_RETCODE_LIMIT_VOLUME": "Volume cumulativo troppo alto",
+            "TRADE_RETCODE_ORDER_LOCKED": "Ordine bloccato in elaborazione",
+            "TRADE_RETCODE_FROZEN": "Ordine/posizione congelata",
+            "TRADE_RETCODE_REJECT": "Richiesta rifiutata dal broker",
+            "TRADE_RETCODE_CONNECTION": "Nessuna connessione al server di trading",
+            "TRADE_RETCODE_TIMEOUT": "Timeout della richiesta",
+            "TRADE_RETCODE_CANCEL": "Ordine cancellato",
+            "TRADE_RETCODE_POSITION_CLOSED": "Posizione già chiusa",
+            "TRADE_RETCODE_UNKNOWN": "Codice di ritorno sconosciuto dal broker",
+        }
 
-            order_id = str(result.get("orderId", result.get("positionId", "")))
-            is_filled = bool(result.get("positionId"))
-            string_code = result.get("stringCode", "")
-            numeric_code = result.get("numericCode")
-            error_msg = result.get("errorMessage", result.get("message", ""))
+        SUCCESS_CODES = {
+            "TRADE_RETCODE_DONE",
+            "TRADE_RETCODE_PLACED",
+            "TRADE_RETCODE_DONE_PARTIAL",
+            "ERR_NO_ERROR",
+            "",
+        }
+        SUCCESS_NUMERIC = {10008, 10009, 10010}
 
-            # Log full response for debugging
-            print(f"[MetaTrader] Full trade response: {result}")
+        # Filling mode strategies to try in order
+        FILLING_STRATEGIES = [
+            ["ORDER_FILLING_FOK", "ORDER_FILLING_IOC"],   # Both FOK > IOC
+            ["ORDER_FILLING_IOC"],                          # IOC only
+            ["ORDER_FILLING_FOK"],                          # FOK only
+            ["ORDER_FILLING_RETURN"],                       # RETURN (exchange-style)
+        ]
 
-            # Map known MT5 error stringCodes to human-readable messages
-            MT5_ERROR_MESSAGES = {
-                "TRADE_RETCODE_INVALID": "Richiesta non valida",
-                "TRADE_RETCODE_INVALID_STOPS": "SL/TP non validi (troppo vicini al prezzo o livello non permesso dal broker)",
-                "TRADE_RETCODE_INVALID_VOLUME": "Volume non valido (controlla lotto min/max/step del simbolo)",
-                "TRADE_RETCODE_INVALID_PRICE": "Prezzo non valido",
-                "TRADE_RETCODE_INVALID_FILL": "Tipo di riempimento non supportato",
-                "TRADE_RETCODE_NO_MONEY": "Margine insufficiente per aprire la posizione",
-                "TRADE_RETCODE_MARKET_CLOSED": "Mercato chiuso",
-                "TRADE_RETCODE_TRADE_DISABLED": "Trading disabilitato sul simbolo",
-                "TRADE_RETCODE_TOO_MANY_REQUESTS": "Troppe richieste",
-                "TRADE_RETCODE_LIMIT_ORDERS": "Troppi ordini limite pendenti",
-                "TRADE_RETCODE_LIMIT_VOLUME": "Volume cumulativo troppo alto",
-                "TRADE_RETCODE_ORDER_LOCKED": "Ordine bloccato in elaborazione",
-                "TRADE_RETCODE_FROZEN": "Ordine/posizione congelata",
-                "TRADE_RETCODE_REJECT": "Richiesta rifiutata dal broker",
-                "TRADE_RETCODE_CONNECTION": "Nessuna connessione al server di trading",
-                "TRADE_RETCODE_TIMEOUT": "Timeout della richiesta",
-                "TRADE_RETCODE_CANCEL": "Ordine cancellato",
-                "TRADE_RETCODE_POSITION_CLOSED": "Posizione già chiusa",
-            }
+        # Retry with different filling modes if UNKNOWN or INVALID_FILL
+        RETRYABLE_CODES = {"TRADE_RETCODE_UNKNOWN", "TRADE_RETCODE_INVALID_FILL"}
+        last_result = None
+        last_reject_reason = ""
 
-            # Check for success
-            SUCCESS_CODES = {
-                "TRADE_RETCODE_DONE",
-                "TRADE_RETCODE_PLACED",
-                "TRADE_RETCODE_DONE_PARTIAL",
-                "",
-            }
-            SUCCESS_NUMERIC = {10008, 10009, 10010}
+        for attempt, filling_modes in enumerate(FILLING_STRATEGIES):
+            payload["fillingModes"] = filling_modes
 
-            is_success_code = string_code in SUCCESS_CODES or (numeric_code in SUCCESS_NUMERIC if numeric_code else False)
-            has_order = bool(order_id)
+            try:
+                print(f"[MetaTrader] Placing order (attempt {attempt + 1}/{len(FILLING_STRATEGIES)}, filling={filling_modes}): {payload}")
+                result = await self._request(
+                    "POST",
+                    f"/users/current/accounts/{self.account_id}/trade",
+                    json=payload,
+                )
+                print(f"[MetaTrader] Order response: {result}")
+                last_result = result
 
-            # Rejection: no positionId, no orderId, not a success code
-            if not is_filled and not is_success_code and not has_order:
-                # Build clear error message with MT5 code translation
+                order_id = str(result.get("orderId", result.get("positionId", "")))
+                is_filled = bool(result.get("positionId"))
+                string_code = result.get("stringCode", "")
+                numeric_code = result.get("numericCode")
+                error_msg = result.get("errorMessage", result.get("message", ""))
+
+                # Log full response for debugging
+                print(f"[MetaTrader] Full trade response: {result}")
+
+                is_success_code = string_code in SUCCESS_CODES or (numeric_code in SUCCESS_NUMERIC if numeric_code else False)
+                has_order = bool(order_id)
+
+                # Success path
+                if is_filled or is_success_code or has_order:
+                    if has_order and not is_success_code:
+                        print(f"[MetaTrader] WARNING: Unknown stringCode '{string_code}' (numericCode={numeric_code}) but order exists - treating as success")
+
+                    order_status = OrderStatus.FILLED if is_filled else (OrderStatus.PENDING if has_order else OrderStatus.REJECTED)
+                    print(f"[MetaTrader] Order status: {order_status.value} | stringCode: {string_code} | orderId: {order_id} | filling: {filling_modes}")
+
+                    return OrderResult(
+                        order_id=order_id,
+                        symbol=order.symbol,
+                        side=order.side,
+                        order_type=order.order_type,
+                        status=order_status,
+                        size=order.size,
+                        filled_size=order.size if is_filled else Decimal("0"),
+                        price=order.price,
+                        average_fill_price=Decimal(str(result.get("openPrice", 0))) if result.get("openPrice") else None,
+                        commission=Decimal(str(result.get("commission", 0))),
+                    )
+
+                # Rejection - check if retryable
                 known_error = MT5_ERROR_MESSAGES.get(string_code)
                 if known_error:
                     reject_reason = f"{known_error} [{string_code}]"
@@ -761,6 +807,17 @@ class MetaTraderBroker(BaseBroker):
                     reject_reason = f"Broker: {string_code} (numericCode={numeric_code})"
                 else:
                     reject_reason = f"Risposta senza codice - full response: {result}"
+
+                last_reject_reason = reject_reason
+
+                # If retryable code and not last attempt, try next filling mode
+                if string_code in RETRYABLE_CODES and attempt < len(FILLING_STRATEGIES) - 1:
+                    import asyncio
+                    print(f"[MetaTrader] Retryable error ({string_code}) with filling={filling_modes}, trying next filling mode...")
+                    await asyncio.sleep(0.5)  # Brief pause before retry
+                    continue
+
+                # Non-retryable or last attempt - return rejection
                 print(f"[MetaTrader] Order REJECTED - {reject_reason}")
                 return OrderResult(
                     order_id=order_id,
@@ -773,40 +830,43 @@ class MetaTraderBroker(BaseBroker):
                     error_message=str(reject_reason),
                 )
 
-            # Order exists with unknown code - treat as success with warning
-            if has_order and not is_success_code:
-                print(f"[MetaTrader] WARNING: Unknown stringCode '{string_code}' (numericCode={numeric_code}) but order exists - treating as success")
+            except Exception as e:
+                import traceback
+                print(f"[MetaTrader] Order EXCEPTION (attempt {attempt + 1}): {str(e)}")
+                print(f"[MetaTrader] Traceback: {traceback.format_exc()}")
 
-            status = OrderStatus.FILLED if is_filled else (OrderStatus.PENDING if has_order else OrderStatus.REJECTED)
-            print(f"[MetaTrader] Order status: {status.value} | stringCode: {string_code} | orderId: {order_id}")
+                # If it's a retryable exception and not last attempt, try next filling mode
+                if attempt < len(FILLING_STRATEGIES) - 1:
+                    error_str = str(e).lower()
+                    if "unknown" in error_str or "fill" in error_str or "retcode" in error_str:
+                        import asyncio
+                        print(f"[MetaTrader] Retrying with next filling mode...")
+                        await asyncio.sleep(0.5)
+                        continue
 
-            return OrderResult(
-                order_id=order_id,
-                symbol=order.symbol,
-                side=order.side,
-                order_type=order.order_type,
-                status=status,
-                size=order.size,
-                filled_size=order.size if is_filled else Decimal("0"),
-                price=order.price,
-                average_fill_price=Decimal(str(result.get("openPrice", 0))) if result.get("openPrice") else None,
-                commission=Decimal(str(result.get("commission", 0))),
-            )
+                return OrderResult(
+                    order_id="",
+                    symbol=order.symbol,
+                    side=order.side,
+                    order_type=order.order_type,
+                    status=OrderStatus.REJECTED,
+                    size=order.size,
+                    filled_size=Decimal("0"),
+                    error_message=f"Errore connessione broker: {str(e)}",
+                )
 
-        except Exception as e:
-            import traceback
-            print(f"[MetaTrader] Order EXCEPTION: {str(e)}")
-            print(f"[MetaTrader] Traceback: {traceback.format_exc()}")
-            return OrderResult(
-                order_id="",
-                symbol=order.symbol,
-                side=order.side,
-                order_type=order.order_type,
-                status=OrderStatus.REJECTED,
-                size=order.size,
-                filled_size=Decimal("0"),
-                error_message=f"Errore connessione broker: {str(e)}",
-            )
+        # Exhausted all filling strategies
+        print(f"[MetaTrader] All filling modes exhausted. Last rejection: {last_reject_reason}")
+        return OrderResult(
+            order_id="",
+            symbol=order.symbol,
+            side=order.side,
+            order_type=order.order_type,
+            status=OrderStatus.REJECTED,
+            size=order.size,
+            filled_size=Decimal("0"),
+            error_message=f"Tutti i filling mode falliti. Ultimo errore: {last_reject_reason}",
+        )
 
     async def close_position(
         self,
