@@ -540,7 +540,16 @@ class MetaTraderBroker(BaseBroker):
             )
             conn_status = account.get("connectionStatus", "UNKNOWN")
             state = account.get("state", "UNKNOWN")
-            print(f"[MetaTrader] Pre-trade check: state={state}, connectionStatus={conn_status}")
+
+            # Log full diagnostic info for debugging
+            print(f"[MetaTrader] === ACCOUNT DIAGNOSTICS ===")
+            print(f"[MetaTrader] state={state} | connectionStatus={conn_status}")
+            print(f"[MetaTrader] platform={account.get('platform')} | type={account.get('type')}")
+            print(f"[MetaTrader] server={account.get('server')} | login={account.get('login')}")
+            print(f"[MetaTrader] region={account.get('region')} | reliability={account.get('reliability')}")
+            print(f"[MetaTrader] manualTrades={account.get('manualTrades')} | magic={account.get('magic')}")
+            print(f"[MetaTrader] accessRights={account.get('accessRights')} | tradeMode={account.get('tradeMode')}")
+            print(f"[MetaTrader] === END DIAGNOSTICS ===")
 
             if state != "DEPLOYED":
                 print(f"[MetaTrader] Account not deployed (state={state}), deploying...")
@@ -865,6 +874,24 @@ class MetaTraderBroker(BaseBroker):
                     reject_reason = f"Risposta senza codice - full response: {result}"
 
                 last_reject_reason = reject_reason
+
+                # On first UNKNOWN failure, log account-information for diagnostics
+                if string_code == "TRADE_RETCODE_UNKNOWN" and attempt == 0:
+                    try:
+                        acct_info = await self._request(
+                            "GET",
+                            f"/users/current/accounts/{self.account_id}/account-information",
+                        )
+                        print(f"[MetaTrader] === ACCOUNT-INFO DIAGNOSTICS ===")
+                        print(f"[MetaTrader] tradeMode={acct_info.get('tradeMode')} | tradeAllowed={acct_info.get('tradeAllowed')}")
+                        print(f"[MetaTrader] leverage={acct_info.get('leverage')} | balance={acct_info.get('balance')}")
+                        print(f"[MetaTrader] platform={acct_info.get('platform')} | broker={acct_info.get('broker')}")
+                        print(f"[MetaTrader] server={acct_info.get('server')} | currency={acct_info.get('currency')}")
+                        print(f"[MetaTrader] name={acct_info.get('name')} | type={acct_info.get('type')}")
+                        print(f"[MetaTrader] Full account-info: {acct_info}")
+                        print(f"[MetaTrader] === END ACCOUNT-INFO ===")
+                    except Exception as diag_err:
+                        print(f"[MetaTrader] Could not fetch diagnostics: {diag_err}")
 
                 # If retryable and not last attempt, wait and retry
                 if string_code in RETRYABLE_CODES and attempt < MAX_RETRIES - 1:
