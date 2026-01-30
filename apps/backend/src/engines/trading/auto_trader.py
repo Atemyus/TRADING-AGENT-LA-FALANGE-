@@ -774,6 +774,7 @@ class AutoTrader:
             self._log_analysis(symbol, "info", f"Prezzo corrente: {current_price}")
 
             # ====== VALIDAZIONE SL/TP rispetto alla direzione ======
+            MIN_RR_RATIO = 2.0  # Min Risk:Reward ratio (1:2) — TP almeno 2x la distanza SL
             MAX_RR_RATIO = 3.0  # Max Risk:Reward ratio (1:3) — TP non oltre 3x la distanza SL
 
             # Round SL/TP from AI to correct decimals for this instrument
@@ -792,13 +793,20 @@ class AutoTrader:
 
                 if take_profit <= current_price:
                     self._log_analysis(symbol, "error", f"⚠️ TP ({take_profit}) <= prezzo ({current_price}) per LONG — TP invertito/invalido, correggo...")
-                    take_profit = _rp(current_price + (sl_dist * MAX_RR_RATIO))
-                    self._log_analysis(symbol, "info", f"TP corretto a: {take_profit} (R:R 1:{MAX_RR_RATIO})")
+                    take_profit = _rp(current_price + (sl_dist * MIN_RR_RATIO))
+                    self._log_analysis(symbol, "info", f"TP corretto a: {take_profit} (R:R 1:{MIN_RR_RATIO})")
                 else:
-                    # Cap TP: se il TP è troppo lontano (oltre MAX_RR_RATIO x SL), limitalo
                     tp_dist = take_profit - current_price
                     actual_rr = tp_dist / sl_dist if sl_dist > 0 else 0
-                    if actual_rr > MAX_RR_RATIO:
+
+                    # Enforce minimum R:R — se TP troppo vicino, spostalo a MIN_RR_RATIO
+                    if actual_rr < MIN_RR_RATIO:
+                        old_tp = take_profit
+                        take_profit = _rp(current_price + (sl_dist * MIN_RR_RATIO))
+                        self._log_analysis(symbol, "info", f"📏 TP troppo vicino ({old_tp}, R:R 1:{actual_rr:.1f}) → spostato a {take_profit} (R:R 1:{MIN_RR_RATIO})")
+
+                    # Cap TP: se il TP è troppo lontano (oltre MAX_RR_RATIO x SL), limitalo
+                    elif actual_rr > MAX_RR_RATIO:
                         old_tp = take_profit
                         take_profit = _rp(current_price + (sl_dist * MAX_RR_RATIO))
                         self._log_analysis(symbol, "info", f"📏 TP troppo lontano ({old_tp}, R:R 1:{actual_rr:.1f}) → cappato a {take_profit} (R:R 1:{MAX_RR_RATIO})")
@@ -814,13 +822,20 @@ class AutoTrader:
 
                 if take_profit >= current_price:
                     self._log_analysis(symbol, "error", f"⚠️ TP ({take_profit}) >= prezzo ({current_price}) per SHORT — TP invertito/invalido, correggo...")
-                    take_profit = _rp(current_price - (sl_dist * MAX_RR_RATIO))
-                    self._log_analysis(symbol, "info", f"TP corretto a: {take_profit} (R:R 1:{MAX_RR_RATIO})")
+                    take_profit = _rp(current_price - (sl_dist * MIN_RR_RATIO))
+                    self._log_analysis(symbol, "info", f"TP corretto a: {take_profit} (R:R 1:{MIN_RR_RATIO})")
                 else:
-                    # Cap TP: se il TP è troppo lontano (oltre MAX_RR_RATIO x SL), limitalo
                     tp_dist = current_price - take_profit
                     actual_rr = tp_dist / sl_dist if sl_dist > 0 else 0
-                    if actual_rr > MAX_RR_RATIO:
+
+                    # Enforce minimum R:R — se TP troppo vicino, spostalo a MIN_RR_RATIO
+                    if actual_rr < MIN_RR_RATIO:
+                        old_tp = take_profit
+                        take_profit = _rp(current_price - (sl_dist * MIN_RR_RATIO))
+                        self._log_analysis(symbol, "info", f"📏 TP troppo vicino ({old_tp}, R:R 1:{actual_rr:.1f}) → spostato a {take_profit} (R:R 1:{MIN_RR_RATIO})")
+
+                    # Cap TP: se il TP è troppo lontano (oltre MAX_RR_RATIO x SL), limitalo
+                    elif actual_rr > MAX_RR_RATIO:
                         old_tp = take_profit
                         take_profit = _rp(current_price - (sl_dist * MAX_RR_RATIO))
                         self._log_analysis(symbol, "info", f"📏 TP troppo lontano ({old_tp}, R:R 1:{actual_rr:.1f}) → cappato a {take_profit} (R:R 1:{MAX_RR_RATIO})")
