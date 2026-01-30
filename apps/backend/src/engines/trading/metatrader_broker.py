@@ -494,6 +494,27 @@ class MetaTraderBroker(BaseBroker):
                     base_url=self.PROVISIONING_URL,
                 )
 
+            # Check connection status
+            conn_status = account.get("connectionStatus", "UNKNOWN")
+            print(f"[MetaTrader] Account state: {account.get('state')} | connectionStatus: {conn_status}")
+
+            if conn_status == "DISCONNECTED":
+                # Wait for terminal to connect to broker
+                print("[MetaTrader] Terminal disconnected, waiting for connection...")
+                for wait_attempt in range(6):
+                    await asyncio.sleep(5)
+                    account = await self._request(
+                        "GET",
+                        f"/users/current/accounts/{self.account_id}",
+                        base_url=self.PROVISIONING_URL,
+                    )
+                    conn_status = account.get("connectionStatus", "UNKNOWN")
+                    print(f"[MetaTrader] Connection status check {wait_attempt + 1}/6: {conn_status}")
+                    if conn_status == "CONNECTED":
+                        break
+                if conn_status != "CONNECTED":
+                    print(f"[MetaTrader] WARNING: Account connectionStatus is '{conn_status}' - trades may fail!")
+
             # Get account information from client API
             self._account_info = await self._request(
                 "GET",
@@ -508,6 +529,49 @@ class MetaTraderBroker(BaseBroker):
 
         except Exception as e:
             raise Exception(f"Failed to connect to MetaTrader: {e}")
+
+    async def _ensure_connected_to_broker(self) -> bool:
+        """Check if the MT terminal is connected to the broker before trading."""
+        try:
+            account = await self._request(
+                "GET",
+                f"/users/current/accounts/{self.account_id}",
+                base_url=self.PROVISIONING_URL,
+            )
+            conn_status = account.get("connectionStatus", "UNKNOWN")
+            state = account.get("state", "UNKNOWN")
+            print(f"[MetaTrader] Pre-trade check: state={state}, connectionStatus={conn_status}")
+
+            if state != "DEPLOYED":
+                print(f"[MetaTrader] Account not deployed (state={state}), deploying...")
+                await self._request(
+                    "POST",
+                    f"/users/current/accounts/{self.account_id}/deploy",
+                    base_url=self.PROVISIONING_URL,
+                )
+                await asyncio.sleep(5)
+
+            if conn_status != "CONNECTED":
+                print(f"[MetaTrader] Terminal not connected ({conn_status}), waiting...")
+                for i in range(12):  # Wait up to 60 seconds
+                    await asyncio.sleep(5)
+                    account = await self._request(
+                        "GET",
+                        f"/users/current/accounts/{self.account_id}",
+                        base_url=self.PROVISIONING_URL,
+                    )
+                    conn_status = account.get("connectionStatus", "UNKNOWN")
+                    print(f"[MetaTrader] Connection wait {i+1}/12: {conn_status}")
+                    if conn_status == "CONNECTED":
+                        return True
+
+                print(f"[MetaTrader] WARNING: Terminal still {conn_status} after waiting")
+                return False
+
+            return True
+        except Exception as e:
+            print(f"[MetaTrader] Error checking connection status: {e}")
+            return True  # Proceed anyway, maybe the trade will work
 
     async def disconnect(self) -> None:
         """Disconnect from MetaApi."""
@@ -665,6 +729,20 @@ class MetaTraderBroker(BaseBroker):
         if not self._connected:
             await self.connect()
 
+        # Verify terminal is connected to broker before placing trade
+        is_broker_connected = await self._ensure_connected_to_broker()
+        if not is_broker_connected:
+            return OrderResult(
+                order_id="",
+                symbol=order.symbol,
+                side=order.side,
+                order_type=order.order_type,
+                status=OrderStatus.REJECTED,
+                size=order.size,
+                filled_size=Decimal("0"),
+                error_message="Terminale MT non connesso al broker. Verificare le credenziali e lo stato dell'account MetaApi.",
+            )
+
         # Map order type
         action_type = "ORDER_TYPE_BUY" if order.side == OrderSide.BUY else "ORDER_TYPE_SELL"
 
@@ -680,31 +758,23 @@ class MetaTraderBroker(BaseBroker):
                 action_type = "ORDER_TYPE_SELL_STOP"
 
         # Build order payload - resolve symbol to broker format
+        # Keep payload minimal per MetaApi docs: actionType, symbol, volume + optional SL/TP
         broker_symbol = self._resolve_symbol(order.symbol)
         payload = {
-            "symbol": broker_symbol,
             "actionType": action_type,
+            "symbol": broker_symbol,
             "volume": float(order.size),
-            # Filling modes in priority order - MetaApi will use the first one supported by the broker
-            "fillingModes": ["ORDER_FILLING_FOK", "ORDER_FILLING_IOC"],
-            # Magic number for trade identification (La Falange bot)
-            "magic": 777555,
-            "comment": "LaFalange",
         }
-
-        # Add slippage for market orders (in pips)
-        if order.order_type == OrderType.MARKET:
-            payload["slippage"] = 10  # Allow up to 10 points of slippage
-
-        # Add price for limit/stop orders
-        if order.order_type in [OrderType.LIMIT, OrderType.STOP] and order.price:
-            payload["openPrice"] = float(order.price)
 
         # Add SL/TP
         if order.stop_loss:
             payload["stopLoss"] = float(order.stop_loss)
         if order.take_profit:
             payload["takeProfit"] = float(order.take_profit)
+
+        # Add price for limit/stop orders
+        if order.order_type in [OrderType.LIMIT, OrderType.STOP] and order.price:
+            payload["openPrice"] = float(order.price)
 
         # Map known MT5 error stringCodes to human-readable messages
         MT5_ERROR_MESSAGES = {
@@ -726,7 +796,7 @@ class MetaTraderBroker(BaseBroker):
             "TRADE_RETCODE_TIMEOUT": "Timeout della richiesta",
             "TRADE_RETCODE_CANCEL": "Ordine cancellato",
             "TRADE_RETCODE_POSITION_CLOSED": "Posizione già chiusa",
-            "TRADE_RETCODE_UNKNOWN": "Codice di ritorno sconosciuto dal broker",
+            "TRADE_RETCODE_UNKNOWN": "Terminale MT disconnesso dal broker (numericCode=-1). Controllare connessione MetaApi.",
         }
 
         SUCCESS_CODES = {
@@ -738,40 +808,26 @@ class MetaTraderBroker(BaseBroker):
         }
         SUCCESS_NUMERIC = {10008, 10009, 10010}
 
-        # Filling mode strategies to try in order
-        FILLING_STRATEGIES = [
-            ["ORDER_FILLING_FOK", "ORDER_FILLING_IOC"],   # Both FOK > IOC
-            ["ORDER_FILLING_IOC"],                          # IOC only
-            ["ORDER_FILLING_FOK"],                          # FOK only
-            ["ORDER_FILLING_RETURN"],                       # RETURN (exchange-style)
-        ]
-
-        # Retry with different filling modes if UNKNOWN or INVALID_FILL
-        RETRYABLE_CODES = {"TRADE_RETCODE_UNKNOWN", "TRADE_RETCODE_INVALID_FILL"}
-        last_result = None
+        # Retry up to 3 times for TRADE_RETCODE_UNKNOWN (terminal disconnection)
+        MAX_RETRIES = 3
+        RETRYABLE_CODES = {"TRADE_RETCODE_UNKNOWN", "TRADE_RETCODE_CONNECTION", "TRADE_RETCODE_TIMEOUT"}
         last_reject_reason = ""
 
-        for attempt, filling_modes in enumerate(FILLING_STRATEGIES):
-            payload["fillingModes"] = filling_modes
-
+        for attempt in range(MAX_RETRIES):
             try:
-                print(f"[MetaTrader] Placing order (attempt {attempt + 1}/{len(FILLING_STRATEGIES)}, filling={filling_modes}): {payload}")
+                print(f"[MetaTrader] Placing order (attempt {attempt + 1}/{MAX_RETRIES}): {payload}")
                 result = await self._request(
                     "POST",
                     f"/users/current/accounts/{self.account_id}/trade",
                     json=payload,
                 )
                 print(f"[MetaTrader] Order response: {result}")
-                last_result = result
 
                 order_id = str(result.get("orderId", result.get("positionId", "")))
                 is_filled = bool(result.get("positionId"))
                 string_code = result.get("stringCode", "")
                 numeric_code = result.get("numericCode")
                 error_msg = result.get("errorMessage", result.get("message", ""))
-
-                # Log full response for debugging
-                print(f"[MetaTrader] Full trade response: {result}")
 
                 is_success_code = string_code in SUCCESS_CODES or (numeric_code in SUCCESS_NUMERIC if numeric_code else False)
                 has_order = bool(order_id)
@@ -782,7 +838,7 @@ class MetaTraderBroker(BaseBroker):
                         print(f"[MetaTrader] WARNING: Unknown stringCode '{string_code}' (numericCode={numeric_code}) but order exists - treating as success")
 
                     order_status = OrderStatus.FILLED if is_filled else (OrderStatus.PENDING if has_order else OrderStatus.REJECTED)
-                    print(f"[MetaTrader] Order status: {order_status.value} | stringCode: {string_code} | orderId: {order_id} | filling: {filling_modes}")
+                    print(f"[MetaTrader] Order {order_status.value} | stringCode: {string_code} | orderId: {order_id}")
 
                     return OrderResult(
                         order_id=order_id,
@@ -797,7 +853,7 @@ class MetaTraderBroker(BaseBroker):
                         commission=Decimal(str(result.get("commission", 0))),
                     )
 
-                # Rejection - check if retryable
+                # Rejection - build error message
                 known_error = MT5_ERROR_MESSAGES.get(string_code)
                 if known_error:
                     reject_reason = f"{known_error} [{string_code}]"
@@ -810,17 +866,19 @@ class MetaTraderBroker(BaseBroker):
 
                 last_reject_reason = reject_reason
 
-                # If retryable code and not last attempt, try next filling mode
-                if string_code in RETRYABLE_CODES and attempt < len(FILLING_STRATEGIES) - 1:
-                    import asyncio
-                    print(f"[MetaTrader] Retryable error ({string_code}) with filling={filling_modes}, trying next filling mode...")
-                    await asyncio.sleep(0.5)  # Brief pause before retry
+                # If retryable and not last attempt, wait and retry
+                if string_code in RETRYABLE_CODES and attempt < MAX_RETRIES - 1:
+                    wait_secs = (attempt + 1) * 3  # 3s, 6s
+                    print(f"[MetaTrader] Retryable error ({string_code}), waiting {wait_secs}s before retry...")
+                    await asyncio.sleep(wait_secs)
+                    # Re-check connection before retry
+                    await self._ensure_connected_to_broker()
                     continue
 
-                # Non-retryable or last attempt - return rejection
+                # Non-retryable or last attempt
                 print(f"[MetaTrader] Order REJECTED - {reject_reason}")
                 return OrderResult(
-                    order_id=order_id,
+                    order_id=order_id if order_id else "",
                     symbol=order.symbol,
                     side=order.side,
                     order_type=order.order_type,
@@ -835,14 +893,11 @@ class MetaTraderBroker(BaseBroker):
                 print(f"[MetaTrader] Order EXCEPTION (attempt {attempt + 1}): {str(e)}")
                 print(f"[MetaTrader] Traceback: {traceback.format_exc()}")
 
-                # If it's a retryable exception and not last attempt, try next filling mode
-                if attempt < len(FILLING_STRATEGIES) - 1:
-                    error_str = str(e).lower()
-                    if "unknown" in error_str or "fill" in error_str or "retcode" in error_str:
-                        import asyncio
-                        print(f"[MetaTrader] Retrying with next filling mode...")
-                        await asyncio.sleep(0.5)
-                        continue
+                if attempt < MAX_RETRIES - 1:
+                    wait_secs = (attempt + 1) * 3
+                    print(f"[MetaTrader] Retrying in {wait_secs}s...")
+                    await asyncio.sleep(wait_secs)
+                    continue
 
                 return OrderResult(
                     order_id="",
@@ -855,8 +910,8 @@ class MetaTraderBroker(BaseBroker):
                     error_message=f"Errore connessione broker: {str(e)}",
                 )
 
-        # Exhausted all filling strategies
-        print(f"[MetaTrader] All filling modes exhausted. Last rejection: {last_reject_reason}")
+        # Should not reach here, but just in case
+        print(f"[MetaTrader] All retries exhausted. Last: {last_reject_reason}")
         return OrderResult(
             order_id="",
             symbol=order.symbol,
@@ -865,7 +920,7 @@ class MetaTraderBroker(BaseBroker):
             status=OrderStatus.REJECTED,
             size=order.size,
             filled_size=Decimal("0"),
-            error_message=f"Tutti i filling mode falliti. Ultimo errore: {last_reject_reason}",
+            error_message=f"Tutti i tentativi esauriti. Ultimo errore: {last_reject_reason}",
         )
 
     async def close_position(
