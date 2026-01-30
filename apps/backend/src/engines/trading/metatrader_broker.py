@@ -733,6 +733,49 @@ class MetaTraderBroker(BaseBroker):
                 return pos
         return None
 
+    async def get_symbol_specification(self, symbol: str) -> Dict[str, Any]:
+        """Get symbol specification (fillingModes, volume limits, etc.)."""
+        if not self._connected:
+            await self.connect()
+
+        cache_key = f"symbol_spec_{symbol}"
+        cached = self._get_cache(cache_key)
+        if cached is not None:
+            return cached
+
+        try:
+            broker_symbol = self._resolve_symbol(symbol)
+            spec = await self._request(
+                "GET",
+                f"/users/current/accounts/{self.account_id}/symbols/{broker_symbol}/specification",
+            )
+            self._set_cache(cache_key, spec, 300)  # Cache for 5 minutes
+            return spec
+        except Exception as e:
+            print(f"[MetaTrader] Could not fetch symbol specification for {symbol}: {e}")
+            return {}
+
+    def _normalize_volume(self, volume: float, spec: Dict[str, Any]) -> float:
+        """Normalize volume to broker's min/max/step constraints."""
+        min_vol = spec.get("minVolume", 0.01)
+        max_vol = spec.get("maxVolume", 100.0)
+        vol_step = spec.get("volumeStep", 0.01)
+
+        # Round to nearest volume step
+        if vol_step > 0:
+            volume = round(round(volume / vol_step) * vol_step, 8)
+
+        # Clamp to min/max
+        volume = max(min_vol, min(max_vol, volume))
+
+        # Final round to avoid floating point issues
+        # Determine decimal places from vol_step
+        step_str = f"{vol_step:.8f}".rstrip('0')
+        decimals = len(step_str.split('.')[-1]) if '.' in step_str else 0
+        volume = round(volume, decimals)
+
+        return volume
+
     async def place_order(self, order: OrderRequest) -> OrderResult:
         """Place a trading order."""
         if not self._connected:
@@ -752,6 +795,24 @@ class MetaTraderBroker(BaseBroker):
                 error_message="Terminale MT non connesso al broker. Verificare le credenziali e lo stato dell'account MetaApi.",
             )
 
+        # Fetch symbol specification for fillingModes and volume limits
+        broker_symbol = self._resolve_symbol(order.symbol)
+        spec = await self.get_symbol_specification(order.symbol)
+        if spec:
+            print(f"[MetaTrader] Symbol spec for {broker_symbol}: "
+                  f"fillingModes={spec.get('fillingModes')}, "
+                  f"minVol={spec.get('minVolume')}, maxVol={spec.get('maxVolume')}, "
+                  f"volStep={spec.get('volumeStep')}, "
+                  f"executionMode={spec.get('executionMode')}, "
+                  f"tradeMode={spec.get('tradeMode')}")
+
+        # Normalize volume to broker constraints
+        raw_volume = float(order.size)
+        volume = self._normalize_volume(raw_volume, spec) if spec else raw_volume
+        if volume != raw_volume:
+            print(f"[MetaTrader] Volume adjusted: {raw_volume} → {volume} "
+                  f"(min={spec.get('minVolume')}, max={spec.get('maxVolume')}, step={spec.get('volumeStep')})")
+
         # Map order type
         action_type = "ORDER_TYPE_BUY" if order.side == OrderSide.BUY else "ORDER_TYPE_SELL"
 
@@ -766,14 +827,18 @@ class MetaTraderBroker(BaseBroker):
             else:
                 action_type = "ORDER_TYPE_SELL_STOP"
 
-        # Build order payload - resolve symbol to broker format
-        # Keep payload minimal per MetaApi docs: actionType, symbol, volume + optional SL/TP
-        broker_symbol = self._resolve_symbol(order.symbol)
+        # Build order payload
         payload = {
             "actionType": action_type,
             "symbol": broker_symbol,
-            "volume": float(order.size),
+            "volume": volume,
         }
+
+        # Add fillingModes from symbol specification (critical for forex)
+        symbol_filling_modes = spec.get("fillingModes") if spec else None
+        if symbol_filling_modes:
+            payload["fillingModes"] = symbol_filling_modes
+            print(f"[MetaTrader] Using symbol's fillingModes: {symbol_filling_modes}")
 
         # Add SL/TP
         if order.stop_loss:
@@ -817,14 +882,31 @@ class MetaTraderBroker(BaseBroker):
         }
         SUCCESS_NUMERIC = {10008, 10009, 10010}
 
-        # Retry up to 3 times for TRADE_RETCODE_UNKNOWN (terminal disconnection)
-        MAX_RETRIES = 3
-        RETRYABLE_CODES = {"TRADE_RETCODE_UNKNOWN", "TRADE_RETCODE_CONNECTION", "TRADE_RETCODE_TIMEOUT"}
+        # Retry strategies: each attempt tries a different payload variation
+        # Attempt 1: with symbol's fillingModes (from spec)
+        # Attempt 2: without fillingModes (let MetaApi decide)
+        # Attempt 3: with explicit FOK only
+        RETRY_FILLING_OVERRIDES = [
+            None,                           # Keep current fillingModes from spec
+            "REMOVE",                       # Remove fillingModes entirely
+            ["ORDER_FILLING_FOK"],          # Force FOK
+            ["ORDER_FILLING_IOC"],          # Force IOC
+        ]
+        MAX_RETRIES = len(RETRY_FILLING_OVERRIDES)
+        RETRYABLE_CODES = {"TRADE_RETCODE_UNKNOWN", "TRADE_RETCODE_INVALID_FILL", "TRADE_RETCODE_CONNECTION", "TRADE_RETCODE_TIMEOUT"}
         last_reject_reason = ""
 
         for attempt in range(MAX_RETRIES):
+            # Apply filling mode override for retries
+            override = RETRY_FILLING_OVERRIDES[attempt]
+            if override == "REMOVE":
+                payload.pop("fillingModes", None)
+            elif override is not None:
+                payload["fillingModes"] = override
+
             try:
-                print(f"[MetaTrader] Placing order (attempt {attempt + 1}/{MAX_RETRIES}): {payload}")
+                filling_info = payload.get('fillingModes', 'default')
+                print(f"[MetaTrader] Placing order (attempt {attempt + 1}/{MAX_RETRIES}, filling={filling_info}): {payload}")
                 result = await self._request(
                     "POST",
                     f"/users/current/accounts/{self.account_id}/trade",
@@ -856,7 +938,7 @@ class MetaTraderBroker(BaseBroker):
                         order_type=order.order_type,
                         status=order_status,
                         size=order.size,
-                        filled_size=order.size if is_filled else Decimal("0"),
+                        filled_size=Decimal(str(volume)),
                         price=order.price,
                         average_fill_price=Decimal(str(result.get("openPrice", 0))) if result.get("openPrice") else None,
                         commission=Decimal(str(result.get("commission", 0))),
@@ -875,31 +957,11 @@ class MetaTraderBroker(BaseBroker):
 
                 last_reject_reason = reject_reason
 
-                # On first UNKNOWN failure, log account-information for diagnostics
-                if string_code == "TRADE_RETCODE_UNKNOWN" and attempt == 0:
-                    try:
-                        acct_info = await self._request(
-                            "GET",
-                            f"/users/current/accounts/{self.account_id}/account-information",
-                        )
-                        print(f"[MetaTrader] === ACCOUNT-INFO DIAGNOSTICS ===")
-                        print(f"[MetaTrader] tradeMode={acct_info.get('tradeMode')} | tradeAllowed={acct_info.get('tradeAllowed')}")
-                        print(f"[MetaTrader] leverage={acct_info.get('leverage')} | balance={acct_info.get('balance')}")
-                        print(f"[MetaTrader] platform={acct_info.get('platform')} | broker={acct_info.get('broker')}")
-                        print(f"[MetaTrader] server={acct_info.get('server')} | currency={acct_info.get('currency')}")
-                        print(f"[MetaTrader] name={acct_info.get('name')} | type={acct_info.get('type')}")
-                        print(f"[MetaTrader] Full account-info: {acct_info}")
-                        print(f"[MetaTrader] === END ACCOUNT-INFO ===")
-                    except Exception as diag_err:
-                        print(f"[MetaTrader] Could not fetch diagnostics: {diag_err}")
-
-                # If retryable and not last attempt, wait and retry
+                # If retryable and not last attempt, wait and retry with different filling
                 if string_code in RETRYABLE_CODES and attempt < MAX_RETRIES - 1:
-                    wait_secs = (attempt + 1) * 3  # 3s, 6s
-                    print(f"[MetaTrader] Retryable error ({string_code}), waiting {wait_secs}s before retry...")
+                    wait_secs = 2
+                    print(f"[MetaTrader] Retryable error ({string_code}), trying different filling in {wait_secs}s...")
                     await asyncio.sleep(wait_secs)
-                    # Re-check connection before retry
-                    await self._ensure_connected_to_broker()
                     continue
 
                 # Non-retryable or last attempt
