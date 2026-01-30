@@ -329,6 +329,15 @@ class MetaTraderBroker(BaseBroker):
 
         if response.status_code >= 400:
             error_text = response.text
+            # For trade endpoints, try to return JSON body so caller can parse error details
+            if "/trade" in endpoint:
+                try:
+                    error_json = response.json()
+                    print(f"[MetaApi] Trade error ({response.status_code}): {error_json}")
+                    # Return the JSON so place_order can parse stringCode/numericCode
+                    return error_json
+                except Exception:
+                    pass
             raise Exception(f"MetaApi error ({response.status_code}): {error_text}")
 
         if response.status_code == 204:
@@ -704,30 +713,55 @@ class MetaTraderBroker(BaseBroker):
             error_msg = result.get("errorMessage", result.get("message", ""))
 
             # Log full response for debugging
-            print(f"[MetaTrader] Full response keys: {list(result.keys())}")
-            print(f"[MetaTrader] stringCode={string_code}, numericCode={numeric_code}, orderId={order_id}, positionId={result.get('positionId')}")
+            print(f"[MetaTrader] Full trade response: {result}")
 
-            # MetaApi retcode: controlla se è un errore reale
-            # TRADE_RETCODE_DONE (10009) = successo
-            # TRADE_RETCODE_PLACED (10008) = ordine piazzato
-            # TRADE_RETCODE_DONE_PARTIAL (10010) = parzialmente eseguito
-            # Stringa vuota = risposta senza codice (di solito OK)
+            # Map known MT5 error stringCodes to human-readable messages
+            MT5_ERROR_MESSAGES = {
+                "TRADE_RETCODE_INVALID": "Richiesta non valida",
+                "TRADE_RETCODE_INVALID_STOPS": "SL/TP non validi (troppo vicini al prezzo o livello non permesso dal broker)",
+                "TRADE_RETCODE_INVALID_VOLUME": "Volume non valido (controlla lotto min/max/step del simbolo)",
+                "TRADE_RETCODE_INVALID_PRICE": "Prezzo non valido",
+                "TRADE_RETCODE_INVALID_FILL": "Tipo di riempimento non supportato",
+                "TRADE_RETCODE_NO_MONEY": "Margine insufficiente per aprire la posizione",
+                "TRADE_RETCODE_MARKET_CLOSED": "Mercato chiuso",
+                "TRADE_RETCODE_TRADE_DISABLED": "Trading disabilitato sul simbolo",
+                "TRADE_RETCODE_TOO_MANY_REQUESTS": "Troppe richieste",
+                "TRADE_RETCODE_LIMIT_ORDERS": "Troppi ordini limite pendenti",
+                "TRADE_RETCODE_LIMIT_VOLUME": "Volume cumulativo troppo alto",
+                "TRADE_RETCODE_ORDER_LOCKED": "Ordine bloccato in elaborazione",
+                "TRADE_RETCODE_FROZEN": "Ordine/posizione congelata",
+                "TRADE_RETCODE_REJECT": "Richiesta rifiutata dal broker",
+                "TRADE_RETCODE_CONNECTION": "Nessuna connessione al server di trading",
+                "TRADE_RETCODE_TIMEOUT": "Timeout della richiesta",
+                "TRADE_RETCODE_CANCEL": "Ordine cancellato",
+                "TRADE_RETCODE_POSITION_CLOSED": "Posizione già chiusa",
+            }
+
+            # Check for success
             SUCCESS_CODES = {
                 "TRADE_RETCODE_DONE",
                 "TRADE_RETCODE_PLACED",
                 "TRADE_RETCODE_DONE_PARTIAL",
                 "",
             }
-            # Numeric success codes from MT5
             SUCCESS_NUMERIC = {10008, 10009, 10010}
 
             is_success_code = string_code in SUCCESS_CODES or (numeric_code in SUCCESS_NUMERIC if numeric_code else False)
             has_order = bool(order_id)
 
-            # If we have a positionId or orderId, the order went through even with unknown code
+            # Rejection: no positionId, no orderId, not a success code
             if not is_filled and not is_success_code and not has_order:
-                reject_reason = error_msg or string_code or f"Unknown trade return code (numericCode={numeric_code})"
-                print(f"[MetaTrader] Order REJECTED - stringCode: {string_code}, numericCode: {numeric_code}, error: {error_msg}")
+                # Build clear error message with MT5 code translation
+                known_error = MT5_ERROR_MESSAGES.get(string_code)
+                if known_error:
+                    reject_reason = f"{known_error} [{string_code}]"
+                elif error_msg:
+                    reject_reason = f"{error_msg} [{string_code or f'code={numeric_code}'}]"
+                elif string_code:
+                    reject_reason = f"Broker: {string_code} (numericCode={numeric_code})"
+                else:
+                    reject_reason = f"Risposta senza codice - full response: {result}"
+                print(f"[MetaTrader] Order REJECTED - {reject_reason}")
                 return OrderResult(
                     order_id=order_id,
                     symbol=order.symbol,
@@ -739,7 +773,7 @@ class MetaTraderBroker(BaseBroker):
                     error_message=str(reject_reason),
                 )
 
-            # If we have an order/position ID but unknown code, treat as success with warning
+            # Order exists with unknown code - treat as success with warning
             if has_order and not is_success_code:
                 print(f"[MetaTrader] WARNING: Unknown stringCode '{string_code}' (numericCode={numeric_code}) but order exists - treating as success")
 
@@ -760,7 +794,9 @@ class MetaTraderBroker(BaseBroker):
             )
 
         except Exception as e:
+            import traceback
             print(f"[MetaTrader] Order EXCEPTION: {str(e)}")
+            print(f"[MetaTrader] Traceback: {traceback.format_exc()}")
             return OrderResult(
                 order_id="",
                 symbol=order.symbol,
@@ -769,7 +805,7 @@ class MetaTraderBroker(BaseBroker):
                 status=OrderStatus.REJECTED,
                 size=order.size,
                 filled_size=Decimal("0"),
-                error_message=str(e),
+                error_message=f"Errore connessione broker: {str(e)}",
             )
 
     async def close_position(
