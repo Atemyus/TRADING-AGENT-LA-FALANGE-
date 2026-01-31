@@ -179,12 +179,6 @@ export default function SettingsPage() {
         if (settings.ai.aiml_api_key) {
           aiSettings.aiml = { enabled: true, key: settings.ai.aiml_api_key }
         }
-        if (settings.ai.openai_api_key) {
-          aiSettings.openai = { enabled: true, key: settings.ai.openai_api_key }
-        }
-        if (settings.ai.anthropic_api_key) {
-          aiSettings.anthropic = { enabled: true, key: settings.ai.anthropic_api_key }
-        }
         setAiProviders(aiSettings)
 
       } catch (error) {
@@ -267,11 +261,6 @@ export default function SettingsPage() {
       // Map provider IDs to API key names
       const keyMapping: Record<string, string> = {
         aiml: 'aiml_api_key',
-        openai: 'openai_api_key',
-        anthropic: 'anthropic_api_key',
-        google: 'google_api_key',
-        groq: 'groq_api_key',
-        mistral: 'mistral_api_key',
       }
 
       for (const [providerId, settings] of Object.entries(aiProviders)) {
