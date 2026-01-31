@@ -56,6 +56,39 @@ async def save_bot_config_to_db(db: AsyncSession, config_dict: dict) -> None:
     await db.commit()
 
 
+async def _save_trade_history_to_db(db: AsyncSession, trades: list) -> None:
+    """Save trade history to database for persistence across restarts."""
+    result = await db.execute(
+        select(AppSettings).where(AppSettings.key == "trade_history")
+    )
+    setting = result.scalar_one_or_none()
+
+    # Keep last 200 trades to avoid bloating the DB
+    trades_to_save = trades[-200:] if len(trades) > 200 else trades
+    trades_json = json.dumps(trades_to_save)
+    if setting:
+        setting.value = trades_json
+    else:
+        setting = AppSettings(key="trade_history", value=trades_json)
+        db.add(setting)
+
+    await db.commit()
+
+
+async def _load_trade_history_from_db(db: AsyncSession) -> list:
+    """Load trade history from database."""
+    result = await db.execute(
+        select(AppSettings).where(AppSettings.key == "trade_history")
+    )
+    setting = result.scalar_one_or_none()
+    if setting and setting.value:
+        try:
+            return json.loads(setting.value)
+        except Exception:
+            pass
+    return []
+
+
 def apply_config_to_bot(config_dict: dict) -> None:
     """Apply loaded config to the bot instance."""
     bot = get_auto_trader()
@@ -105,7 +138,7 @@ def apply_config_to_bot(config_dict: dict) -> None:
         bot.config.tradingview_max_indicators = config_dict["tradingview_max_indicators"]
     # AI Models
     if "enabled_models" in config_dict:
-        valid_models = ["chatgpt", "gemini", "grok", "qwen", "llama", "ernie"]
+        valid_models = ["chatgpt", "gemini", "grok", "qwen", "llama", "ernie", "kimi", "mistral"]
         enabled = [m for m in config_dict["enabled_models"] if m in valid_models]
         if enabled:  # Almeno 1 modello deve restare abilitato
             bot.config.enabled_models = enabled
@@ -372,7 +405,7 @@ async def update_config(config: BotConfigRequest, db: AsyncSession = Depends(get
 
     # AI Models toggle
     if config.enabled_models is not None:
-        valid_models = ["chatgpt", "gemini", "grok", "qwen", "llama", "ernie"]
+        valid_models = ["chatgpt", "gemini", "grok", "qwen", "llama", "ernie", "kimi", "mistral"]
         enabled = [m for m in config.enabled_models if m in valid_models]
         if enabled:
             current_config.enabled_models = enabled
@@ -461,12 +494,14 @@ async def get_config():
 
 
 @router.get("/trades")
-async def get_trades(limit: int = 50):
-    """Get trade history."""
+async def get_trades(limit: int = 50, db: AsyncSession = Depends(get_db)):
+    """Get trade history from bot memory + broker deal history + database."""
     bot = get_auto_trader()
 
+    # 1. Get in-memory bot trades
     trades = []
-    for t in bot.state.trade_history[-limit:]:
+    seen_ids = set()
+    for t in bot.state.trade_history:
         trades.append({
             "id": t.id,
             "symbol": t.symbol,
@@ -482,8 +517,73 @@ async def get_trades(limit: int = 50):
             "status": t.status,
             "profit_loss": t.profit_loss,
         })
+        seen_ids.add(t.id)
 
-    return {"trades": trades, "total": len(bot.state.trade_history)}
+    # 2. Load saved trades from database (persisted across restarts)
+    try:
+        db_trades = await _load_trade_history_from_db(db)
+        for t in db_trades:
+            tid = t.get("id", "")
+            if tid and tid not in seen_ids:
+                trades.append(t)
+                seen_ids.add(tid)
+    except Exception as e:
+        print(f"[Bot/trades] Error loading DB trades: {e}")
+
+    # 3. Also fetch broker deal history (last 30 days) for complete picture
+    try:
+        from src.services.trading_service import get_trading_service
+        service = await get_trading_service()
+        if hasattr(service._broker, 'get_deals_history'):
+            from datetime import datetime as dt, timezone, timedelta
+            start = dt.now(timezone.utc) - timedelta(days=30)
+            deals = await service._broker.get_deals_history(start.isoformat())
+            for deal in deals:
+                deal_id = str(deal.get("id", deal.get("dealId", "")))
+                if not deal_id or deal_id in seen_ids:
+                    continue
+                profit = float(deal.get("profit", 0))
+                swap = float(deal.get("swap", 0))
+                commission = float(deal.get("commission", 0))
+                total_pnl = profit + swap + commission
+                # Skip balance/credit operations and zero-profit entries without a type
+                deal_type = deal.get("type", "")
+                if total_pnl == 0 and deal_type not in ("DEAL_TYPE_SELL", "DEAL_TYPE_BUY"):
+                    continue
+                direction = "LONG" if "BUY" in deal_type else "SHORT" if "SELL" in deal_type else deal_type
+                deal_time = deal.get("time", deal.get("brokerTime", ""))
+                if not isinstance(deal_time, str):
+                    deal_time = str(deal_time)
+                trades.append({
+                    "id": deal_id,
+                    "symbol": deal.get("symbol", "UNKNOWN"),
+                    "direction": direction,
+                    "entry_price": float(deal.get("price", 0)),
+                    "exit_price": float(deal.get("price", 0)),
+                    "stop_loss": 0,
+                    "take_profit": 0,
+                    "units": float(deal.get("volume", 0)),
+                    "timestamp": deal_time,
+                    "exit_timestamp": deal_time,
+                    "confidence": 0,
+                    "status": "filled",
+                    "profit_loss": total_pnl,
+                })
+                seen_ids.add(deal_id)
+    except Exception as e:
+        print(f"[Bot/trades] Error fetching broker deals: {e}")
+
+    # Sort by timestamp descending (most recent first)
+    trades.sort(key=lambda t: t.get("timestamp", ""), reverse=True)
+
+    # Save current trade history to DB for persistence
+    try:
+        await _save_trade_history_to_db(db, trades)
+    except Exception as e:
+        print(f"[Bot/trades] Error saving trades to DB: {e}")
+
+    total = len(trades)
+    return {"trades": trades[:limit], "total": total}
 
 
 @router.get("/positions")

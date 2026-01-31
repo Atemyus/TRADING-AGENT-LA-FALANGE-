@@ -107,19 +107,30 @@ export default function DashboardPage() {
     // Fetch trade history from bot as order history
     try {
       const tradeData = await botApi.getTrades(50)
-      const mapped: import('@/components/trading/OrderHistory').Order[] = tradeData.trades.map((t) => ({
-        id: t.id,
-        symbol: t.symbol,
-        side: (t.direction === 'LONG' ? 'buy' : 'sell') as 'buy' | 'sell',
-        type: 'market' as const,
-        size: String(t.units),
-        price: String(t.entry_price),
-        status: t.status === 'open' ? 'pending' as const :
-                t.profit_loss !== null ? 'filled' as const : 'cancelled' as const,
-        pnl: t.profit_loss ?? undefined,
-        closedAt: t.exit_timestamp ?? undefined,
-        createdAt: t.timestamp,
-      }))
+      const mapped: import('@/components/trading/OrderHistory').Order[] = tradeData.trades.map((t) => {
+        // Map status: "filled" from broker deals, "open" = pending, closed = filled
+        let status: 'filled' | 'pending' | 'cancelled' | 'rejected' = 'filled'
+        if (t.status === 'open') {
+          status = 'pending'
+        } else if (t.status === 'cancelled' || t.status === 'rejected') {
+          status = t.status as 'cancelled' | 'rejected'
+        } else if (t.status === 'filled' || t.profit_loss !== null) {
+          status = 'filled'
+        }
+
+        return {
+          id: t.id,
+          symbol: t.symbol,
+          side: (t.direction === 'LONG' || t.direction === 'DEAL_TYPE_BUY' ? 'buy' : 'sell') as 'buy' | 'sell',
+          type: 'market' as const,
+          size: String(t.units),
+          price: String(t.entry_price),
+          status,
+          pnl: t.profit_loss ?? undefined,
+          closedAt: t.exit_timestamp ?? undefined,
+          createdAt: t.timestamp,
+        }
+      })
       setOrders(mapped)
     } catch (err) {
       console.error('Failed to fetch trade history:', err)

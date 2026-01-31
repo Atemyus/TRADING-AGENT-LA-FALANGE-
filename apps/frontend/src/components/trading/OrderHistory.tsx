@@ -165,7 +165,9 @@ export function OrderHistory({ orders = [], isLoading = false }: OrderHistoryPro
 
                 {/* Timestamp */}
                 <div className="mt-2 text-xs text-dark-500">
-                  {order.closedAt ? `Closed ${order.closedAt}` : `Created ${order.createdAt}`}
+                  {order.closedAt
+                    ? `Closed ${new Date(order.closedAt).toLocaleString()}`
+                    : `Created ${new Date(order.createdAt).toLocaleString()}`}
                 </div>
               </motion.div>
             )

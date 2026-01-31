@@ -105,7 +105,7 @@ class BotConfig:
 
     # AI Models - abilita/disabilita singoli modelli
     enabled_models: List[str] = field(default_factory=lambda: [
-        "chatgpt", "gemini", "grok", "qwen", "llama", "ernie"
+        "chatgpt", "gemini", "grok", "qwen", "llama", "ernie", "kimi", "mistral"
     ])
 
     # Entry requirements
