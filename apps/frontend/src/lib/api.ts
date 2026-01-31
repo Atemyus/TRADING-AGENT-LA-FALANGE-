@@ -627,11 +627,6 @@ export interface BrokerSettingsData {
 
 export interface AISettingsData {
   aiml_api_key?: string
-  openai_api_key?: string
-  anthropic_api_key?: string
-  google_api_key?: string
-  groq_api_key?: string
-  mistral_api_key?: string
 }
 
 export interface RiskSettingsData {

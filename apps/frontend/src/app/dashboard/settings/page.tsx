@@ -120,60 +120,10 @@ const AI_PROVIDERS = [
     id: 'aiml',
     name: 'AIML API',
     icon: '🚀',
-    models: ['ChatGPT 5.2', 'Gemini 3 Pro', 'Grok 4.1 Fast', 'Qwen3 VL', 'DeepSeek V3.1', 'GLM 4.5 Air', 'Llama 4 Scout', 'Mistral 7B v0.3'],
+    models: ['ChatGPT 5.2', 'Gemini 3 Pro', 'Grok 4.1 Fast', 'Qwen3 VL', 'Llama 4 Scout', 'ERNIE 4.5 VL'],
     field: { key: 'AIML_API_KEY', label: 'API Key', placeholder: 'Your AIML API key' },
-    badge: 'Recommended - 8 Models',
-    description: 'Single API key for 8 top AI models via api.aimlapi.com',
-  },
-  {
-    id: 'openai',
-    name: 'OpenAI',
-    icon: '🤖',
-    models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'],
-    field: { key: 'OPENAI_API_KEY', label: 'API Key', placeholder: 'sk-...' },
-    description: 'Fallback provider',
-  },
-  {
-    id: 'anthropic',
-    name: 'Anthropic',
-    icon: '🧠',
-    models: ['claude-3-5-sonnet', 'claude-3-haiku'],
-    field: { key: 'ANTHROPIC_API_KEY', label: 'API Key', placeholder: 'sk-ant-...' },
-    description: 'Fallback provider',
-  },
-  {
-    id: 'google',
-    name: 'Google AI',
-    icon: '💎',
-    models: ['gemini-1.5-flash', 'gemini-1.5-pro'],
-    field: { key: 'GOOGLE_API_KEY', label: 'API Key', placeholder: 'AI...' },
-    description: 'Fallback provider',
-  },
-  {
-    id: 'groq',
-    name: 'Groq',
-    icon: '⚡',
-    models: ['llama-3.3-70b', 'llama-3.1-8b', 'mixtral-8x7b'],
-    field: { key: 'GROQ_API_KEY', label: 'API Key', placeholder: 'gsk_...' },
-    badge: 'Ultra Fast',
-    description: 'Fallback provider',
-  },
-  {
-    id: 'mistral',
-    name: 'Mistral',
-    icon: '🌪️',
-    models: ['mistral-large', 'mistral-small'],
-    field: { key: 'MISTRAL_API_KEY', label: 'API Key', placeholder: 'Your Mistral key' },
-    description: 'Fallback provider',
-  },
-  {
-    id: 'ollama',
-    name: 'Ollama',
-    icon: '🦙',
-    models: ['llama3.1:8b', 'qwen2.5:14b', 'mistral:7b'],
-    field: { key: 'OLLAMA_BASE_URL', label: 'Base URL', placeholder: 'http://localhost:11434' },
-    badge: 'Free & Local',
-    description: 'Local inference - no API key needed',
+    badge: '6 Models',
+    description: 'Single API key for 6 AI models via api.aimlapi.com',
   },
 ]
 
@@ -741,18 +691,18 @@ function AIProvidersSettings({
       <div className="p-4 bg-primary-500/10 border border-primary-500/30 rounded-xl flex items-start gap-3">
         <Info size={20} className="text-primary-400 flex-shrink-0 mt-0.5" />
         <div>
-          <p className="text-sm text-primary-300 font-medium">Recommended: AIML API</p>
+          <p className="text-sm text-primary-300 font-medium">AIML API</p>
           <p className="text-xs text-dark-400 mt-1">
-            AIML API provides access to 8 top AI models (ChatGPT 5.2, Gemini 3 Pro, Grok 4.1 Fast, Qwen3 VL, DeepSeek V3.1, GLM 4.5 Air, Llama 4 Scout, Mistral 7B v0.3)
-            with a single API key. Get your key at <a href="https://aimlapi.com" target="_blank" rel="noopener noreferrer" className="text-primary-400 hover:underline">aimlapi.com</a>
+            Tutti i 6 modelli AI (ChatGPT 5.2, Gemini 3 Pro, Grok 4.1 Fast, Qwen3 VL, Llama 4 Scout, ERNIE 4.5 VL)
+            utilizzano AIML API. Ottieni la tua chiave su <a href="https://aimlapi.com" target="_blank" rel="noopener noreferrer" className="text-primary-400 hover:underline">aimlapi.com</a>
           </p>
         </div>
       </div>
 
       <div className="card p-6">
-        <h2 className="text-xl font-semibold mb-2">AI Providers</h2>
+        <h2 className="text-xl font-semibold mb-2">AI Provider</h2>
         <p className="text-dark-400 mb-6">
-          Configure which AI models to use for market analysis. Enable AIML API for best results.
+          Configura la chiave API per i modelli di analisi AI.
         </p>
 
         <div className="space-y-4">
