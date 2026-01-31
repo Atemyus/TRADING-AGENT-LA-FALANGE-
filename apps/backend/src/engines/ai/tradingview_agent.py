@@ -794,16 +794,24 @@ class TradingViewAIAgent:
     5. Make a final trading decision
     """
 
-    # AI Models for chart analysis - EXACT model IDs from AIML API
-    # Updated 2026-01-27 - Vision-capable models + Llama 4 Scout + ERNIE 4.5 VL
+    # AI Models for chart analysis
+    # Models via AIML API (api.aimlapi.com)
     VISION_MODELS = {
-        "chatgpt": "openai/gpt-5-2",               # Vision: YES
-        "gemini": "google/gemini-3-pro-preview",   # Vision: YES
-        "grok": "x-ai/grok-4-1-fast-reasoning",    # Vision: YES
-        "qwen": "alibaba/qwen3-vl-32b-instruct",   # Vision: YES (VL = Vision-Language)
-        "llama": "meta-llama/llama-4-scout",       # Text analysis
-        "ernie": "baidu/ernie-4.5-vl-424b-a47b",   # Vision: YES (VL = Vision-Language)
+        "chatgpt": "openai/gpt-5-2",               # Vision: YES - AIML
+        "gemini": "google/gemini-3-pro-preview",   # Vision: YES - AIML
+        "grok": "x-ai/grok-4-1-fast-reasoning",    # Vision: YES - AIML
+        "qwen": "alibaba/qwen3-vl-32b-instruct",   # Vision: YES - AIML
+        "llama": "meta-llama/llama-4-scout",       # Text analysis - AIML
+        "ernie": "baidu/ernie-4.5-vl-424b-a47b",   # Vision: YES - AIML
+        "kimi": "moonshotai/kimi-k2.5",            # Text analysis - NVIDIA
+        "mistral": "mistralai/mistral-large-3-675b-instruct-2512",  # Text analysis - NVIDIA
     }
+
+    # Models that use NVIDIA API instead of AIML
+    NVIDIA_MODELS = {"kimi", "mistral"}
+
+    # Models that are text-only (no vision/screenshot support)
+    TEXT_ONLY_MODELS = {"llama", "kimi", "mistral"}
 
     MODEL_DISPLAY_NAMES = {
         "chatgpt": "ChatGPT 5.2",
@@ -812,6 +820,8 @@ class TradingViewAIAgent:
         "qwen": "Qwen3 VL",
         "llama": "Llama 4 Scout",
         "ernie": "ERNIE 4.5 VL",
+        "kimi": "Kimi K2.5",
+        "mistral": "Mistral Large 3",
     }
 
     # Each AI model gets a different analysis style preference
@@ -847,13 +857,23 @@ class TradingViewAIAgent:
             "indicators": ["Volume", "EMA"],
             "focus": "Candlestick patterns and price structure"
         },
+        "kimi": {
+            "style": "multi_timeframe",
+            "indicators": ["EMA", "RSI"],
+            "focus": "Multi-timeframe confluence and key levels"
+        },
+        "mistral": {
+            "style": "institutional",
+            "indicators": ["Volume", "MACD"],
+            "focus": "Institutional flow analysis and market structure"
+        },
     }
 
     # TradingView Free plan allows max 2 indicators
     MAX_INDICATORS_FREE_PLAN = 2
 
     # Analysis mode configuration - timeframes and models per mode
-    # 6 models available: ChatGPT, Gemini, Grok, Qwen, Llama, ERNIE
+    # 8 models available: ChatGPT, Gemini, Grok, Qwen, Llama, ERNIE (AIML) + Kimi, Mistral (NVIDIA)
     MODE_CONFIG = {
         "quick": {
             "timeframes": ["15"],  # 15 minutes
@@ -872,8 +892,8 @@ class TradingViewAIAgent:
         },
         "ultra": {
             "timeframes": ["5", "15", "60", "240", "D"],  # 5m, 15m, 1h, 4h, Daily
-            "num_models": 6,
-            "description": "Analisi multi-timeframe completa con tutti i 6 modelli AI"
+            "num_models": 8,
+            "description": "Analisi multi-timeframe completa con tutti gli 8 modelli AI"
         },
     }
 
@@ -888,8 +908,44 @@ class TradingViewAIAgent:
         self.browser: Optional[TradingViewBrowser] = None
         self.api_key = settings.AIML_API_KEY
         self.base_url = settings.AIML_BASE_URL
+        self.nvidia_api_key = settings.NVIDIA_API_KEY
+        self.nvidia_base_url = settings.NVIDIA_BASE_URL
         self.timeout = 120.0
         self.max_indicators = max_indicators
+
+    def _get_api_config(self, model_key: str = None, model_id: str = None) -> tuple:
+        """Get the API base URL and key for a given model.
+        Can be called with model_key (e.g. 'kimi') or model_id (e.g. 'moonshotai/kimi-k2.5').
+        """
+        is_nvidia = False
+        if model_key:
+            is_nvidia = model_key in self.NVIDIA_MODELS
+        elif model_id:
+            # Reverse lookup: check if this model_id belongs to a NVIDIA model
+            nvidia_model_ids = {self.VISION_MODELS[k] for k in self.NVIDIA_MODELS if k in self.VISION_MODELS}
+            is_nvidia = model_id in nvidia_model_ids
+
+        if is_nvidia:
+            return self.nvidia_base_url, self.nvidia_api_key
+        return self.base_url, self.api_key
+
+    def _is_text_only(self, model_key: str = None, model_id: str = None) -> bool:
+        """Check if a model is text-only (no vision/screenshot support)."""
+        if model_key:
+            return model_key in self.TEXT_ONLY_MODELS
+        if model_id:
+            text_only_ids = {self.VISION_MODELS[k] for k in self.TEXT_ONLY_MODELS if k in self.VISION_MODELS}
+            return model_id in text_only_ids
+        return False
+
+    def _build_message_content(self, prompt: str, screenshot: str = None, model_key: str = None, model_id: str = None) -> list:
+        """Build message content, including image only for vision models."""
+        if screenshot and not self._is_text_only(model_key=model_key, model_id=model_id):
+            return [
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{screenshot}"}},
+                {"type": "text", "text": prompt}
+            ]
+        return [{"type": "text", "text": prompt}]
 
     async def initialize(self, headless: bool = True):
         """Initialize the browser for TradingView interaction."""
@@ -1099,21 +1155,21 @@ Rispondi SOLO con un array JSON di nomi di indicatori (max {max_ind}), es.:
 """
 
         try:
+            api_url, api_key = self._get_api_config(model_id=model_id)
+            content = self._build_message_content(prompt, screenshot, model_id=model_id)
+
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
-                    f"{self.base_url}/chat/completions",
+                    f"{api_url}/chat/completions",
                     headers={
-                        "Authorization": f"Bearer {self.api_key}",
+                        "Authorization": f"Bearer {api_key}",
                         "Content-Type": "application/json"
                     },
                     json={
                         "model": model_id,
                         "messages": [{
                             "role": "user",
-                            "content": [
-                                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{screenshot}"}},
-                                {"type": "text", "text": prompt}
-                            ]
+                            "content": content
                         }],
                         "max_tokens": 200,
                         "temperature": 0.3
@@ -1192,21 +1248,21 @@ Rispondi SOLO con l'array JSON, nessun altro testo.
 """
 
         try:
+            api_url, api_key = self._get_api_config(model_id=model_id)
+            content = self._build_message_content(prompt, screenshot, model_id=model_id)
+
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
-                    f"{self.base_url}/chat/completions",
+                    f"{api_url}/chat/completions",
                     headers={
-                        "Authorization": f"Bearer {self.api_key}",
+                        "Authorization": f"Bearer {api_key}",
                         "Content-Type": "application/json"
                     },
                     json={
                         "model": model_id,
                         "messages": [{
                             "role": "user",
-                            "content": [
-                                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{screenshot}"}},
-                                {"type": "text", "text": prompt}
-                            ]
+                            "content": content
                         }],
                         "max_tokens": 500,
                         "temperature": 0.3
@@ -1269,20 +1325,24 @@ Sii specifico con i livelli di prezzo basandoti su ciò che vedi sul grafico.
 """
 
         try:
-            # Send all screenshots for context
+            api_url, api_key = self._get_api_config(model_id=model_id)
+            is_text_only = self._is_text_only(model_id=model_id)
+
+            # Send all screenshots for context (only for vision models)
             content = []
-            for i, screenshot in enumerate(screenshots[-3:]):  # Last 3 screenshots
-                content.append({
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/png;base64,{screenshot}"}
-                })
+            if not is_text_only:
+                for i, screenshot in enumerate(screenshots[-3:]):  # Last 3 screenshots
+                    content.append({
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{screenshot}"}
+                    })
             content.append({"type": "text", "text": prompt})
 
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
-                    f"{self.base_url}/chat/completions",
+                    f"{api_url}/chat/completions",
                     headers={
-                        "Authorization": f"Bearer {self.api_key}",
+                        "Authorization": f"Bearer {api_key}",
                         "Content-Type": "application/json"
                     },
                     json={
@@ -1396,21 +1456,21 @@ IMPORTANTE: Scrivi TUTTO in ITALIANO (key_observations, reasoning).
 """
 
         try:
+            api_url, api_key = self._get_api_config(model_key=model_key)
+            content = self._build_message_content(prompt, screenshot, model_key=model_key)
+
             async with httpx.AsyncClient(timeout=90.0) as client:
                 response = await client.post(
-                    f"{self.base_url}/chat/completions",
+                    f"{api_url}/chat/completions",
                     headers={
-                        "Authorization": f"Bearer {self.api_key}",
+                        "Authorization": f"Bearer {api_key}",
                         "Content-Type": "application/json"
                     },
                     json={
                         "model": model_id,
                         "messages": [{
                             "role": "user",
-                            "content": [
-                                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{screenshot}"}},
-                                {"type": "text", "text": prompt}
-                            ]
+                            "content": content
                         }],
                         "max_tokens": 3000,  # Increased for longer professional analysis
                         "temperature": 0.3

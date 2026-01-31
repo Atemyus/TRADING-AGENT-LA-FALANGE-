@@ -125,6 +125,15 @@ const AI_PROVIDERS = [
     badge: '6 Models',
     description: 'Single API key for 6 AI models via api.aimlapi.com',
   },
+  {
+    id: 'nvidia',
+    name: 'NVIDIA API',
+    icon: '🟢',
+    models: ['Kimi K2.5', 'Mistral Large 3'],
+    field: { key: 'NVIDIA_API_KEY', label: 'API Key', placeholder: 'Your NVIDIA API key' },
+    badge: '2 Models',
+    description: 'Kimi K2.5 e Mistral Large 3 via integrate.api.nvidia.com',
+  },
 ]
 
 type SettingsSection = 'broker' | 'ai' | 'risk' | 'notifications'
@@ -178,6 +187,9 @@ export default function SettingsPage() {
         const aiSettings: Record<string, { enabled: boolean; key: string }> = {}
         if (settings.ai.aiml_api_key) {
           aiSettings.aiml = { enabled: true, key: settings.ai.aiml_api_key }
+        }
+        if (settings.ai.nvidia_api_key) {
+          aiSettings.nvidia = { enabled: true, key: settings.ai.nvidia_api_key }
         }
         setAiProviders(aiSettings)
 
@@ -261,6 +273,7 @@ export default function SettingsPage() {
       // Map provider IDs to API key names
       const keyMapping: Record<string, string> = {
         aiml: 'aiml_api_key',
+        nvidia: 'nvidia_api_key',
       }
 
       for (const [providerId, settings] of Object.entries(aiProviders)) {
@@ -676,22 +689,22 @@ function AIProvidersSettings({
       exit={{ opacity: 0, y: -20 }}
       className="space-y-6"
     >
-      {/* Info Banner for AIML */}
+      {/* Info Banner for AI Providers */}
       <div className="p-4 bg-primary-500/10 border border-primary-500/30 rounded-xl flex items-start gap-3">
         <Info size={20} className="text-primary-400 flex-shrink-0 mt-0.5" />
         <div>
-          <p className="text-sm text-primary-300 font-medium">AIML API</p>
+          <p className="text-sm text-primary-300 font-medium">8 Modelli AI - 2 Provider</p>
           <p className="text-xs text-dark-400 mt-1">
-            Tutti i 6 modelli AI (ChatGPT 5.2, Gemini 3 Pro, Grok 4.1 Fast, Qwen3 VL, Llama 4 Scout, ERNIE 4.5 VL)
-            utilizzano AIML API. Ottieni la tua chiave su <a href="https://aimlapi.com" target="_blank" rel="noopener noreferrer" className="text-primary-400 hover:underline">aimlapi.com</a>
+            6 modelli via <a href="https://aimlapi.com" target="_blank" rel="noopener noreferrer" className="text-primary-400 hover:underline">AIML API</a> (ChatGPT 5.2, Gemini 3 Pro, Grok 4.1 Fast, Qwen3 VL, Llama 4 Scout, ERNIE 4.5 VL)
+            + 2 modelli via <a href="https://build.nvidia.com" target="_blank" rel="noopener noreferrer" className="text-primary-400 hover:underline">NVIDIA API</a> (Kimi K2.5, Mistral Large 3)
           </p>
         </div>
       </div>
 
       <div className="card p-6">
-        <h2 className="text-xl font-semibold mb-2">AI Provider</h2>
+        <h2 className="text-xl font-semibold mb-2">AI Providers</h2>
         <p className="text-dark-400 mb-6">
-          Configura la chiave API per i modelli di analisi AI.
+          Configura le chiavi API per i modelli di analisi AI (8 modelli totali).
         </p>
 
         <div className="space-y-4">

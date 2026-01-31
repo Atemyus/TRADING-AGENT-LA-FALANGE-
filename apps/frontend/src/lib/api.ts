@@ -627,6 +627,7 @@ export interface BrokerSettingsData {
 
 export interface AISettingsData {
   aiml_api_key?: string
+  nvidia_api_key?: string
 }
 
 export interface RiskSettingsData {

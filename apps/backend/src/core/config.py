@@ -93,6 +93,10 @@ class Settings(BaseSettings):
     AIML_API_KEY: Optional[str] = None
     AIML_BASE_URL: str = "https://api.aimlapi.com/v1"
 
+    # NVIDIA API (Kimi K2.5, Mistral Large 3)
+    NVIDIA_API_KEY: Optional[str] = None
+    NVIDIA_BASE_URL: str = "https://integrate.api.nvidia.com/v1"
+
     # Alpha Vantage (Market Data)
     ALPHA_VANTAGE_API_KEY: Optional[str] = None
 
