@@ -811,7 +811,7 @@ class TradingViewAIAgent:
     NVIDIA_MODELS = {"kimi", "mistral"}
 
     # Models that are text-only (no vision/screenshot support)
-    TEXT_ONLY_MODELS = {"llama", "kimi", "mistral"}
+    TEXT_ONLY_MODELS = {"llama", "mistral"}
 
     MODEL_DISPLAY_NAMES = {
         "chatgpt": "ChatGPT 5.2",
