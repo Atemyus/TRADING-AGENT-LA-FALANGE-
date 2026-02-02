@@ -344,7 +344,7 @@ export default function BotControlPage() {
     // TradingView AI Agent - full browser control (always enabled)
     tradingview_headless: true,
     tradingview_max_indicators: 2,  // TradingView Free plan limit
-    enabled_models: ["chatgpt", "gemini", "grok", "qwen", "llama", "ernie"],
+    enabled_models: ["chatgpt", "gemini", "grok", "qwen", "llama", "ernie", "kimi", "mistral"],
   };
 
   const fetchStatus = useCallback(async () => {
@@ -978,14 +978,16 @@ export default function BotControlPage() {
                   </label>
                   <div className="space-y-2">
                     {[
-                      { key: "chatgpt", name: "ChatGPT 5.2", style: "SMC / Order Blocks" },
-                      { key: "gemini", name: "Gemini 3 Pro", style: "Trend / MACD" },
-                      { key: "grok", name: "Grok 4.1 Fast", style: "Volatility / Bollinger" },
-                      { key: "qwen", name: "Qwen3 VL", style: "Ichimoku / RSI" },
-                      { key: "llama", name: "Llama 4 Scout", style: "Momentum / Stochastic" },
-                      { key: "ernie", name: "ERNIE 4.5 VL", style: "Price Action / Volume" },
+                      { key: "chatgpt", name: "ChatGPT 5.2", style: "SMC / Order Blocks", provider: "AIML" },
+                      { key: "gemini", name: "Gemini 3 Pro", style: "Trend / MACD", provider: "AIML" },
+                      { key: "grok", name: "Grok 4.1 Fast", style: "Volatility / Bollinger", provider: "AIML" },
+                      { key: "qwen", name: "Qwen3 VL", style: "Ichimoku / RSI", provider: "AIML" },
+                      { key: "llama", name: "Llama 4 Scout", style: "Momentum / Stochastic", provider: "AIML" },
+                      { key: "ernie", name: "ERNIE 4.5 VL", style: "Price Action / Volume", provider: "AIML" },
+                      { key: "kimi", name: "Kimi K2.5", style: "Multi-Strategy / Adaptive", provider: "NVIDIA" },
+                      { key: "mistral", name: "Mistral Large 3", style: "Quantitative / Statistical", provider: "NVIDIA" },
                     ].map((model) => {
-                      const ALL_MODELS = ["chatgpt", "gemini", "grok", "qwen", "llama", "ernie"];
+                      const ALL_MODELS = ["chatgpt", "gemini", "grok", "qwen", "llama", "ernie", "kimi", "mistral"];
                       const currentModels = currentConfig.enabled_models && currentConfig.enabled_models.length > 0
                         ? currentConfig.enabled_models
                         : ALL_MODELS;
@@ -995,9 +997,18 @@ export default function BotControlPage() {
                       return (
                         <div key={model.key} className="flex items-center justify-between py-1.5 px-2 rounded-lg hover:bg-slate-700/50">
                           <div className="flex flex-col">
-                            <span className={`text-sm font-medium ${isEnabled ? "text-white" : "text-slate-500 line-through"}`}>
-                              {model.name}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className={`text-sm font-medium ${isEnabled ? "text-white" : "text-slate-500 line-through"}`}>
+                                {model.name}
+                              </span>
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                                model.provider === "NVIDIA"
+                                  ? "bg-green-500/20 text-green-400"
+                                  : "bg-blue-500/20 text-blue-400"
+                              }`}>
+                                {model.provider}
+                              </span>
+                            </div>
                             <span className={`text-xs ${isEnabled ? "text-slate-400" : "text-slate-600"}`}>
                               {model.style}
                             </span>
