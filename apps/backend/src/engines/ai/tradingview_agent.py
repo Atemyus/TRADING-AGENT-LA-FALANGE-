@@ -916,6 +916,7 @@ class TradingViewAIAgent:
     def _get_api_config(self, model_key: str = None, model_id: str = None) -> tuple:
         """Get the API base URL and key for a given model.
         Can be called with model_key (e.g. 'kimi') or model_id (e.g. 'moonshotai/kimi-k2.5').
+        Always reads from env to pick up runtime changes (e.g. settings saved after bot start).
         """
         is_nvidia = False
         if model_key:
@@ -926,8 +927,14 @@ class TradingViewAIAgent:
             is_nvidia = model_id in nvidia_model_ids
 
         if is_nvidia:
-            return self.nvidia_base_url, self.nvidia_api_key
-        return self.base_url, self.api_key
+            # Read fresh from env/settings to pick up keys saved after init
+            nvidia_key = os.environ.get("NVIDIA_API_KEY") or settings.NVIDIA_API_KEY
+            nvidia_url = os.environ.get("NVIDIA_BASE_URL", self.nvidia_base_url)
+            return nvidia_url, nvidia_key
+        # Read fresh from env/settings to pick up keys saved after init
+        aiml_key = os.environ.get("AIML_API_KEY") or settings.AIML_API_KEY
+        aiml_url = os.environ.get("AIML_BASE_URL", self.base_url)
+        return aiml_url, aiml_key
 
     def _is_text_only(self, model_key: str = None, model_id: str = None) -> bool:
         """Check if a model is text-only (no vision/screenshot support)."""
