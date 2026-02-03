@@ -875,6 +875,42 @@ export default function BotControlPage() {
               </div>
             </div>
 
+            {/* Analysis Interval */}
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Intervallo Analisi
+              </label>
+              <p className="text-xs text-slate-400 mb-3">
+                Frequenza con cui il bot analizza i mercati (riduce consumo API)
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { value: 300, label: "5 min", desc: "Più reattivo" },
+                  { value: 600, label: "10 min", desc: "Bilanciato" },
+                  { value: 900, label: "15 min", desc: "Moderato" },
+                  { value: 1800, label: "30 min", desc: "Economico" },
+                  { value: 3600, label: "1 ora", desc: "Risparmio" },
+                  { value: 7200, label: "2 ore", desc: "Minimo" },
+                ].map((interval) => (
+                  <button
+                    key={interval.value}
+                    onClick={() => handleConfigUpdate({ analysis_interval_seconds: interval.value })}
+                    className={`px-3 py-2 rounded-lg text-sm transition-colors ${
+                      currentConfig.analysis_interval_seconds === interval.value
+                        ? "bg-indigo-600 text-white"
+                        : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+                    }`}
+                  >
+                    <div className="font-medium">{interval.label}</div>
+                    <div className="text-[10px] opacity-70">{interval.desc}</div>
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-slate-500 mt-2">
+                Nota: i simboli con posizioni aperte vengono automaticamente saltati
+              </p>
+            </div>
+
             {/* Trading Hours */}
             <div>
               <label className="block text-sm font-medium mb-2">
