@@ -1474,7 +1474,7 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
             api_url, api_key = self._get_api_config(model_key=model_key)
             content = self._build_message_content(prompt, screenshot, model_key=model_key)
 
-            async with httpx.AsyncClient(timeout=90.0) as client:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
                     f"{api_url}/chat/completions",
                     headers={
@@ -1494,7 +1494,12 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
                 response.raise_for_status()
                 data = response.json()
                 text = data["choices"][0]["message"]["content"]
-                print(f"[{display_name}] Raw response length: {len(text)} chars")
+                if text is None:
+                    # Some models (e.g. Kimi thinking mode) may return content=null
+                    text = ""
+                    print(f"[{display_name}] Response content was null, skipping")
+                else:
+                    print(f"[{display_name}] Raw response length: {len(text)} chars")
 
                 # Parse JSON with improved error handling
                 import re
