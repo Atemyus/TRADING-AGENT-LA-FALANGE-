@@ -834,11 +834,24 @@ class MetaTraderBroker(BaseBroker):
             "volume": volume,
         }
 
+        # Map symbol filling modes to order filling modes
+        # Symbol spec returns: SYMBOL_FILLING_FOK, SYMBOL_FILLING_IOC
+        # Trade request needs: ORDER_FILLING_FOK, ORDER_FILLING_IOC
+        FILLING_MODE_MAP = {
+            "SYMBOL_FILLING_FOK": "ORDER_FILLING_FOK",
+            "SYMBOL_FILLING_IOC": "ORDER_FILLING_IOC",
+            "SYMBOL_FILLING_RETURN": "ORDER_FILLING_RETURN",
+        }
+
         # Add fillingModes from symbol specification (critical for forex)
         symbol_filling_modes = spec.get("fillingModes") if spec else None
         if symbol_filling_modes:
-            payload["fillingModes"] = symbol_filling_modes
-            print(f"[MetaTrader] Using symbol's fillingModes: {symbol_filling_modes}")
+            # Convert SYMBOL_FILLING_* to ORDER_FILLING_*
+            order_filling_modes = [
+                FILLING_MODE_MAP.get(mode, mode) for mode in symbol_filling_modes
+            ]
+            payload["fillingModes"] = order_filling_modes
+            print(f"[MetaTrader] Using symbol's fillingModes: {symbol_filling_modes} → {order_filling_modes}")
 
         # Add SL/TP
         if order.stop_loss:
