@@ -923,6 +923,14 @@ class MetaTraderBroker(BaseBroker):
                 is_success_code = string_code in SUCCESS_CODES or (numeric_code in SUCCESS_NUMERIC if numeric_code else False)
                 has_order = bool(order_id)
 
+                # For MARKET orders: require positionId or explicit success code
+                # Some brokers return orderId even on rejection
+                is_market = order.order_type == OrderType.MARKET
+                if is_market and not is_filled and not is_success_code and has_order:
+                    # Market order with orderId but no positionId and no success code = likely rejection
+                    print(f"[MetaTrader] Market order has orderId={order_id} but no positionId and stringCode='{string_code}' — treating as rejection")
+                    has_order = False
+
                 # Success path
                 if is_filled or is_success_code or has_order:
                     if has_order and not is_success_code:

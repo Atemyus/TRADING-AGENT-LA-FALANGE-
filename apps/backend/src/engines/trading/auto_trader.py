@@ -950,8 +950,10 @@ class AutoTrader:
 
                 await self._notify_tradingview_trade(trade, consensus, results)
             elif order_result.is_rejected:
-                self._log_analysis(symbol, "error", f"❌ ORDINE RIFIUTATO dal broker: {order_result.error_message or 'motivo sconosciuto'}")
+                reject_msg = order_result.error_message or 'motivo sconosciuto'
+                self._log_analysis(symbol, "error", f"❌ ORDINE RIFIUTATO: {reject_msg}")
                 self._log_analysis(symbol, "error", f"📋 Dettagli: {side.value} {lot_size} lotti {symbol} | SL: {stop_loss} | TP: {take_profit}")
+                print(f"[AutoTrader] Order REJECTED for {symbol}: status={order_result.status}, error={reject_msg}, order_id={order_result.order_id}")
             else:
                 self._log_analysis(symbol, "info", f"⏳ Ordine in stato: {order_result.status.value} — ID: {order_result.order_id or 'in attesa'}")
 
