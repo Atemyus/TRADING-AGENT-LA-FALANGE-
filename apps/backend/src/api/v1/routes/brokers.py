@@ -460,6 +460,35 @@ async def get_broker_logs(broker_id: int, limit: int = 50, db: AsyncSession = De
     return logs
 
 
+@router.get("/{broker_id}/account")
+async def get_broker_account_info(broker_id: int, db: AsyncSession = Depends(get_db)):
+    """Get account info (balance, equity) for a specific broker."""
+    from src.engines.trading.multi_broker_manager import get_multi_broker_manager
+
+    # Verify broker exists
+    result = await db.execute(
+        select(BrokerAccount).where(BrokerAccount.id == broker_id)
+    )
+    broker = result.scalar_one_or_none()
+
+    if not broker:
+        raise HTTPException(status_code=404, detail="Broker account not found")
+
+    manager = get_multi_broker_manager()
+    account_info = await manager.get_broker_account_info(broker_id)
+
+    if not account_info:
+        return {
+            "broker_id": broker_id,
+            "name": broker.name,
+            "balance": None,
+            "equity": None,
+            "message": "Broker not running or not connected"
+        }
+
+    return {**account_info, "name": broker.name}
+
+
 # ============ Global Control Endpoints ============
 
 @router.post("/control/start-all")

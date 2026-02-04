@@ -323,6 +323,7 @@ export default function BotControlPage() {
   // Multi-broker state
   const [brokers, setBrokers] = useState<BrokerAccountData[]>([]);
   const [brokerStatuses, setBrokerStatuses] = useState<Record<number, BrokerBotStatus>>({});
+  const [brokerBalances, setBrokerBalances] = useState<Record<number, { balance: number | null; equity: number | null }>>({});
   const [selectedBrokerId, setSelectedBrokerId] = useState<number | null>(null);
   const [brokerLoading, setBrokerLoading] = useState<Record<number, boolean>>({});
   const [showBrokersPanel, setShowBrokersPanel] = useState(true);
@@ -416,19 +417,34 @@ export default function BotControlPage() {
       const data = await brokerAccountsApi.list();
       setBrokers(data);
 
-      // Fetch status for each enabled broker
+      // Fetch status and balance for each enabled broker
       const statuses: Record<number, BrokerBotStatus> = {};
+      const balances: Record<number, { balance: number | null; equity: number | null }> = {};
       for (const broker of data) {
         if (broker.is_enabled) {
           try {
             const status = await brokerAccountsApi.getBotStatus(broker.id);
             statuses[broker.id] = status;
+
+            // Fetch balance if broker is running
+            if (status?.status === 'running') {
+              try {
+                const accountInfo = await brokerAccountsApi.getAccountInfo(broker.id);
+                balances[broker.id] = {
+                  balance: accountInfo.balance,
+                  equity: accountInfo.equity
+                };
+              } catch {
+                // Balance not available
+              }
+            }
           } catch {
             // Broker not running
           }
         }
       }
       setBrokerStatuses(statuses);
+      setBrokerBalances(balances);
     } catch {
       // API not available
     }
@@ -705,6 +721,16 @@ export default function BotControlPage() {
                       </div>
 
                       <div className="flex items-center gap-3">
+                        {/* Balance */}
+                        {brokerBalances[broker.id]?.balance != null && (
+                          <div className="text-center px-3 py-1 bg-indigo-500/10 rounded-lg border border-indigo-500/30">
+                            <p className="text-indigo-400 text-xs">Balance</p>
+                            <p className="font-bold text-indigo-300">
+                              ${brokerBalances[broker.id].balance?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </p>
+                          </div>
+                        )}
+
                         {/* Statistics */}
                         {brokerStatus && (
                           <div className="flex items-center gap-4 text-sm">

@@ -249,6 +249,35 @@ class MultiBrokerManager:
             }
         }
 
+    async def get_broker_account_info(self, broker_id: int) -> Optional[dict]:
+        """Get account info (balance, equity) for a specific broker."""
+        if broker_id not in self._instances:
+            return None
+
+        instance = self._instances[broker_id]
+        trader = instance.trader
+
+        # Check if broker is connected
+        if not trader.broker:
+            return None
+
+        try:
+            account_info = await trader.broker.get_account_info()
+            return {
+                "broker_id": broker_id,
+                "balance": float(account_info.balance),
+                "equity": float(account_info.equity),
+                "margin_used": float(account_info.margin_used),
+                "margin_available": float(account_info.margin_available),
+                "unrealized_pnl": float(account_info.unrealized_pnl),
+                "currency": account_info.currency,
+            }
+        except Exception as e:
+            return {
+                "broker_id": broker_id,
+                "error": str(e)
+            }
+
     def get_all_statuses(self) -> List[dict]:
         """Get status of all broker instances."""
         return [

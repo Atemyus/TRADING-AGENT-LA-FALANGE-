@@ -933,6 +933,22 @@ export const brokerAccountsApi = {
   },
 
   /**
+   * Get account info (balance, equity) for a specific broker
+   */
+  getAccountInfo: async (brokerId: number): Promise<{
+    broker_id: number
+    name: string
+    balance: number | null
+    equity: number | null
+    margin_used?: number
+    margin_available?: number
+    unrealized_pnl?: number
+    currency?: string
+  }> => {
+    return fetchApi(`/api/v1/brokers/${brokerId}/account`)
+  },
+
+  /**
    * Start all enabled broker bots
    */
   startAll: async (): Promise<{
