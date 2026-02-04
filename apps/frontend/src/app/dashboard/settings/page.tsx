@@ -1613,6 +1613,59 @@ function BrokerAccountsSettings() {
                 />
               </div>
 
+              {/* AI Models Selector */}
+              <div className="col-span-2">
+                <label className="block text-sm font-medium mb-3">Enabled AI Models</label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {[
+                    { id: 'chatgpt', name: 'ChatGPT', color: 'bg-green-500' },
+                    { id: 'gemini', name: 'Gemini', color: 'bg-blue-500' },
+                    { id: 'grok', name: 'Grok', color: 'bg-red-500' },
+                    { id: 'qwen', name: 'Qwen', color: 'bg-purple-500' },
+                    { id: 'llama', name: 'Llama', color: 'bg-indigo-500' },
+                    { id: 'ernie', name: 'ERNIE', color: 'bg-cyan-500' },
+                    { id: 'kimi', name: 'Kimi K2.5', color: 'bg-orange-500' },
+                    { id: 'mistral', name: 'Mistral', color: 'bg-amber-500' },
+                  ].map((model) => {
+                    const isEnabled = formData.enabled_models.includes(model.id)
+                    return (
+                      <label
+                        key={model.id}
+                        className={`
+                          flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-all
+                          ${isEnabled
+                            ? 'border-primary bg-primary/10'
+                            : 'border-border hover:border-primary/50 bg-surface'
+                          }
+                        `}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isEnabled}
+                          onChange={(e) => {
+                            const newModels = e.target.checked
+                              ? [...formData.enabled_models, model.id]
+                              : formData.enabled_models.filter(m => m !== model.id)
+                            setFormData({ ...formData, enabled_models: newModels })
+                          }}
+                          className="sr-only"
+                        />
+                        <div className={`w-3 h-3 rounded-full ${model.color}`} />
+                        <span className={`text-sm ${isEnabled ? 'text-primary font-medium' : 'text-secondary'}`}>
+                          {model.name}
+                        </span>
+                        {isEnabled && (
+                          <Check size={14} className="ml-auto text-primary" />
+                        )}
+                      </label>
+                    )
+                  })}
+                </div>
+                <p className="text-xs text-secondary mt-2">
+                  Select which AI models will analyze charts for this broker. More models = more comprehensive analysis.
+                </p>
+              </div>
+
               {/* Trading Hours */}
               <div>
                 <label className="block text-sm font-medium mb-2">Trading Start Hour (UTC)</label>
