@@ -790,14 +790,8 @@ class AutoTrader:
             MAX_RR_RATIO = 3.0  # Max Risk:Reward ratio (1:3) — TP non oltre 3x la distanza SL
 
             # ====== VALIDAZIONE DISTANZA MASSIMA SL (protezione da valori AI assurdi) ======
-            # Calcola la distanza massima SL in percentuale del prezzo
-            sym = symbol.upper().replace("/", "").replace("_", "")
-            if any(idx in sym for idx in ["US30", "US500", "NAS100", "DE40", "UK100", "JP225", "FR40", "EU50"]):
-                MAX_SL_PERCENT = 1.5  # Indici: max 1.5% di distanza SL
-            elif "XAU" in sym or "GOLD" in sym:
-                MAX_SL_PERCENT = 2.0  # Oro: max 2% di distanza SL
-            else:
-                MAX_SL_PERCENT = 1.0  # Forex: max 1% di distanza SL
+            # Percentuale UNIFORME per TUTTI gli asset - stesso comportamento su tutti i broker
+            MAX_SL_PERCENT = 1.5  # Max 1.5% di distanza SL per tutti gli asset (indici, forex, oro, etc.)
 
             max_sl_distance = current_price * (MAX_SL_PERCENT / 100)
 
