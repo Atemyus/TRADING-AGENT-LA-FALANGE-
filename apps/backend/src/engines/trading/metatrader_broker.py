@@ -350,8 +350,8 @@ class MetaTraderBroker(BaseBroker):
         Resolve our internal symbol to broker's symbol format.
 
         Examples:
-            EUR_USD -> EURUSD (or EURUSDm, EURUSD., etc. depending on broker)
-            XAU_USD -> GOLD (or XAUUSD, GOLDm, etc.)
+            EUR_USD -> EURUSD (or EURUSDm, EURUSD., EURUSD+, etc. depending on broker)
+            XAU_USD -> GOLD (or XAUUSD, GOLDm, XAUUSD+, etc.)
             EUR/USD -> EUR_USD -> EURUSD (also accepts slash format)
         """
         # Normalize: accept both EUR/USD and EUR_USD
@@ -366,7 +366,18 @@ class MetaTraderBroker(BaseBroker):
             # Normalize our symbol (remove underscore)
             base_symbol = symbol.replace('_', '')
 
-            # First, check exact match (case insensitive)
+            # PRIORITY 1: Check for tradeable suffix variants first (e.g., EURUSD+ for Ultima Markets)
+            # These suffixes typically indicate the tradeable version of a symbol
+            tradeable_suffixes = ['+', '.stp', '.pro', '.raw', 'm', '.']
+            for suffix in tradeable_suffixes:
+                candidate = base_symbol.upper() + suffix.upper()
+                for broker_sym in self._broker_symbols:
+                    if broker_sym.upper() == candidate:
+                        print(f"[MetaTrader] Resolved {symbol} -> {broker_sym} (tradeable suffix)")
+                        self._symbol_map[symbol] = broker_sym
+                        return broker_sym
+
+            # PRIORITY 2: Check exact match (case insensitive)
             for broker_sym in self._broker_symbols:
                 if broker_sym.upper() == base_symbol.upper():
                     self._symbol_map[symbol] = broker_sym
