@@ -755,36 +755,85 @@ export default function BotControlPage() {
                     </div>
 
                     {/* Expanded details */}
-                    {isSelected && brokerStatus && (
+                    {isSelected && (
                       <motion.div
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: 'auto' }}
                         className="mt-4 pt-4 border-t border-slate-700"
                       >
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                          <div>
-                            <p className="text-xs text-slate-400">Modalità</p>
-                            <p className="text-sm font-medium capitalize">{brokerStatus.config?.analysis_mode || '-'}</p>
+                        {/* Statistics Grid - Always visible when expanded */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-4">
+                          <div className="bg-slate-800 rounded-lg p-3">
+                            <div className="flex items-center gap-2 text-slate-400 mb-1">
+                              <Zap size={14} />
+                              <span className="text-xs">Analisi Oggi</span>
+                            </div>
+                            <p className="text-xl font-bold">{brokerStatus?.statistics?.analyses_today || 0}</p>
                           </div>
-                          <div>
-                            <p className="text-xs text-slate-400">Intervallo</p>
-                            <p className="text-sm font-medium">{brokerStatus.config?.analysis_interval ? `${brokerStatus.config.analysis_interval}s` : '-'}</p>
+                          <div className="bg-slate-800 rounded-lg p-3">
+                            <div className="flex items-center gap-2 text-slate-400 mb-1">
+                              <BarChart3 size={14} />
+                              <span className="text-xs">Trade Oggi</span>
+                            </div>
+                            <p className="text-xl font-bold">{brokerStatus?.statistics?.trades_today || 0}</p>
                           </div>
-                          <div>
-                            <p className="text-xs text-slate-400">Posizioni Aperte</p>
-                            <p className="text-sm font-medium">{brokerStatus.statistics?.open_positions || 0}</p>
+                          <div className="bg-slate-800 rounded-lg p-3">
+                            <div className="flex items-center gap-2 text-slate-400 mb-1">
+                              <DollarSign size={14} />
+                              <span className="text-xs">P&L Giornaliero</span>
+                            </div>
+                            <p className={`text-xl font-bold ${
+                              (brokerStatus?.statistics?.daily_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'
+                            }`}>
+                              {(brokerStatus?.statistics?.daily_pnl || 0) >= 0 ? '+' : ''}${(brokerStatus?.statistics?.daily_pnl || 0).toFixed(2)}
+                            </p>
                           </div>
-                          <div>
-                            <p className="text-xs text-slate-400">Modelli AI</p>
-                            <p className="text-sm font-medium">{brokerStatus.config?.enabled_models?.length || 8}</p>
+                          <div className="bg-slate-800 rounded-lg p-3">
+                            <div className="flex items-center gap-2 text-slate-400 mb-1">
+                              <Activity size={14} />
+                              <span className="text-xs">Posizioni Aperte</span>
+                            </div>
+                            <p className="text-xl font-bold">{brokerStatus?.statistics?.open_positions || 0}</p>
+                          </div>
+                          <div className="bg-slate-800 rounded-lg p-3">
+                            <div className="flex items-center gap-2 text-slate-400 mb-1">
+                              <Clock size={14} />
+                              <span className="text-xs">Intervallo</span>
+                            </div>
+                            <p className="text-xl font-bold">{brokerStatus?.config?.analysis_interval ? `${Math.floor(brokerStatus.config.analysis_interval / 60)}m` : '-'}</p>
+                          </div>
+                          <div className="bg-slate-800 rounded-lg p-3">
+                            <div className="flex items-center gap-2 text-slate-400 mb-1">
+                              <Brain size={14} />
+                              <span className="text-xs">Modelli AI</span>
+                            </div>
+                            <p className="text-xl font-bold">{brokerStatus?.config?.enabled_models?.length || 8}</p>
                           </div>
                         </div>
-                        {brokerStatus.last_error && (
-                          <div className="mt-3 mb-4 p-2 bg-red-500/10 border border-red-500/30 rounded text-sm text-red-400">
+
+                        {/* Config info */}
+                        <div className="flex flex-wrap gap-2 mb-4">
+                          <span className="px-2 py-1 bg-purple-500/20 text-purple-300 text-xs rounded-full capitalize">
+                            Modalità: {brokerStatus?.config?.analysis_mode || broker.analysis_mode}
+                          </span>
+                          <span className="px-2 py-1 bg-blue-500/20 text-blue-300 text-xs rounded-full">
+                            Risk: {broker.risk_per_trade_percent}%
+                          </span>
+                          <span className="px-2 py-1 bg-green-500/20 text-green-300 text-xs rounded-full">
+                            Max Posizioni: {broker.max_open_positions}
+                          </span>
+                          <span className="px-2 py-1 bg-orange-500/20 text-orange-300 text-xs rounded-full">
+                            Orario: {broker.trading_start_hour}:00 - {broker.trading_end_hour}:00 UTC
+                          </span>
+                        </div>
+
+                        {brokerStatus?.last_error && (
+                          <div className="mb-4 p-2 bg-red-500/10 border border-red-500/30 rounded text-sm text-red-400">
                             <AlertTriangle size={14} className="inline mr-1" />
                             {brokerStatus.last_error}
                           </div>
                         )}
+
                         {/* AI Reasoning Panel for this broker */}
                         {isRunning && (
                           <div className="mt-4">
