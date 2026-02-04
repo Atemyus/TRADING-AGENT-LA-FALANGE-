@@ -986,6 +986,82 @@ export const brokerAccountsApi = {
   }> => {
     return fetchApi('/api/v1/brokers/control/status-all')
   },
+
+  /**
+   * Get positions for a specific broker
+   */
+  getPositions: async (brokerId: number): Promise<{
+    broker_id: number
+    name: string
+    positions: Array<{
+      position_id: string
+      symbol: string
+      side: string
+      size: number
+      entry_price: number
+      current_price: number
+      unrealized_pnl: string
+      unrealized_pnl_percent: string
+      stop_loss: number | null
+      take_profit: number | null
+      leverage: number
+      margin_used: number
+      opened_at: string | null
+      broker_id: number
+      broker_name: string
+    }>
+    message?: string
+  }> => {
+    return fetchApi(`/api/v1/brokers/${brokerId}/positions`)
+  },
+
+  /**
+   * Get all positions from all running brokers
+   */
+  getAllPositions: async (): Promise<{
+    total_positions: number
+    positions: Array<{
+      position_id: string
+      symbol: string
+      side: string
+      size: number
+      entry_price: number
+      current_price: number
+      unrealized_pnl: string
+      unrealized_pnl_percent: string
+      stop_loss: number | null
+      take_profit: number | null
+      leverage: number
+      margin_used: number
+      opened_at: string | null
+      broker_id: number
+      broker_name: string
+    }>
+  }> => {
+    return fetchApi('/api/v1/brokers/control/positions-all')
+  },
+
+  /**
+   * Get aggregated account summary from all running brokers
+   */
+  getAggregatedAccount: async (): Promise<{
+    total_balance: number
+    total_equity: number
+    total_unrealized_pnl: number
+    total_margin_used: number
+    total_open_positions: number
+    broker_count: number
+    currency: string
+    brokers: Array<{
+      broker_id: number
+      name: string
+      balance: number
+      equity: number | null
+      unrealized_pnl: number | null
+    }>
+  }> => {
+    return fetchApi('/api/v1/brokers/control/account-summary')
+  },
 }
 
 // ============ Health Check ============

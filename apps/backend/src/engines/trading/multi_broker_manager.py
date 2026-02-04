@@ -278,6 +278,43 @@ class MultiBrokerManager:
                 "error": str(e)
             }
 
+    async def get_broker_positions(self, broker_id: int) -> Optional[list]:
+        """Get open positions for a specific broker."""
+        if broker_id not in self._instances:
+            return None
+
+        instance = self._instances[broker_id]
+        trader = instance.trader
+
+        # Check if broker is connected
+        if not trader.broker:
+            return None
+
+        try:
+            positions = await trader.broker.get_positions()
+            return [
+                {
+                    "position_id": p.position_id,
+                    "symbol": p.symbol,
+                    "side": p.side,
+                    "size": float(p.size),
+                    "entry_price": float(p.entry_price),
+                    "current_price": float(p.current_price),
+                    "unrealized_pnl": str(p.unrealized_pnl),
+                    "unrealized_pnl_percent": str(getattr(p, 'unrealized_pnl_percent', '0')),
+                    "stop_loss": float(p.stop_loss) if p.stop_loss else None,
+                    "take_profit": float(p.take_profit) if p.take_profit else None,
+                    "leverage": getattr(p, 'leverage', 1),
+                    "margin_used": float(getattr(p, 'margin_used', 0)),
+                    "opened_at": p.opened_at.isoformat() if hasattr(p, 'opened_at') and p.opened_at else None,
+                    "broker_id": broker_id,
+                    "broker_name": instance.broker_account.name,
+                }
+                for p in positions
+            ]
+        except Exception as e:
+            return []
+
     def get_all_statuses(self) -> List[dict]:
         """Get status of all broker instances."""
         return [

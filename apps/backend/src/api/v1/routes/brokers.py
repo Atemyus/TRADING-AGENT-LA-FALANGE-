@@ -489,6 +489,38 @@ async def get_broker_account_info(broker_id: int, db: AsyncSession = Depends(get
     return {**account_info, "name": broker.name}
 
 
+@router.get("/{broker_id}/positions")
+async def get_broker_positions(broker_id: int, db: AsyncSession = Depends(get_db)):
+    """Get open positions for a specific broker."""
+    from src.engines.trading.multi_broker_manager import get_multi_broker_manager
+
+    # Verify broker exists
+    result = await db.execute(
+        select(BrokerAccount).where(BrokerAccount.id == broker_id)
+    )
+    broker = result.scalar_one_or_none()
+
+    if not broker:
+        raise HTTPException(status_code=404, detail="Broker account not found")
+
+    manager = get_multi_broker_manager()
+    positions = await manager.get_broker_positions(broker_id)
+
+    if positions is None:
+        return {
+            "broker_id": broker_id,
+            "name": broker.name,
+            "positions": [],
+            "message": "Broker not running or not connected"
+        }
+
+    return {
+        "broker_id": broker_id,
+        "name": broker.name,
+        "positions": positions
+    }
+
+
 # ============ Global Control Endpoints ============
 
 @router.post("/control/start-all")
@@ -511,6 +543,84 @@ async def stop_all_brokers(db: AsyncSession = Depends(get_db)):
     result = await manager.stop_all(db)
 
     return result
+
+
+@router.get("/control/positions-all")
+async def get_all_broker_positions(db: AsyncSession = Depends(get_db)):
+    """Get open positions from all running brokers."""
+    from src.engines.trading.multi_broker_manager import get_multi_broker_manager
+
+    # Load all brokers from DB
+    result = await db.execute(select(BrokerAccount).order_by(BrokerAccount.id))
+    brokers = result.scalars().all()
+
+    manager = get_multi_broker_manager()
+    all_positions = []
+
+    for broker in brokers:
+        positions = await manager.get_broker_positions(broker.id)
+        if positions:
+            all_positions.extend(positions)
+
+    return {
+        "total_positions": len(all_positions),
+        "positions": all_positions
+    }
+
+
+@router.get("/control/account-summary")
+async def get_aggregated_account_summary(db: AsyncSession = Depends(get_db)):
+    """Get aggregated account summary from all running brokers."""
+    from src.engines.trading.multi_broker_manager import get_multi_broker_manager
+
+    # Load all brokers from DB
+    result = await db.execute(select(BrokerAccount).order_by(BrokerAccount.id))
+    brokers = result.scalars().all()
+
+    manager = get_multi_broker_manager()
+
+    total_balance = 0.0
+    total_equity = 0.0
+    total_unrealized_pnl = 0.0
+    total_margin_used = 0.0
+    broker_count = 0
+    currency = "USD"
+    broker_details = []
+
+    for broker in brokers:
+        account_info = await manager.get_broker_account_info(broker.id)
+        if account_info and "balance" in account_info and account_info["balance"] is not None:
+            total_balance += account_info["balance"]
+            total_equity += account_info.get("equity", 0) or 0
+            total_unrealized_pnl += account_info.get("unrealized_pnl", 0) or 0
+            total_margin_used += account_info.get("margin_used", 0) or 0
+            currency = account_info.get("currency", "USD")
+            broker_count += 1
+            broker_details.append({
+                "broker_id": broker.id,
+                "name": broker.name,
+                "balance": account_info["balance"],
+                "equity": account_info.get("equity"),
+                "unrealized_pnl": account_info.get("unrealized_pnl"),
+            })
+
+    # Get total positions count
+    total_positions = 0
+    for broker in brokers:
+        positions = await manager.get_broker_positions(broker.id)
+        if positions:
+            total_positions += len(positions)
+
+    return {
+        "total_balance": total_balance,
+        "total_equity": total_equity,
+        "total_unrealized_pnl": total_unrealized_pnl,
+        "total_margin_used": total_margin_used,
+        "total_open_positions": total_positions,
+        "broker_count": broker_count,
+        "currency": currency,
+        "brokers": broker_details
+    }
 
 
 @router.get("/control/status-all")

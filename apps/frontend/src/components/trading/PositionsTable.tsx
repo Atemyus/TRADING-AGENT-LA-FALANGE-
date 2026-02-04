@@ -25,6 +25,9 @@ export interface Position {
   leverage: number
   marginUsed: string
   openedAt: string
+  // Multi-broker support
+  brokerId?: number
+  brokerName?: string
 }
 
 interface PositionsTableProps {
@@ -56,6 +59,11 @@ function PositionRow({ position, onClose, onModify }: { position: Position; onCl
             {position.side.toUpperCase()}
           </span>
         </div>
+        {position.brokerName && (
+          <div className="text-xs text-dark-400 mt-0.5">
+            {position.brokerName}
+          </div>
+        )}
       </td>
 
       {/* Size */}

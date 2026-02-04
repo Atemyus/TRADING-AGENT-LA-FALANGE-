@@ -21,7 +21,7 @@ import { PriceTicker } from '@/components/trading/PriceTicker'
 import { PositionsTable } from '@/components/trading/PositionsTable'
 import { OrderHistory } from '@/components/trading/OrderHistory'
 import { StatCard } from '@/components/common/StatCard'
-import { aiApi, analyticsApi, tradingApi, botApi } from '@/lib/api'
+import { aiApi, analyticsApi, tradingApi, botApi, brokerAccountsApi } from '@/lib/api'
 import type { AccountSummary, ConsensusResult, PerformanceMetrics } from '@/lib/api'
 import type { Position } from '@/components/trading/PositionsTable'
 import { usePriceStream } from '@/hooks/useWebSocket'
@@ -48,6 +48,17 @@ const itemVariants = {
   visible: { opacity: 1, y: 0 },
 }
 
+// Aggregated broker stats type
+interface AggregatedBrokerStats {
+  totalBalance: number
+  totalEquity: number
+  totalUnrealizedPnl: number
+  totalMarginUsed: number
+  totalOpenPositions: number
+  brokerCount: number
+  currency: string
+}
+
 export default function DashboardPage() {
   const [selectedSymbol, setSelectedSymbol] = useState('EUR/USD')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
@@ -59,6 +70,7 @@ export default function DashboardPage() {
   const [currentPrice, setCurrentPrice] = useState<number>(0)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [aggregatedStats, setAggregatedStats] = useState<AggregatedBrokerStats | null>(null)
 
   // WebSocket symbol format
   const wsSymbol = selectedSymbol.replace('/', '_')
@@ -81,25 +93,81 @@ export default function DashboardPage() {
       setError('Could not connect to backend. Configure broker in Settings.')
     }
 
-    // Fetch positions from broker (separate try to not block account data)
+    // Fetch aggregated account data from all running brokers
     try {
-      const posData = await tradingApi.getPositions()
-      const mapped: Position[] = posData.positions.map((p: import('@/lib/api').Position) => ({
-        id: p.position_id,
-        symbol: p.symbol,
-        side: p.side as 'long' | 'short',
-        size: p.size,
-        entryPrice: p.entry_price,
-        currentPrice: p.current_price,
-        pnl: parseFloat(p.unrealized_pnl),
-        pnlPercent: parseFloat(p.unrealized_pnl_percent || '0'),
-        stopLoss: p.stop_loss || undefined,
-        takeProfit: p.take_profit || undefined,
-        leverage: p.leverage || 1,
-        marginUsed: p.margin_used,
-        openedAt: p.opened_at,
-      }))
-      setPositions(mapped)
+      const aggregatedData = await brokerAccountsApi.getAggregatedAccount()
+      if (aggregatedData.broker_count > 0) {
+        setAggregatedStats({
+          totalBalance: aggregatedData.total_balance,
+          totalEquity: aggregatedData.total_equity,
+          totalUnrealizedPnl: aggregatedData.total_unrealized_pnl,
+          totalMarginUsed: aggregatedData.total_margin_used,
+          totalOpenPositions: aggregatedData.total_open_positions,
+          brokerCount: aggregatedData.broker_count,
+          currency: aggregatedData.currency,
+        })
+      }
+    } catch {
+      // Multi-broker aggregation not available
+    }
+
+    // Fetch positions from all brokers (multi-broker support)
+    try {
+      const allPositions: Position[] = []
+
+      // Try to get positions from all multi-broker instances
+      try {
+        const multiBrokerData = await brokerAccountsApi.getAllPositions()
+        if (multiBrokerData.positions && multiBrokerData.positions.length > 0) {
+          const mapped = multiBrokerData.positions.map((p) => ({
+            id: p.position_id,
+            symbol: p.symbol,
+            side: p.side.toLowerCase() as 'long' | 'short',
+            size: String(p.size),
+            entryPrice: String(p.entry_price),
+            currentPrice: String(p.current_price),
+            pnl: parseFloat(p.unrealized_pnl),
+            pnlPercent: parseFloat(p.unrealized_pnl_percent || '0'),
+            stopLoss: p.stop_loss ? String(p.stop_loss) : undefined,
+            takeProfit: p.take_profit ? String(p.take_profit) : undefined,
+            leverage: p.leverage || 1,
+            marginUsed: String(p.margin_used),
+            openedAt: p.opened_at || '',
+            brokerId: p.broker_id,
+            brokerName: p.broker_name,
+          }))
+          allPositions.push(...mapped)
+        }
+      } catch {
+        // Multi-broker not available, fall back to legacy single broker
+      }
+
+      // Also try legacy tradingApi for main broker (if not already included)
+      if (allPositions.length === 0) {
+        try {
+          const posData = await tradingApi.getPositions()
+          const mapped: Position[] = posData.positions.map((p: import('@/lib/api').Position) => ({
+            id: p.position_id,
+            symbol: p.symbol,
+            side: p.side as 'long' | 'short',
+            size: p.size,
+            entryPrice: p.entry_price,
+            currentPrice: p.current_price,
+            pnl: parseFloat(p.unrealized_pnl),
+            pnlPercent: parseFloat(p.unrealized_pnl_percent || '0'),
+            stopLoss: p.stop_loss || undefined,
+            takeProfit: p.take_profit || undefined,
+            leverage: p.leverage || 1,
+            marginUsed: p.margin_used,
+            openedAt: p.opened_at,
+          }))
+          allPositions.push(...mapped)
+        } catch {
+          // Legacy broker not available
+        }
+      }
+
+      setPositions(allPositions)
     } catch (err) {
       console.error('Failed to fetch positions:', err)
     }
@@ -243,29 +311,70 @@ export default function DashboardPage() {
         <PriceTicker selectedSymbol={selectedSymbol} onSelect={setSelectedSymbol} />
       </motion.div>
 
-      {/* Stats Row - Real Data */}
+      {/* Stats Row - Real Data (uses aggregated multi-broker data when available) */}
       <motion.div
         variants={itemVariants}
         className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
       >
         <StatCard
-          label="Account Balance"
-          value={account ? formatCurrency(account.balance) : isLoading ? 'Loading...' : '$0.00'}
+          label={aggregatedStats && aggregatedStats.brokerCount > 1 ? `Total Balance (${aggregatedStats.brokerCount} brokers)` : "Account Balance"}
+          value={
+            aggregatedStats
+              ? formatCurrency(aggregatedStats.totalBalance)
+              : account
+                ? formatCurrency(account.balance)
+                : isLoading ? 'Loading...' : '$0.00'
+          }
           change={account ? `${formatCurrency(account.realized_pnl_today)} today` : ''}
           isPositive={account ? parseFloat(account.realized_pnl_today) >= 0 : true}
           icon={DollarSign}
         />
         <StatCard
           label="Unrealized P&L"
-          value={account ? formatCurrency(account.unrealized_pnl) : isLoading ? 'Loading...' : '$0.00'}
-          change={account ? `${account.open_positions} positions` : ''}
-          isPositive={account ? parseFloat(account.unrealized_pnl) >= 0 : true}
-          icon={account && parseFloat(account.unrealized_pnl) >= 0 ? TrendingUp : TrendingDown}
+          value={
+            aggregatedStats
+              ? formatCurrency(aggregatedStats.totalUnrealizedPnl)
+              : account
+                ? formatCurrency(account.unrealized_pnl)
+                : isLoading ? 'Loading...' : '$0.00'
+          }
+          change={
+            aggregatedStats
+              ? `${aggregatedStats.totalOpenPositions} positions`
+              : account
+                ? `${account.open_positions} positions`
+                : ''
+          }
+          isPositive={
+            aggregatedStats
+              ? aggregatedStats.totalUnrealizedPnl >= 0
+              : account
+                ? parseFloat(account.unrealized_pnl) >= 0
+                : true
+          }
+          icon={
+            (aggregatedStats && aggregatedStats.totalUnrealizedPnl >= 0) ||
+            (account && parseFloat(account.unrealized_pnl) >= 0)
+              ? TrendingUp
+              : TrendingDown
+          }
         />
         <StatCard
           label="Open Positions"
-          value={account ? String(account.open_positions) : isLoading ? '...' : '0'}
-          subtext={account ? `${formatCurrency(account.margin_used)} margin` : ''}
+          value={
+            aggregatedStats
+              ? String(aggregatedStats.totalOpenPositions)
+              : account
+                ? String(account.open_positions)
+                : isLoading ? '...' : '0'
+          }
+          subtext={
+            aggregatedStats
+              ? `${formatCurrency(aggregatedStats.totalMarginUsed)} margin`
+              : account
+                ? `${formatCurrency(account.margin_used)} margin`
+                : ''
+          }
           icon={Activity}
         />
         <StatCard
