@@ -806,6 +806,22 @@ class MetaTraderBroker(BaseBroker):
                   f"executionMode={spec.get('executionMode')}, "
                   f"tradeMode={spec.get('tradeMode')}")
 
+            # Check if trading is enabled on this symbol
+            trade_mode = spec.get('tradeMode', '')
+            if trade_mode != 'SYMBOL_TRADE_MODE_FULL':
+                error_msg = f"Trading disabilitato su {broker_symbol} (tradeMode={trade_mode}). Verificare account broker o simbolo."
+                print(f"[MetaTrader] {error_msg}")
+                return OrderResult(
+                    order_id="",
+                    symbol=order.symbol,
+                    side=order.side,
+                    order_type=order.order_type,
+                    status=OrderStatus.REJECTED,
+                    size=order.size,
+                    filled_size=Decimal("0"),
+                    error_message=error_msg,
+                )
+
         # Normalize volume to broker constraints
         raw_volume = float(order.size)
         volume = self._normalize_volume(raw_volume, spec) if spec else raw_volume
