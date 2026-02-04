@@ -1627,7 +1627,8 @@ function BrokerAccountsSettings() {
                     { id: 'kimi', name: 'Kimi K2.5', color: 'bg-orange-500' },
                     { id: 'mistral', name: 'Mistral', color: 'bg-amber-500' },
                   ].map((model) => {
-                    const isEnabled = formData.enabled_models.includes(model.id)
+                    const enabledModels = formData.enabled_models || []
+                    const isEnabled = enabledModels.includes(model.id)
                     return (
                       <label
                         key={model.id}
@@ -1644,8 +1645,8 @@ function BrokerAccountsSettings() {
                           checked={isEnabled}
                           onChange={(e) => {
                             const newModels = e.target.checked
-                              ? [...formData.enabled_models, model.id]
-                              : formData.enabled_models.filter(m => m !== model.id)
+                              ? [...enabledModels, model.id]
+                              : enabledModels.filter(m => m !== model.id)
                             setFormData({ ...formData, enabled_models: newModels })
                           }}
                           className="sr-only"
