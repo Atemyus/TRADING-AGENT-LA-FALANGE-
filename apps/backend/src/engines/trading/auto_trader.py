@@ -230,9 +230,15 @@ class AutoTrader:
         # Oro: 1 pip = 0.10 ($)
         if "XAU" in sym or "GOLD" in sym:
             return 0.10
+        # Argento: 1 pip = 0.01
+        if "XAG" in sym or "SILVER" in sym:
+            return 0.01
         # Indici: 1 pip = 1.0 punto
         if any(idx in sym for idx in ["US30", "US500", "NAS100", "DE40", "UK100", "JP225", "FR40", "EU50"]):
             return 1.0
+        # Petrolio: 1 pip = 0.01
+        if any(oil in sym for oil in ["WTI", "BRENT", "OIL", "USOIL", "UKOIL"]):
+            return 0.01
         # Forex standard: 1 pip = 0.0001
         return 0.0001
 
@@ -248,6 +254,12 @@ class AutoTrader:
         # Valore pip per 1 lotto standard
         if "XAU" in sym or "GOLD" in sym:
             # Oro: 1 lotto = 100 oz, 1 pip ($0.10) × 100 oz = $10 per pip/lotto
+            pip_value = 10.0
+        elif "XAG" in sym or "SILVER" in sym:
+            # Argento: 1 lotto = 5000 oz, 1 pip ($0.01) × 5000 oz = $50 per pip/lotto
+            pip_value = 50.0
+        elif any(oil in sym for oil in ["WTI", "BRENT", "OIL", "USOIL", "UKOIL"]):
+            # Petrolio: 1 lotto = 1000 barili, 1 pip ($0.01) × 1000 = $10 per pip/lotto
             pip_value = 10.0
         elif any(idx in sym for idx in ["US30", "US500", "NAS100", "DE40", "UK100", "JP225", "FR40", "EU50"]):
             # Indici: 1 lotto = 1 contratto, 1 punto = $1 (varia, usiamo approssimazione)
@@ -555,8 +567,8 @@ class AutoTrader:
 
                 # Check Trailing Stop
                 if trade.trailing_stop_pips and trade.is_break_even:
-                    pip_value = 0.0001 if "JPY" not in trade.symbol else 0.01
-                    trail_distance = trade.trailing_stop_pips * pip_value
+                    pip_size = self._get_pip_size(trade.symbol)
+                    trail_distance = trade.trailing_stop_pips * pip_size
 
                     new_sl = None
                     if trade.direction == "LONG":
