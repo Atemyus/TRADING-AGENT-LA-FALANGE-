@@ -1,0 +1,300 @@
+"""
+Multi-Broker Manager - Manages multiple AutoTrader instances for different brokers.
+
+Each broker account runs independently with its own:
+- TradingView AI Agent analysis
+- Trading configuration (symbols, risk, hours)
+- Broker connection (MetaApi credentials)
+"""
+
+import asyncio
+from typing import Dict, Optional, List
+from dataclasses import dataclass
+from datetime import datetime
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.core.models import BrokerAccount
+from src.engines.trading.auto_trader import AutoTrader, BotConfig, BotStatus, AnalysisMode
+
+
+@dataclass
+class BrokerInstance:
+    """Represents a running broker instance."""
+    broker_account: BrokerAccount
+    trader: AutoTrader
+    status: str = "stopped"
+    started_at: Optional[datetime] = None
+    last_error: Optional[str] = None
+
+
+class MultiBrokerManager:
+    """
+    Manages multiple AutoTrader instances, one per broker account.
+
+    Each broker runs completely independently:
+    - Own broker connection (MetaApi credentials)
+    - Own symbol list
+    - Own risk settings
+    - Own analysis interval
+    - Own AI model selection
+    """
+
+    def __init__(self):
+        self._instances: Dict[int, BrokerInstance] = {}
+        self._lock = asyncio.Lock()
+
+    async def load_brokers(self, db: AsyncSession) -> List[BrokerAccount]:
+        """Load all broker accounts from database."""
+        result = await db.execute(select(BrokerAccount).order_by(BrokerAccount.id))
+        return list(result.scalars().all())
+
+    async def initialize_broker(self, broker_account: BrokerAccount) -> BrokerInstance:
+        """Initialize an AutoTrader instance for a specific broker account."""
+        async with self._lock:
+            # Check if already exists
+            if broker_account.id in self._instances:
+                return self._instances[broker_account.id]
+
+            # Create AutoTrader with broker-specific config
+            trader = AutoTrader()
+            config = self._create_config_from_account(broker_account)
+            trader.configure(config)
+
+            # Store the broker credentials in the trader for later use
+            trader._broker_account = broker_account
+
+            instance = BrokerInstance(
+                broker_account=broker_account,
+                trader=trader,
+                status="initialized"
+            )
+
+            self._instances[broker_account.id] = instance
+            return instance
+
+    def _create_config_from_account(self, account: BrokerAccount) -> BotConfig:
+        """Create BotConfig from BrokerAccount database model."""
+        # Parse analysis mode
+        try:
+            analysis_mode = AnalysisMode(account.analysis_mode)
+        except ValueError:
+            analysis_mode = AnalysisMode.STANDARD
+
+        return BotConfig(
+            symbols=account.symbols,
+            analysis_mode=analysis_mode,
+            analysis_interval_seconds=account.analysis_interval_seconds,
+            min_confidence=account.min_confidence,
+            min_models_agree=account.min_models_agree,
+            risk_per_trade_percent=account.risk_per_trade_percent,
+            max_open_positions=account.max_open_positions,
+            max_daily_trades=account.max_daily_trades,
+            max_daily_loss_percent=account.max_daily_loss_percent,
+            trading_start_hour=account.trading_start_hour,
+            trading_end_hour=account.trading_end_hour,
+            trade_on_weekends=account.trade_on_weekends,
+            enabled_models=account.enabled_models,
+        )
+
+    async def start_broker(self, broker_id: int, db: AsyncSession) -> dict:
+        """Start a specific broker's AutoTrader instance."""
+        # Load fresh broker data from DB
+        result = await db.execute(
+            select(BrokerAccount).where(BrokerAccount.id == broker_id)
+        )
+        broker_account = result.scalar_one_or_none()
+
+        if not broker_account:
+            return {"status": "error", "message": "Broker not found"}
+
+        if not broker_account.is_enabled:
+            return {"status": "error", "message": "Broker is disabled"}
+
+        if not broker_account.metaapi_token or not broker_account.metaapi_account_id:
+            return {"status": "error", "message": "MetaApi credentials not configured"}
+
+        # Initialize if not exists
+        instance = await self.initialize_broker(broker_account)
+
+        # Check if already running
+        if instance.trader.state.status == BotStatus.RUNNING:
+            return {"status": "already_running", "message": f"Broker '{broker_account.name}' is already running"}
+
+        try:
+            # Set MetaApi credentials in environment for this broker
+            import os
+            os.environ["METAAPI_ACCESS_TOKEN"] = broker_account.metaapi_token
+            os.environ["METAAPI_ACCOUNT_ID"] = broker_account.metaapi_account_id
+
+            # Start the trader
+            await instance.trader.start()
+            instance.status = "running"
+            instance.started_at = datetime.utcnow()
+            instance.last_error = None
+
+            # Update DB connection status
+            broker_account.is_connected = True
+            broker_account.last_connected_at = datetime.utcnow()
+            await db.flush()
+
+            return {
+                "status": "success",
+                "message": f"Broker '{broker_account.name}' started successfully",
+                "broker_id": broker_id,
+                "symbols": broker_account.symbols
+            }
+        except Exception as e:
+            instance.status = "error"
+            instance.last_error = str(e)
+            return {"status": "error", "message": f"Failed to start: {str(e)}"}
+
+    async def stop_broker(self, broker_id: int, db: AsyncSession) -> dict:
+        """Stop a specific broker's AutoTrader instance."""
+        if broker_id not in self._instances:
+            return {"status": "error", "message": "Broker instance not found"}
+
+        instance = self._instances[broker_id]
+
+        if instance.trader.state.status == BotStatus.STOPPED:
+            return {"status": "already_stopped", "message": "Broker is already stopped"}
+
+        try:
+            await instance.trader.stop()
+            instance.status = "stopped"
+
+            # Update DB connection status
+            result = await db.execute(
+                select(BrokerAccount).where(BrokerAccount.id == broker_id)
+            )
+            broker_account = result.scalar_one_or_none()
+            if broker_account:
+                broker_account.is_connected = False
+                await db.flush()
+
+            return {
+                "status": "success",
+                "message": f"Broker '{instance.broker_account.name}' stopped",
+                "broker_id": broker_id
+            }
+        except Exception as e:
+            return {"status": "error", "message": f"Failed to stop: {str(e)}"}
+
+    async def start_all_enabled(self, db: AsyncSession) -> dict:
+        """Start all enabled broker accounts."""
+        brokers = await self.load_brokers(db)
+        results = []
+
+        for broker in brokers:
+            if broker.is_enabled:
+                result = await self.start_broker(broker.id, db)
+                results.append({
+                    "broker_id": broker.id,
+                    "name": broker.name,
+                    **result
+                })
+
+        return {
+            "status": "success",
+            "started": len([r for r in results if r.get("status") == "success"]),
+            "total_enabled": len([b for b in brokers if b.is_enabled]),
+            "results": results
+        }
+
+    async def stop_all(self, db: AsyncSession) -> dict:
+        """Stop all running broker instances."""
+        results = []
+
+        for broker_id, instance in list(self._instances.items()):
+            if instance.trader.state.status == BotStatus.RUNNING:
+                result = await self.stop_broker(broker_id, db)
+                results.append({
+                    "broker_id": broker_id,
+                    "name": instance.broker_account.name,
+                    **result
+                })
+
+        return {
+            "status": "success",
+            "stopped": len([r for r in results if r.get("status") == "success"]),
+            "results": results
+        }
+
+    def get_broker_status(self, broker_id: int) -> Optional[dict]:
+        """Get status of a specific broker instance."""
+        if broker_id not in self._instances:
+            return None
+
+        instance = self._instances[broker_id]
+        trader = instance.trader
+
+        return {
+            "broker_id": broker_id,
+            "name": instance.broker_account.name,
+            "status": trader.state.status.value,
+            "started_at": instance.started_at.isoformat() if instance.started_at else None,
+            "last_error": instance.last_error,
+            "statistics": {
+                "analyses_today": trader.state.analyses_today,
+                "trades_today": trader.state.trades_today,
+                "daily_pnl": trader.state.daily_pnl,
+                "open_positions": len(trader.state.open_positions),
+            },
+            "config": {
+                "symbols": trader.config.symbols,
+                "analysis_mode": trader.config.analysis_mode.value,
+                "analysis_interval": trader.config.analysis_interval_seconds,
+                "enabled_models": trader.config.enabled_models,
+            }
+        }
+
+    def get_all_statuses(self) -> List[dict]:
+        """Get status of all broker instances."""
+        return [
+            self.get_broker_status(broker_id)
+            for broker_id in self._instances
+        ]
+
+    def get_instance(self, broker_id: int) -> Optional[BrokerInstance]:
+        """Get a specific broker instance."""
+        return self._instances.get(broker_id)
+
+    async def refresh_broker_config(self, broker_id: int, db: AsyncSession) -> dict:
+        """Refresh a broker's configuration from database (without restart)."""
+        result = await db.execute(
+            select(BrokerAccount).where(BrokerAccount.id == broker_id)
+        )
+        broker_account = result.scalar_one_or_none()
+
+        if not broker_account:
+            return {"status": "error", "message": "Broker not found"}
+
+        if broker_id not in self._instances:
+            return {"status": "error", "message": "Broker instance not initialized"}
+
+        instance = self._instances[broker_id]
+        new_config = self._create_config_from_account(broker_account)
+        instance.trader.configure(new_config)
+        instance.broker_account = broker_account
+
+        return {
+            "status": "success",
+            "message": f"Configuration refreshed for '{broker_account.name}'",
+            "config": {
+                "symbols": new_config.symbols,
+                "analysis_mode": new_config.analysis_mode.value,
+            }
+        }
+
+
+# Singleton instance
+_multi_broker_manager: Optional[MultiBrokerManager] = None
+
+
+def get_multi_broker_manager() -> MultiBrokerManager:
+    """Get or create the multi-broker manager singleton."""
+    global _multi_broker_manager
+    if _multi_broker_manager is None:
+        _multi_broker_manager = MultiBrokerManager()
+    return _multi_broker_manager

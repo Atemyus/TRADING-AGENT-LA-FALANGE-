@@ -722,6 +722,238 @@ export const settingsApi = {
   },
 }
 
+// ============ Broker Accounts API (Multi-Broker Support) ============
+
+export interface BrokerAccountData {
+  id: number
+  name: string
+  broker_type: string
+  metaapi_account_id?: string
+  metaapi_token?: string
+  is_enabled: boolean
+  is_connected: boolean
+  last_connected_at?: string
+  symbols: string[]
+  risk_per_trade_percent: number
+  max_open_positions: number
+  max_daily_trades: number
+  max_daily_loss_percent: number
+  analysis_mode: string
+  analysis_interval_seconds: number
+  min_confidence: number
+  min_models_agree: number
+  enabled_models: string[]
+  trading_start_hour: number
+  trading_end_hour: number
+  trade_on_weekends: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface BrokerAccountCreate {
+  name: string
+  broker_type?: string
+  metaapi_account_id?: string
+  metaapi_token?: string
+  is_enabled?: boolean
+  symbols?: string[]
+  risk_per_trade_percent?: number
+  max_open_positions?: number
+  max_daily_trades?: number
+  max_daily_loss_percent?: number
+  analysis_mode?: string
+  analysis_interval_seconds?: number
+  min_confidence?: number
+  min_models_agree?: number
+  enabled_models?: string[]
+  trading_start_hour?: number
+  trading_end_hour?: number
+  trade_on_weekends?: boolean
+}
+
+export interface BrokerBotStatus {
+  broker_id: number
+  name: string
+  status: string
+  started_at?: string
+  last_error?: string
+  is_enabled: boolean
+  is_connected?: boolean
+  statistics?: {
+    analyses_today: number
+    trades_today: number
+    daily_pnl: number
+    open_positions: number
+  }
+  config?: {
+    symbols: string[]
+    analysis_mode: string
+    analysis_interval: number
+    enabled_models: string[]
+  }
+}
+
+export const brokerAccountsApi = {
+  /**
+   * Get all broker accounts
+   */
+  list: async (): Promise<BrokerAccountData[]> => {
+    return fetchApi('/api/v1/brokers')
+  },
+
+  /**
+   * Get a specific broker account
+   */
+  get: async (brokerId: number): Promise<BrokerAccountData> => {
+    return fetchApi(`/api/v1/brokers/${brokerId}`)
+  },
+
+  /**
+   * Create a new broker account
+   */
+  create: async (data: BrokerAccountCreate): Promise<BrokerAccountData> => {
+    return fetchApi('/api/v1/brokers', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  /**
+   * Update a broker account
+   */
+  update: async (brokerId: number, data: Partial<BrokerAccountCreate>): Promise<BrokerAccountData> => {
+    return fetchApi(`/api/v1/brokers/${brokerId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  },
+
+  /**
+   * Delete a broker account
+   */
+  delete: async (brokerId: number): Promise<{ status: string; message: string }> => {
+    return fetchApi(`/api/v1/brokers/${brokerId}`, {
+      method: 'DELETE',
+    })
+  },
+
+  /**
+   * Test broker connection
+   */
+  testConnection: async (brokerId: number): Promise<{
+    status: string
+    message: string
+    account_name?: string
+    platform?: string
+    state?: string
+    broker?: string
+  }> => {
+    return fetchApi(`/api/v1/brokers/${brokerId}/test`, {
+      method: 'POST',
+    })
+  },
+
+  /**
+   * Toggle broker enabled/disabled
+   */
+  toggle: async (brokerId: number): Promise<{
+    status: string
+    broker_id: number
+    is_enabled: boolean
+    message: string
+  }> => {
+    return fetchApi(`/api/v1/brokers/${brokerId}/toggle`, {
+      method: 'POST',
+    })
+  },
+
+  /**
+   * Start the bot for a specific broker
+   */
+  startBot: async (brokerId: number): Promise<{
+    status: string
+    message: string
+    broker_id?: number
+    symbols?: string[]
+  }> => {
+    return fetchApi(`/api/v1/brokers/${brokerId}/start`, {
+      method: 'POST',
+    })
+  },
+
+  /**
+   * Stop the bot for a specific broker
+   */
+  stopBot: async (brokerId: number): Promise<{
+    status: string
+    message: string
+    broker_id?: number
+  }> => {
+    return fetchApi(`/api/v1/brokers/${brokerId}/stop`, {
+      method: 'POST',
+    })
+  },
+
+  /**
+   * Get bot status for a specific broker
+   */
+  getBotStatus: async (brokerId: number): Promise<BrokerBotStatus> => {
+    return fetchApi(`/api/v1/brokers/${brokerId}/status`)
+  },
+
+  /**
+   * Refresh broker config without restart
+   */
+  refreshConfig: async (brokerId: number): Promise<{
+    status: string
+    message: string
+    config?: { symbols: string[]; analysis_mode: string }
+  }> => {
+    return fetchApi(`/api/v1/brokers/${brokerId}/refresh-config`, {
+      method: 'POST',
+    })
+  },
+
+  /**
+   * Start all enabled broker bots
+   */
+  startAll: async (): Promise<{
+    status: string
+    started: number
+    total_enabled: number
+    results: Array<{ broker_id: number; name: string; status: string; message: string }>
+  }> => {
+    return fetchApi('/api/v1/brokers/control/start-all', {
+      method: 'POST',
+    })
+  },
+
+  /**
+   * Stop all running broker bots
+   */
+  stopAll: async (): Promise<{
+    status: string
+    stopped: number
+    results: Array<{ broker_id: number; name: string; status: string; message: string }>
+  }> => {
+    return fetchApi('/api/v1/brokers/control/stop-all', {
+      method: 'POST',
+    })
+  },
+
+  /**
+   * Get status of all broker instances
+   */
+  getAllStatuses: async (): Promise<{
+    total_brokers: number
+    enabled: number
+    running: number
+    brokers: BrokerBotStatus[]
+  }> => {
+    return fetchApi('/api/v1/brokers/control/status-all')
+  },
+}
+
 // ============ Health Check ============
 
 export const healthCheck = async (): Promise<{ status: string; version: string }> => {
@@ -736,5 +968,6 @@ export default {
   trading: tradingApi,
   bot: botApi,
   settings: settingsApi,
+  brokerAccounts: brokerAccountsApi,
   healthCheck,
 }
