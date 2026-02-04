@@ -260,6 +260,31 @@ class MultiBrokerManager:
         """Get a specific broker instance."""
         return self._instances.get(broker_id)
 
+    def get_broker_logs(self, broker_id: int, limit: int = 50) -> Optional[dict]:
+        """Get analysis logs for a specific broker."""
+        if broker_id not in self._instances:
+            return None
+
+        instance = self._instances[broker_id]
+        trader = instance.trader
+        logs = trader.state.analysis_logs[-limit:]
+
+        return {
+            "broker_id": broker_id,
+            "name": instance.broker_account.name,
+            "logs": [
+                {
+                    "timestamp": log.timestamp.isoformat(),
+                    "symbol": log.symbol,
+                    "type": log.log_type,
+                    "message": log.message,
+                    "details": log.details
+                }
+                for log in logs
+            ],
+            "total": len(trader.state.analysis_logs)
+        }
+
     async def refresh_broker_config(self, broker_id: int, db: AsyncSession) -> dict:
         """Refresh a broker's configuration from database (without restart)."""
         result = await db.execute(

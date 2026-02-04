@@ -915,6 +915,24 @@ export const brokerAccountsApi = {
   },
 
   /**
+   * Get AI analysis logs for a specific broker
+   */
+  getLogs: async (brokerId: number, limit: number = 50): Promise<{
+    broker_id: number
+    name: string
+    logs: Array<{
+      timestamp: string
+      symbol: string
+      type: string
+      message: string
+      details: Record<string, unknown> | null
+    }>
+    total: number
+  }> => {
+    return fetchApi(`/api/v1/brokers/${brokerId}/logs?limit=${limit}`)
+  },
+
+  /**
    * Start all enabled broker bots
    */
   startAll: async (): Promise<{

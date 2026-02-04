@@ -431,6 +431,35 @@ async def refresh_broker_config(broker_id: int, db: AsyncSession = Depends(get_d
     return result
 
 
+@router.get("/{broker_id}/logs")
+async def get_broker_logs(broker_id: int, limit: int = 50, db: AsyncSession = Depends(get_db)):
+    """Get AI analysis logs for a specific broker."""
+    from src.engines.trading.multi_broker_manager import get_multi_broker_manager
+
+    # Verify broker exists
+    result = await db.execute(
+        select(BrokerAccount).where(BrokerAccount.id == broker_id)
+    )
+    broker = result.scalar_one_or_none()
+
+    if not broker:
+        raise HTTPException(status_code=404, detail="Broker account not found")
+
+    manager = get_multi_broker_manager()
+    logs = manager.get_broker_logs(broker_id, limit)
+
+    if not logs:
+        return {
+            "broker_id": broker_id,
+            "name": broker.name,
+            "logs": [],
+            "total": 0,
+            "message": "Broker not running or no logs available"
+        }
+
+    return logs
+
+
 # ============ Global Control Endpoints ============
 
 @router.post("/control/start-all")

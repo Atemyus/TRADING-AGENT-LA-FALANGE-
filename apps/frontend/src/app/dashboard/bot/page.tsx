@@ -50,7 +50,13 @@ interface AnalysisLog {
   details: Record<string, unknown> | null;
 }
 
-function AIReasoningPanel() {
+interface AIReasoningPanelProps {
+  brokerId?: number;
+  brokerName?: string;
+  compact?: boolean;
+}
+
+function AIReasoningPanel({ brokerId, brokerName, compact = false }: AIReasoningPanelProps) {
   const [logs, setLogs] = React.useState<AnalysisLog[]>([]);
   const [autoScroll, setAutoScroll] = React.useState(true);
   const scrollRef = React.useRef<HTMLDivElement>(null);
@@ -60,8 +66,14 @@ function AIReasoningPanel() {
   React.useEffect(() => {
     const fetchLogs = async () => {
       try {
-        const data = await botApi.getLogs(50);
-        setLogs(data.logs);
+        // Use broker-specific logs if brokerId is provided
+        if (brokerId) {
+          const data = await brokerAccountsApi.getLogs(brokerId, 50);
+          setLogs(data.logs);
+        } else {
+          const data = await botApi.getLogs(50);
+          setLogs(data.logs);
+        }
       } catch {
         // silently ignore
       }
@@ -69,7 +81,7 @@ function AIReasoningPanel() {
     fetchLogs();
     const interval = setInterval(fetchLogs, 3000);
     return () => clearInterval(interval);
-  }, []);
+  }, [brokerId]);
 
   // Auto-scroll to bottom when new logs arrive
   React.useEffect(() => {
@@ -102,11 +114,11 @@ function AIReasoningPanel() {
   };
 
   return (
-    <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
+    <div className={`bg-slate-800 rounded-xl border border-slate-700 ${compact ? 'p-4' : 'p-6'}`}>
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold flex items-center gap-2">
-          <Brain size={20} className="text-purple-400" />
-          AI Reasoning - Analisi in Tempo Reale
+        <h3 className={`${compact ? 'text-sm' : 'text-lg'} font-semibold flex items-center gap-2`}>
+          <Brain size={compact ? 16 : 20} className="text-purple-400" />
+          {brokerName ? `AI Reasoning - ${brokerName}` : 'AI Reasoning - Analisi in Tempo Reale'}
         </h3>
         <div className="flex items-center gap-3">
           <span className="text-xs text-slate-400">{logs.length} log</span>
@@ -124,7 +136,7 @@ function AIReasoningPanel() {
       </div>
       <div
         ref={scrollRef}
-        className="bg-slate-900/80 rounded-lg p-3 max-h-[400px] overflow-y-auto font-mono text-xs space-y-1 border border-slate-700/50"
+        className={`bg-slate-900/80 rounded-lg p-3 ${compact ? 'max-h-[250px]' : 'max-h-[400px]'} overflow-y-auto font-mono text-xs space-y-1 border border-slate-700/50`}
         onScroll={() => {
           if (scrollRef.current) {
             const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
@@ -133,8 +145,8 @@ function AIReasoningPanel() {
         }}
       >
         {logs.length === 0 ? (
-          <div className="text-center text-slate-500 py-8">
-            <Brain size={32} className="mx-auto mb-2 opacity-50" />
+          <div className={`text-center text-slate-500 ${compact ? 'py-4' : 'py-8'}`}>
+            <Brain size={compact ? 24 : 32} className="mx-auto mb-2 opacity-50" />
             <p>In attesa delle analisi AI...</p>
             <p className="text-xs mt-1">I log appariranno quando il bot inizia l&apos;analisi</p>
           </div>
@@ -749,7 +761,7 @@ export default function BotControlPage() {
                         animate={{ opacity: 1, height: 'auto' }}
                         className="mt-4 pt-4 border-t border-slate-700"
                       >
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                           <div>
                             <p className="text-xs text-slate-400">Modalità</p>
                             <p className="text-sm font-medium capitalize">{brokerStatus.config?.analysis_mode || '-'}</p>
@@ -768,9 +780,19 @@ export default function BotControlPage() {
                           </div>
                         </div>
                         {brokerStatus.last_error && (
-                          <div className="mt-3 p-2 bg-red-500/10 border border-red-500/30 rounded text-sm text-red-400">
+                          <div className="mt-3 mb-4 p-2 bg-red-500/10 border border-red-500/30 rounded text-sm text-red-400">
                             <AlertTriangle size={14} className="inline mr-1" />
                             {brokerStatus.last_error}
+                          </div>
+                        )}
+                        {/* AI Reasoning Panel for this broker */}
+                        {isRunning && (
+                          <div className="mt-4">
+                            <AIReasoningPanel
+                              brokerId={broker.id}
+                              brokerName={broker.name}
+                              compact={true}
+                            />
                           </div>
                         )}
                       </motion.div>
