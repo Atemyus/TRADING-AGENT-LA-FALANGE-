@@ -789,6 +789,18 @@ class AutoTrader:
             MIN_RR_RATIO = 2.0  # Min Risk:Reward ratio (1:2) — TP almeno 2x la distanza SL
             MAX_RR_RATIO = 3.0  # Max Risk:Reward ratio (1:3) — TP non oltre 3x la distanza SL
 
+            # ====== VALIDAZIONE DISTANZA MASSIMA SL (protezione da valori AI assurdi) ======
+            # Calcola la distanza massima SL in percentuale del prezzo
+            sym = symbol.upper().replace("/", "").replace("_", "")
+            if any(idx in sym for idx in ["US30", "US500", "NAS100", "DE40", "UK100", "JP225", "FR40", "EU50"]):
+                MAX_SL_PERCENT = 1.5  # Indici: max 1.5% di distanza SL
+            elif "XAU" in sym or "GOLD" in sym:
+                MAX_SL_PERCENT = 2.0  # Oro: max 2% di distanza SL
+            else:
+                MAX_SL_PERCENT = 1.0  # Forex: max 1% di distanza SL
+
+            max_sl_distance = current_price * (MAX_SL_PERCENT / 100)
+
             # Round SL/TP from AI to correct decimals for this instrument
             _rp = lambda p: self._round_price(symbol, p)
             stop_loss = _rp(stop_loss)
@@ -798,10 +810,17 @@ class AutoTrader:
                 # LONG: SL deve essere SOTTO il prezzo, TP deve essere SOPRA
                 if stop_loss >= current_price:
                     self._log_analysis(symbol, "error", f"⚠️ SL ({stop_loss}) >= prezzo ({current_price}) per LONG — SL invertito/invalido, correggo...")
-                    stop_loss = _rp(current_price * 0.995)
-                    self._log_analysis(symbol, "info", f"SL corretto a: {stop_loss} (0.5% sotto prezzo)")
+                    stop_loss = _rp(current_price - max_sl_distance)
+                    self._log_analysis(symbol, "info", f"SL corretto a: {stop_loss} ({MAX_SL_PERCENT}% sotto prezzo)")
 
                 sl_dist = current_price - stop_loss
+
+                # Controllo distanza massima SL (protezione da valori AI assurdi)
+                if sl_dist > max_sl_distance:
+                    old_sl = stop_loss
+                    stop_loss = _rp(current_price - max_sl_distance)
+                    sl_dist = max_sl_distance
+                    self._log_analysis(symbol, "error", f"⚠️ SL troppo lontano ({old_sl}, {((current_price - old_sl) / current_price * 100):.1f}%) → corretto a {stop_loss} ({MAX_SL_PERCENT}%)")
 
                 if take_profit <= current_price:
                     self._log_analysis(symbol, "error", f"⚠️ TP ({take_profit}) <= prezzo ({current_price}) per LONG — TP invertito/invalido, correggo...")
@@ -827,10 +846,17 @@ class AutoTrader:
                 # SHORT: SL deve essere SOPRA il prezzo, TP deve essere SOTTO
                 if stop_loss <= current_price:
                     self._log_analysis(symbol, "error", f"⚠️ SL ({stop_loss}) <= prezzo ({current_price}) per SHORT — SL invertito/invalido, correggo...")
-                    stop_loss = _rp(current_price * 1.005)
-                    self._log_analysis(symbol, "info", f"SL corretto a: {stop_loss} (0.5% sopra prezzo)")
+                    stop_loss = _rp(current_price + max_sl_distance)
+                    self._log_analysis(symbol, "info", f"SL corretto a: {stop_loss} ({MAX_SL_PERCENT}% sopra prezzo)")
 
                 sl_dist = stop_loss - current_price
+
+                # Controllo distanza massima SL (protezione da valori AI assurdi)
+                if sl_dist > max_sl_distance:
+                    old_sl = stop_loss
+                    stop_loss = _rp(current_price + max_sl_distance)
+                    sl_dist = max_sl_distance
+                    self._log_analysis(symbol, "error", f"⚠️ SL troppo lontano ({old_sl}, {((old_sl - current_price) / current_price * 100):.1f}%) → corretto a {stop_loss} ({MAX_SL_PERCENT}%)")
 
                 if take_profit >= current_price:
                     self._log_analysis(symbol, "error", f"⚠️ TP ({take_profit}) >= prezzo ({current_price}) per SHORT — TP invertito/invalido, correggo...")
