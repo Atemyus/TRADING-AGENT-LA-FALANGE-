@@ -136,6 +136,12 @@ class BotConfig:
     telegram_enabled: bool = False
     discord_enabled: bool = False
 
+    # Broker credentials (optional - for multi-broker support)
+    # If set, these override environment variables
+    broker_type: Optional[str] = None
+    metaapi_token: Optional[str] = None
+    metaapi_account_id: Optional[str] = None
+
 
 @dataclass
 class AnalysisLogEntry:
@@ -326,7 +332,18 @@ class AutoTrader:
 
             # Initialize broker
             print("[AutoTrader] Initializing broker connection...")
-            self.broker = BrokerFactory.create()
+            # Use config credentials if available (multi-broker support)
+            # Otherwise fall back to environment variables
+            if self.config.metaapi_token and self.config.metaapi_account_id:
+                print(f"[AutoTrader] Using broker credentials from config (account: ...{self.config.metaapi_account_id[-4:] if self.config.metaapi_account_id else 'N/A'})")
+                self.broker = BrokerFactory.create(
+                    broker_type=self.config.broker_type or "metatrader",
+                    access_token=self.config.metaapi_token,
+                    account_id=self.config.metaapi_account_id,
+                )
+            else:
+                print("[AutoTrader] Using broker credentials from environment variables")
+                self.broker = BrokerFactory.create()
             await self.broker.connect()
             print("[AutoTrader] Broker connected")
 

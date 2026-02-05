@@ -96,6 +96,10 @@ class MultiBrokerManager:
             trading_end_hour=account.trading_end_hour,
             trade_on_weekends=account.trade_on_weekends,
             enabled_models=account.enabled_models,
+            # Broker credentials - CRITICAL for multi-broker isolation
+            broker_type=account.broker_type,
+            metaapi_token=account.metaapi_token,
+            metaapi_account_id=account.metaapi_account_id,
         )
 
     async def start_broker(self, broker_id: int, db: AsyncSession) -> dict:
@@ -123,10 +127,9 @@ class MultiBrokerManager:
             return {"status": "already_running", "message": f"Broker '{broker_account.name}' is already running"}
 
         try:
-            # Set MetaApi credentials in environment for this broker
-            import os
-            os.environ["METAAPI_ACCESS_TOKEN"] = broker_account.metaapi_token
-            os.environ["METAAPI_ACCOUNT_ID"] = broker_account.metaapi_account_id
+            # Credentials are now passed via BotConfig - no need to set env vars!
+            # This ensures each broker instance uses its OWN credentials
+            print(f"[MultiBrokerManager] Starting broker '{broker_account.name}' with account ...{broker_account.metaapi_account_id[-4:] if broker_account.metaapi_account_id else 'N/A'}")
 
             # Start the trader
             await instance.trader.start()
