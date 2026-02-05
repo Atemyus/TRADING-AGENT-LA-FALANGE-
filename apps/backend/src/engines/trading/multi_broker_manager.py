@@ -21,9 +21,22 @@ from src.engines.trading.auto_trader import AutoTrader, BotConfig, BotStatus, An
 
 @dataclass
 class BrokerInstance:
-    """Represents a running broker instance."""
-    broker_account: BrokerAccount
+    """Represents a running broker instance.
+
+    IMPORTANT: Stores plain data instead of SQLAlchemy objects to avoid
+    DetachedInstanceError when accessing data outside of session context.
+    """
+    # Plain data copied from BrokerAccount (avoids DetachedInstanceError)
+    broker_id: int
+    broker_name: str
+    broker_type: str
+    symbols: List[str]
+    metaapi_account_id: str
+
+    # AutoTrader instance
     trader: AutoTrader
+
+    # Status tracking
     status: str = "stopped"
     started_at: Optional[datetime] = None
     last_error: Optional[str] = None
@@ -51,7 +64,11 @@ class MultiBrokerManager:
         return list(result.scalars().all())
 
     async def initialize_broker(self, broker_account: BrokerAccount) -> BrokerInstance:
-        """Initialize an AutoTrader instance for a specific broker account."""
+        """Initialize an AutoTrader instance for a specific broker account.
+
+        IMPORTANT: Copies data from BrokerAccount to plain fields to avoid
+        DetachedInstanceError when accessing data outside of session context.
+        """
         async with self._lock:
             # Check if already exists
             if broker_account.id in self._instances:
@@ -62,11 +79,13 @@ class MultiBrokerManager:
             config = self._create_config_from_account(broker_account)
             trader.configure(config)
 
-            # Store the broker credentials in the trader for later use
-            trader._broker_account = broker_account
-
+            # Copy plain data from SQLAlchemy object (avoids DetachedInstanceError)
             instance = BrokerInstance(
-                broker_account=broker_account,
+                broker_id=broker_account.id,
+                broker_name=broker_account.name,
+                broker_type=broker_account.broker_type,
+                symbols=list(broker_account.symbols),  # Copy the list
+                metaapi_account_id=broker_account.metaapi_account_id or "",
                 trader=trader,
                 status="initialized"
             )
@@ -178,7 +197,7 @@ class MultiBrokerManager:
 
             return {
                 "status": "success",
-                "message": f"Broker '{instance.broker_account.name}' stopped",
+                "message": f"Broker '{instance.broker_name}' stopped",
                 "broker_id": broker_id
             }
         except Exception as e:
@@ -214,7 +233,7 @@ class MultiBrokerManager:
                 result = await self.stop_broker(broker_id, db)
                 results.append({
                     "broker_id": broker_id,
-                    "name": instance.broker_account.name,
+                    "name": instance.broker_name,
                     **result
                 })
 
@@ -234,7 +253,7 @@ class MultiBrokerManager:
 
         return {
             "broker_id": broker_id,
-            "name": instance.broker_account.name,
+            "name": instance.broker_name,
             "status": trader.state.status.value,
             "started_at": instance.started_at.isoformat() if instance.started_at else None,
             "last_error": instance.last_error,
@@ -311,7 +330,7 @@ class MultiBrokerManager:
                     "margin_used": float(getattr(p, 'margin_used', 0)),
                     "opened_at": p.opened_at.isoformat() if hasattr(p, 'opened_at') and p.opened_at else None,
                     "broker_id": broker_id,
-                    "broker_name": instance.broker_account.name,
+                    "broker_name": instance.broker_name,
                 }
                 for p in positions
             ]
@@ -340,7 +359,7 @@ class MultiBrokerManager:
 
         return {
             "broker_id": broker_id,
-            "name": instance.broker_account.name,
+            "name": instance.broker_name,
             "logs": [
                 {
                     "timestamp": log.timestamp.isoformat(),
@@ -370,7 +389,12 @@ class MultiBrokerManager:
         instance = self._instances[broker_id]
         new_config = self._create_config_from_account(broker_account)
         instance.trader.configure(new_config)
-        instance.broker_account = broker_account
+
+        # Update plain data fields (avoids DetachedInstanceError)
+        instance.broker_name = broker_account.name
+        instance.broker_type = broker_account.broker_type
+        instance.symbols = list(broker_account.symbols)
+        instance.metaapi_account_id = broker_account.metaapi_account_id or ""
 
         return {
             "status": "success",

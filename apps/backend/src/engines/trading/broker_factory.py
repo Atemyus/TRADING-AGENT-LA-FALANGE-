@@ -44,7 +44,7 @@ class BrokerFactory:
             api_key = os.environ.get("OANDA_API_KEY", "")
             account_id = os.environ.get("OANDA_ACCOUNT_ID", "")
             return bool(api_key and account_id)
-        elif broker_type in ("metatrader", "mt4", "mt5"):
+        elif broker_type in ("metatrader", "metaapi", "mt4", "mt5"):
             token = os.environ.get("METAAPI_ACCESS_TOKEN", "")
             account = os.environ.get("METAAPI_ACCOUNT_ID", "")
             return bool(token and account)
@@ -99,7 +99,7 @@ class BrokerFactory:
                 environment=environment,
             )
 
-        elif broker_type in ("metatrader", "mt4", "mt5"):
+        elif broker_type in ("metatrader", "metaapi", "mt4", "mt5"):
             token = kwargs.get("access_token", os.environ.get("METAAPI_ACCESS_TOKEN", ""))
             account = kwargs.get("account_id", os.environ.get("METAAPI_ACCOUNT_ID", ""))
 
