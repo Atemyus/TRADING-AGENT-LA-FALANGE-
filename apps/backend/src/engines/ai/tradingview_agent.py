@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 import httpx
+import statistics
 
 try:
     from playwright.async_api import async_playwright, Browser, Page, BrowserContext
@@ -1857,6 +1858,16 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
         break_evens = [r.break_even_trigger for r in agreeing if r.break_even_trigger]
         trailing_stops = [r.trailing_stop_pips for r in agreeing if r.trailing_stop_pips]
 
+        # Log raw AI model values BEFORE aggregation (debug)
+        print(f"\n[Consensus] Raw AI values for {direction}:")
+        for r in agreeing:
+            tp_val = r.take_profit[0] if r.take_profit else None
+            print(f"  [{r.model_display_name}] Entry={r.entry_price}, SL={r.stop_loss}, TP={tp_val}, BE={r.break_even_trigger}")
+        if stop_losses:
+            print(f"  [Aggregation] SL values: {stop_losses} → median: {statistics.median(stop_losses):.5f}")
+        if take_profits:
+            print(f"  [Aggregation] TP values: {take_profits} → median: {statistics.median(take_profits):.5f}")
+
         # Collect all observations and reasoning (full text, no truncation here)
         all_observations = []
         all_reasoning = []
@@ -1870,6 +1881,11 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
         styles = list(set(r.analysis_style for r in agreeing))
         indicators = list(set(ind for r in agreeing for ind in r.indicators_used))
 
+        # Helper function for median calculation (more robust than mean for prices)
+        def _median(values):
+            """Calculate median - more robust to outliers than mean."""
+            return statistics.median(values) if values else None
+
         return {
             "direction": direction,
             "confidence": round(avg_confidence, 1),
@@ -1877,12 +1893,12 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
             "total_models": total,
             "is_strong_signal": models_agree >= 4 and avg_confidence >= 70,
 
-            # Trade parameters
-            "entry_price": round(sum(entries) / len(entries), 5) if entries else None,
-            "stop_loss": round(sum(stop_losses) / len(stop_losses), 5) if stop_losses else None,
-            "take_profit": round(sum(take_profits) / len(take_profits), 5) if take_profits else None,
-            "break_even_trigger": round(sum(break_evens) / len(break_evens), 5) if break_evens else None,
-            "trailing_stop_pips": round(sum(trailing_stops) / len(trailing_stops), 1) if trailing_stops else None,
+            # Trade parameters - USE MEDIAN instead of MEAN (more robust to outliers)
+            "entry_price": round(_median(entries), 5) if entries else None,
+            "stop_loss": round(_median(stop_losses), 5) if stop_losses else None,
+            "take_profit": round(_median(take_profits), 5) if take_profits else None,
+            "break_even_trigger": round(_median(break_evens), 5) if break_evens else None,
+            "trailing_stop_pips": round(_median(trailing_stops), 1) if trailing_stops else None,
 
             # Analysis details
             "analysis_styles_used": styles,

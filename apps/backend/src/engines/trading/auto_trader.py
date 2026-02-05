@@ -808,7 +808,9 @@ class AutoTrader:
 
             # ====== VALIDAZIONE DISTANZA MASSIMA SL (protezione da valori AI assurdi) ======
             # Percentuale UNIFORME per TUTTI gli asset - stesso comportamento su tutti i broker
-            MAX_SL_PERCENT = 1.5  # Max 1.5% di distanza SL per tutti gli asset (indici, forex, oro, etc.)
+            # NOTA: 0.5% è ottimale per day trading (SL raggiungibili in sessione)
+            # US30 @ 49000 → 245 pips | US500 @ 6850 → 34 pips | EUR_USD @ 1.08 → 54 pips
+            MAX_SL_PERCENT = 0.5  # Max 0.5% di distanza SL per tutti gli asset (indici, forex, oro, etc.)
 
             max_sl_distance = current_price * (MAX_SL_PERCENT / 100)
 
