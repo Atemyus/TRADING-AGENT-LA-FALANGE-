@@ -122,7 +122,11 @@ class MultiBrokerManager:
         )
 
     async def start_broker(self, broker_id: int, db: AsyncSession) -> dict:
-        """Start a specific broker's AutoTrader instance."""
+        """Start a specific broker's AutoTrader instance.
+
+        IMPORTANT: Always reloads config from DB before starting to pick up any
+        changes made in settings (enabled_models, symbols, risk, etc.)
+        """
         # Load fresh broker data from DB
         result = await db.execute(
             select(BrokerAccount).where(BrokerAccount.id == broker_id)
@@ -138,8 +142,23 @@ class MultiBrokerManager:
         if not broker_account.metaapi_token or not broker_account.metaapi_account_id:
             return {"status": "error", "message": "MetaApi credentials not configured"}
 
-        # Initialize if not exists
-        instance = await self.initialize_broker(broker_account)
+        # Initialize if not exists, OR refresh config if exists
+        if broker_id in self._instances:
+            # Instance exists - refresh config from DB before starting
+            instance = self._instances[broker_id]
+            new_config = self._create_config_from_account(broker_account)
+            instance.trader.configure(new_config)
+
+            # Update plain data fields
+            instance.broker_name = broker_account.name
+            instance.broker_type = broker_account.broker_type
+            instance.symbols = list(broker_account.symbols)
+            instance.metaapi_account_id = broker_account.metaapi_account_id or ""
+
+            print(f"[MultiBrokerManager] Refreshed config for broker '{broker_account.name}' - enabled_models: {new_config.enabled_models}")
+        else:
+            # New instance
+            instance = await self.initialize_broker(broker_account)
 
         # Check if already running
         if instance.trader.state.status == BotStatus.RUNNING:
@@ -149,6 +168,7 @@ class MultiBrokerManager:
             # Credentials are now passed via BotConfig - no need to set env vars!
             # This ensures each broker instance uses its OWN credentials
             print(f"[MultiBrokerManager] Starting broker '{broker_account.name}' with account ...{broker_account.metaapi_account_id[-4:] if broker_account.metaapi_account_id else 'N/A'}")
+            print(f"[MultiBrokerManager] Enabled models: {instance.trader.config.enabled_models}")
 
             # Start the trader
             await instance.trader.start()
@@ -165,7 +185,8 @@ class MultiBrokerManager:
                 "status": "success",
                 "message": f"Broker '{broker_account.name}' started successfully",
                 "broker_id": broker_id,
-                "symbols": broker_account.symbols
+                "symbols": broker_account.symbols,
+                "enabled_models": instance.trader.config.enabled_models
             }
         except Exception as e:
             instance.status = "error"
@@ -202,6 +223,50 @@ class MultiBrokerManager:
             }
         except Exception as e:
             return {"status": "error", "message": f"Failed to stop: {str(e)}"}
+
+    async def pause_broker(self, broker_id: int) -> dict:
+        """Pause a specific broker's AutoTrader instance (stops new trades but keeps monitoring)."""
+        if broker_id not in self._instances:
+            return {"status": "error", "message": "Broker instance not found"}
+
+        instance = self._instances[broker_id]
+
+        if instance.trader.state.status != BotStatus.RUNNING:
+            return {"status": "error", "message": "Broker must be running to pause"}
+
+        try:
+            await instance.trader.pause()
+            instance.status = "paused"
+
+            return {
+                "status": "success",
+                "message": f"Broker '{instance.broker_name}' paused",
+                "broker_id": broker_id
+            }
+        except Exception as e:
+            return {"status": "error", "message": f"Failed to pause: {str(e)}"}
+
+    async def resume_broker(self, broker_id: int) -> dict:
+        """Resume a paused broker's AutoTrader instance."""
+        if broker_id not in self._instances:
+            return {"status": "error", "message": "Broker instance not found"}
+
+        instance = self._instances[broker_id]
+
+        if instance.trader.state.status != BotStatus.PAUSED:
+            return {"status": "error", "message": "Broker must be paused to resume"}
+
+        try:
+            await instance.trader.resume()
+            instance.status = "running"
+
+            return {
+                "status": "success",
+                "message": f"Broker '{instance.broker_name}' resumed",
+                "broker_id": broker_id
+            }
+        except Exception as e:
+            return {"status": "error", "message": f"Failed to resume: {str(e)}"}
 
     async def start_all_enabled(self, db: AsyncSession) -> dict:
         """Start all enabled broker accounts."""

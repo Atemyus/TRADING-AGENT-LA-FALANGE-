@@ -474,6 +474,30 @@ export default function BotControlPage() {
     setBrokerLoading(prev => ({ ...prev, [brokerId]: false }));
   };
 
+  // Pause a specific broker (stops new trades, keeps monitoring)
+  const handlePauseBroker = async (brokerId: number) => {
+    setBrokerLoading(prev => ({ ...prev, [brokerId]: true }));
+    try {
+      await brokerAccountsApi.pauseBot(brokerId);
+      await fetchBrokers();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to pause broker");
+    }
+    setBrokerLoading(prev => ({ ...prev, [brokerId]: false }));
+  };
+
+  // Resume a specific broker after pause
+  const handleResumeBroker = async (brokerId: number) => {
+    setBrokerLoading(prev => ({ ...prev, [brokerId]: true }));
+    try {
+      await brokerAccountsApi.resumeBot(brokerId);
+      await fetchBrokers();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to resume broker");
+    }
+    setBrokerLoading(prev => ({ ...prev, [brokerId]: false }));
+  };
+
   // Start all enabled brokers
   const handleStartAllBrokers = async () => {
     setIsActioning(true);
@@ -757,14 +781,43 @@ export default function BotControlPage() {
                         {broker.is_enabled && (
                           <div className="flex items-center gap-2">
                             {isRunning ? (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleStopBroker(broker.id); }}
-                                disabled={isLoading}
-                                className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg flex items-center gap-1.5 disabled:opacity-50"
-                              >
-                                {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Square size={14} />}
-                                Stop
-                              </button>
+                              <>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handlePauseBroker(broker.id); }}
+                                  disabled={isLoading}
+                                  className="px-3 py-1.5 bg-yellow-600 hover:bg-yellow-700 text-white text-sm rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+                                >
+                                  {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Pause size={14} />}
+                                  Pause
+                                </button>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleStopBroker(broker.id); }}
+                                  disabled={isLoading}
+                                  className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+                                >
+                                  {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Square size={14} />}
+                                  Stop
+                                </button>
+                              </>
+                            ) : isPaused ? (
+                              <>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleResumeBroker(broker.id); }}
+                                  disabled={isLoading}
+                                  className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+                                >
+                                  {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+                                  Resume
+                                </button>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleStopBroker(broker.id); }}
+                                  disabled={isLoading}
+                                  className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+                                >
+                                  {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Square size={14} />}
+                                  Stop
+                                </button>
+                              </>
                             ) : (
                               <button
                                 onClick={(e) => { e.stopPropagation(); handleStartBroker(broker.id); }}

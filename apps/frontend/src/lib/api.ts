@@ -895,6 +895,32 @@ export const brokerAccountsApi = {
   },
 
   /**
+   * Pause the bot for a specific broker (stops new trades, keeps monitoring)
+   */
+  pauseBot: async (brokerId: number): Promise<{
+    status: string
+    message: string
+    broker_id?: number
+  }> => {
+    return fetchApi(`/api/v1/brokers/${brokerId}/pause`, {
+      method: 'POST',
+    })
+  },
+
+  /**
+   * Resume the bot for a specific broker after pause
+   */
+  resumeBot: async (brokerId: number): Promise<{
+    status: string
+    message: string
+    broker_id?: number
+  }> => {
+    return fetchApi(`/api/v1/brokers/${brokerId}/resume`, {
+      method: 'POST',
+    })
+  },
+
+  /**
    * Get bot status for a specific broker
    */
   getBotStatus: async (brokerId: number): Promise<BrokerBotStatus> => {

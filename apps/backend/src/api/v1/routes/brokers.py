@@ -388,6 +388,52 @@ async def stop_broker_bot(broker_id: int, db: AsyncSession = Depends(get_db)):
     return result
 
 
+@router.post("/{broker_id}/pause")
+async def pause_broker_bot(broker_id: int, db: AsyncSession = Depends(get_db)):
+    """Pause the auto trading bot for a specific broker (stops new trades, keeps monitoring)."""
+    from src.engines.trading.multi_broker_manager import get_multi_broker_manager
+
+    # Verify broker exists
+    result = await db.execute(
+        select(BrokerAccount).where(BrokerAccount.id == broker_id)
+    )
+    broker = result.scalar_one_or_none()
+
+    if not broker:
+        raise HTTPException(status_code=404, detail="Broker account not found")
+
+    manager = get_multi_broker_manager()
+    result = await manager.pause_broker(broker_id)
+
+    if result.get("status") == "error":
+        raise HTTPException(status_code=400, detail=result.get("message"))
+
+    return result
+
+
+@router.post("/{broker_id}/resume")
+async def resume_broker_bot(broker_id: int, db: AsyncSession = Depends(get_db)):
+    """Resume the auto trading bot for a specific broker after pause."""
+    from src.engines.trading.multi_broker_manager import get_multi_broker_manager
+
+    # Verify broker exists
+    result = await db.execute(
+        select(BrokerAccount).where(BrokerAccount.id == broker_id)
+    )
+    broker = result.scalar_one_or_none()
+
+    if not broker:
+        raise HTTPException(status_code=404, detail="Broker account not found")
+
+    manager = get_multi_broker_manager()
+    result = await manager.resume_broker(broker_id)
+
+    if result.get("status") == "error":
+        raise HTTPException(status_code=400, detail=result.get("message"))
+
+    return result
+
+
 @router.get("/{broker_id}/status")
 async def get_broker_bot_status(broker_id: int, db: AsyncSession = Depends(get_db)):
     """Get the auto trading bot status for a specific broker."""
