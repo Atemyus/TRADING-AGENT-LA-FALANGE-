@@ -1,72 +1,8 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Headphones, Volume2, VolumeX } from 'lucide-react'
-
-// Epic orchestral music - royalty free from Pixabay
-const MUSIC_URL = 'https://cdn.pixabay.com/audio/2022/10/25/audio_052a2d6021.mp3'
-
-export function useMusicPlayer() {
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [isLoaded, setIsLoaded] = useState(false)
-  const [volume, setVolume] = useState(0.3)
-
-  useEffect(() => {
-    // Create audio element
-    const audio = new Audio(MUSIC_URL)
-    audio.loop = true
-    audio.volume = volume
-    audio.preload = 'auto'
-    audioRef.current = audio
-
-    audio.addEventListener('canplaythrough', () => {
-      setIsLoaded(true)
-    })
-
-    audio.addEventListener('error', (e) => {
-      console.warn('Audio failed to load:', e)
-    })
-
-    // Check if music was playing before (persist state)
-    const wasPlaying = localStorage.getItem('prometheus-music-playing') === 'true'
-    if (wasPlaying) {
-      audio.play().then(() => setIsPlaying(true)).catch(() => {})
-    }
-
-    return () => {
-      audio.pause()
-      audio.src = ''
-      audioRef.current = null
-    }
-  }, [])
-
-  useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.volume = volume
-    }
-  }, [volume])
-
-  const toggleMusic = () => {
-    if (!audioRef.current) return
-
-    if (isPlaying) {
-      audioRef.current.pause()
-      setIsPlaying(false)
-      localStorage.setItem('prometheus-music-playing', 'false')
-    } else {
-      audioRef.current.play().then(() => {
-        setIsPlaying(true)
-        localStorage.setItem('prometheus-music-playing', 'true')
-      }).catch((err) => {
-        console.warn('Autoplay blocked:', err)
-      })
-    }
-  }
-
-  return { isPlaying, isLoaded, toggleMusic, volume, setVolume }
-}
+import { Headphones, Volume2 } from 'lucide-react'
+import { useMusic } from '@/contexts/MusicContext'
 
 interface MusicPlayerProps {
   className?: string
@@ -75,7 +11,7 @@ interface MusicPlayerProps {
 }
 
 export function MusicPlayer({ className = '', showLabel = true, size = 'md' }: MusicPlayerProps) {
-  const { isPlaying, toggleMusic } = useMusicPlayer()
+  const { isPlaying, toggleMusic } = useMusic()
 
   const sizeClasses = {
     sm: 'p-2',

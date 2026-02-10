@@ -2,6 +2,7 @@
 
 import { ReactNode } from 'react'
 import { AuthProvider } from '@/contexts/AuthContext'
+import { MusicProvider } from '@/contexts/MusicContext'
 
 interface ProvidersProps {
   children: ReactNode
@@ -10,7 +11,9 @@ interface ProvidersProps {
 export function Providers({ children }: ProvidersProps) {
   return (
     <AuthProvider>
-      {children}
+      <MusicProvider>
+        {children}
+      </MusicProvider>
     </AuthProvider>
   )
 }
