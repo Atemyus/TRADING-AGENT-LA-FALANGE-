@@ -2,8 +2,9 @@
 
 import { createContext, useContext, useState, useRef, useEffect, ReactNode } from 'react'
 
-// Epic orchestral music - royalty free from Pixabay
-const MUSIC_URL = 'https://cdn.pixabay.com/audio/2022/10/25/audio_052a2d6021.mp3'
+// Music file - use local file in public/audio/
+// Add your own epic music file at: public/audio/prometheus-theme.mp3
+const MUSIC_URL = '/audio/prometheus-theme.mp3'
 
 interface MusicContextType {
   isPlaying: boolean
