@@ -201,8 +201,61 @@ export default function DashboardLayout({
       {/* Main content */}
       <div className={`flex-1 transition-all duration-300 overflow-x-hidden max-w-full ${sidebarOpen ? 'ml-[280px]' : 'ml-0'}`}>
         {/* Top header */}
-        <header className="sticky top-0 z-30 bg-dark-950/80 backdrop-blur-2xl border-b border-dark-800/50">
-          <div className="flex items-center justify-between px-6 py-4">
+        <header className="sticky top-0 z-30 bg-dark-950/80 backdrop-blur-2xl border-b border-dark-800/50 overflow-hidden">
+          {/* Left decorative fire effect */}
+          <div className="absolute left-0 top-0 bottom-0 w-32 pointer-events-none">
+            <div className="absolute inset-0 bg-gradient-to-r from-primary-500/10 via-primary-500/5 to-transparent" />
+            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-16 bg-gradient-to-b from-transparent via-primary-500 to-transparent opacity-60 animate-pulse" />
+            <div className="absolute left-4 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-primary-500/30 to-transparent" />
+            {/* Floating ember left */}
+            <motion.div
+              animate={{
+                y: [-20, -40, -20],
+                opacity: [0.3, 0.7, 0.3],
+                scale: [0.8, 1, 0.8],
+              }}
+              transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+              className="absolute left-6 top-1/2 w-1.5 h-1.5 rounded-full bg-primary-400 blur-[1px]"
+            />
+            <motion.div
+              animate={{
+                y: [-10, -30, -10],
+                opacity: [0.2, 0.5, 0.2],
+              }}
+              transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
+              className="absolute left-10 top-1/3 w-1 h-1 rounded-full bg-imperial-400 blur-[1px]"
+            />
+          </div>
+
+          {/* Right decorative fire effect */}
+          <div className="absolute right-0 top-0 bottom-0 w-32 pointer-events-none">
+            <div className="absolute inset-0 bg-gradient-to-l from-primary-500/10 via-primary-500/5 to-transparent" />
+            <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-16 bg-gradient-to-b from-transparent via-primary-500 to-transparent opacity-60 animate-pulse" />
+            <div className="absolute right-4 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-primary-500/30 to-transparent" />
+            {/* Floating ember right */}
+            <motion.div
+              animate={{
+                y: [-15, -35, -15],
+                opacity: [0.3, 0.7, 0.3],
+                scale: [0.8, 1, 0.8],
+              }}
+              transition={{ duration: 2.8, repeat: Infinity, ease: "easeInOut", delay: 0.3 }}
+              className="absolute right-6 top-1/2 w-1.5 h-1.5 rounded-full bg-primary-400 blur-[1px]"
+            />
+            <motion.div
+              animate={{
+                y: [-5, -25, -5],
+                opacity: [0.2, 0.5, 0.2],
+              }}
+              transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut", delay: 0.8 }}
+              className="absolute right-10 top-2/3 w-1 h-1 rounded-full bg-imperial-400 blur-[1px]"
+            />
+          </div>
+
+          {/* Top gradient line */}
+          <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-primary-500/50 to-transparent" />
+
+          <div className="relative flex items-center justify-between px-6 py-4">
             <div className="flex items-center gap-4">
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -250,28 +303,52 @@ export default function DashboardLayout({
                 </div>
               </div>
 
-              {/* Music Toggle */}
-              <button
+              {/* Music Toggle - Epic Fire Style */}
+              <motion.button
                 onClick={toggleMusic}
-                className={`relative p-2.5 rounded-xl transition-all duration-200 border ${
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className={`relative p-3 rounded-xl transition-all duration-300 ${
                   isPlaying
-                    ? 'bg-primary-500/10 border-primary-500/30 hover:bg-primary-500/20'
-                    : 'hover:bg-dark-800 border-transparent hover:border-primary-500/20'
+                    ? 'bg-gradient-to-br from-primary-500/20 to-imperial-500/20 border border-primary-500/40 shadow-lg shadow-primary-500/20'
+                    : 'bg-dark-800/50 border border-primary-500/20 hover:bg-dark-800 hover:border-primary-500/40 hover:shadow-lg hover:shadow-primary-500/10'
                 }`}
                 title={isPlaying ? 'Pause epic music' : 'Play epic music'}
               >
+                {/* Glow effect behind icon */}
+                <div className={`absolute inset-0 rounded-xl transition-opacity duration-300 ${isPlaying ? 'opacity-100' : 'opacity-0'}`}>
+                  <div className="absolute inset-0 bg-primary-500/20 rounded-xl blur-md animate-pulse" />
+                </div>
+
                 {isPlaying ? (
-                  <Volume2 size={20} className="text-primary-400 animate-pulse" />
+                  <Volume2 size={22} className="relative z-10 text-primary-400 torch-glow" />
                 ) : (
-                  <Headphones size={20} className="text-dark-400" />
+                  <Headphones size={22} className="relative z-10 text-primary-400 hover:text-primary-300 transition-colors" />
                 )}
+
+                {/* Animated ring when playing */}
                 {isPlaying && (
-                  <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-primary-500"></span>
-                  </span>
+                  <>
+                    <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-gradient-to-br from-primary-400 to-primary-600"></span>
+                    </span>
+                    {/* Rotating fire ring */}
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
+                      className="absolute -inset-1 rounded-xl border border-primary-500/30 border-t-primary-500/60"
+                    />
+                  </>
                 )}
-              </button>
+
+                {/* Music label */}
+                <span className={`absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap transition-opacity ${
+                  isPlaying ? 'text-primary-400 opacity-100' : 'text-dark-500 opacity-70'
+                }`}>
+                  {isPlaying ? 'Playing' : 'Music'}
+                </span>
+              </motion.button>
 
               {/* Notifications */}
               <button className="relative p-2.5 hover:bg-dark-800 rounded-xl transition-all duration-200 border border-transparent hover:border-primary-500/20">
