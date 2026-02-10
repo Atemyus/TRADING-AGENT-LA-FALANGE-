@@ -10,24 +10,25 @@ This system:
 """
 
 import asyncio
-from typing import Optional, List, Dict, Any
+import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-import json
+from typing import Any
 
 import httpx
 
 from src.core.config import settings
 from src.services.chart_generator_service import (
-    ChartGeneratorService,
     ChartConfig,
-    IndicatorConfig,
-    INDICATOR_PRESETS,
+    ChartGeneratorService,
     get_chart_generator_service,
 )
-from src.services.market_data_service import get_market_data_service, MarketDataService
-from src.services.technical_analysis_service import get_technical_analysis_service, TechnicalAnalysisService
+from src.services.market_data_service import MarketDataService, get_market_data_service
+from src.services.technical_analysis_service import (
+    TechnicalAnalysisService,
+    get_technical_analysis_service,
+)
 
 
 class AIModel(str, Enum):
@@ -62,34 +63,34 @@ class AutonomousAnalysisResult:
     confidence: float  # 0-100
 
     # Trade parameters
-    entry_price: Optional[float] = None
-    stop_loss: Optional[float] = None
-    take_profit: List[float] = field(default_factory=list)
-    risk_reward: Optional[float] = None
+    entry_price: float | None = None
+    stop_loss: float | None = None
+    take_profit: list[float] = field(default_factory=list)
+    risk_reward: float | None = None
 
     # Advanced trade management
-    break_even_trigger: Optional[float] = None  # Price at which to move SL to entry
-    trailing_stop_pips: Optional[float] = None  # Trailing stop distance in pips
-    partial_tp_percent: Optional[float] = None  # Percentage to close at TP1 (e.g., 50%)
+    break_even_trigger: float | None = None  # Price at which to move SL to entry
+    trailing_stop_pips: float | None = None  # Trailing stop distance in pips
+    partial_tp_percent: float | None = None  # Percentage to close at TP1 (e.g., 50%)
 
     # AI's chosen analysis approach
-    indicators_used: List[str] = field(default_factory=list)
+    indicators_used: list[str] = field(default_factory=list)
     analysis_style: str = ""  # "momentum", "smc", "trend", etc.
 
     # Detailed analysis
-    market_structure: Optional[str] = None
-    trend_analysis: Dict[str, str] = field(default_factory=dict)
-    smc_analysis: Optional[str] = None
-    indicator_readings: Dict[str, str] = field(default_factory=dict)
-    patterns_found: List[str] = field(default_factory=list)
-    key_levels: Dict[str, List[float]] = field(default_factory=dict)
+    market_structure: str | None = None
+    trend_analysis: dict[str, str] = field(default_factory=dict)
+    smc_analysis: str | None = None
+    indicator_readings: dict[str, str] = field(default_factory=dict)
+    patterns_found: list[str] = field(default_factory=list)
+    key_levels: dict[str, list[float]] = field(default_factory=dict)
 
     # Full reasoning
     reasoning: str = ""
 
     # Metadata
     latency_ms: int = 0
-    error: Optional[str] = None
+    error: str | None = None
 
 
 # System prompt that gives AI full autonomy
@@ -241,7 +242,7 @@ class AutonomousAnalyst:
         symbol: str,
         timeframe: str = "15m",
         chart_preset: str = "complete",
-        prefetched_data: Optional[Any] = None,
+        prefetched_data: Any | None = None,
     ) -> AutonomousAnalysisResult:
         """
         Run autonomous analysis with a single AI model.
@@ -386,8 +387,8 @@ class AutonomousAnalyst:
         self,
         symbol: str,
         timeframe: str = "15m",
-        models: Optional[List[AIModel]] = None,
-    ) -> List[AutonomousAnalysisResult]:
+        models: list[AIModel] | None = None,
+    ) -> list[AutonomousAnalysisResult]:
         """
         Run autonomous analysis with all AI models in parallel.
         Each model independently decides its analysis approach.
@@ -442,8 +443,8 @@ class AutonomousAnalyst:
 
     def calculate_consensus(
         self,
-        results: List[AutonomousAnalysisResult]
-    ) -> Dict[str, Any]:
+        results: list[AutonomousAnalysisResult]
+    ) -> dict[str, Any]:
         """
         Calculate consensus from autonomous AI analyses.
         Respects each AI's independent analysis while finding common ground.
@@ -755,7 +756,7 @@ class AutonomousAnalyst:
 
 
 # Singleton instance
-_autonomous_analyst: Optional[AutonomousAnalyst] = None
+_autonomous_analyst: AutonomousAnalyst | None = None
 
 
 def get_autonomous_analyst() -> AutonomousAnalyst:

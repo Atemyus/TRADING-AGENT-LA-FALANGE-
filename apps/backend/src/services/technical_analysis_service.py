@@ -9,21 +9,22 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
-import pandas as pd
+from typing import Any
+
 import numpy as np
+import pandas as pd
 
 try:
     import ta
     from ta.momentum import RSIIndicator, StochasticOscillator
-    from ta.trend import MACD, EMAIndicator, SMAIndicator, ADXIndicator
-    from ta.volatility import BollingerBands, AverageTrueRange
+    from ta.trend import MACD, ADXIndicator, EMAIndicator, SMAIndicator
+    from ta.volatility import AverageTrueRange, BollingerBands
     from ta.volume import VolumeWeightedAveragePrice
     HAS_TA = True
 except ImportError:
     HAS_TA = False
 
-from src.services.market_data_service import MarketData, OHLCV
+from src.services.market_data_service import MarketData
 
 
 class ZoneType(str, Enum):
@@ -75,7 +76,7 @@ class PriceZone:
     def mid_price(self) -> Decimal:
         return (self.price_high + self.price_low) / 2
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "type": self.zone_type.value,
             "price_high": float(self.price_high),
@@ -97,7 +98,7 @@ class StructurePoint:
     timestamp: datetime
     confirmed: bool = True
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "type": self.structure_type.value,
             "price": float(self.price),
@@ -110,41 +111,41 @@ class StructurePoint:
 class TechnicalIndicators:
     """Collection of technical indicators."""
     # Trend
-    ema_9: Optional[float] = None
-    ema_21: Optional[float] = None
-    ema_50: Optional[float] = None
-    ema_200: Optional[float] = None
-    sma_20: Optional[float] = None
-    sma_50: Optional[float] = None
-    sma_200: Optional[float] = None
+    ema_9: float | None = None
+    ema_21: float | None = None
+    ema_50: float | None = None
+    ema_200: float | None = None
+    sma_20: float | None = None
+    sma_50: float | None = None
+    sma_200: float | None = None
 
     # Momentum
-    rsi_14: Optional[float] = None
-    rsi_7: Optional[float] = None
-    stoch_k: Optional[float] = None
-    stoch_d: Optional[float] = None
-    macd: Optional[float] = None
-    macd_signal: Optional[float] = None
-    macd_histogram: Optional[float] = None
+    rsi_14: float | None = None
+    rsi_7: float | None = None
+    stoch_k: float | None = None
+    stoch_d: float | None = None
+    macd: float | None = None
+    macd_signal: float | None = None
+    macd_histogram: float | None = None
 
     # Volatility
-    atr_14: Optional[float] = None
-    bb_upper: Optional[float] = None
-    bb_middle: Optional[float] = None
-    bb_lower: Optional[float] = None
-    bb_width: Optional[float] = None
+    atr_14: float | None = None
+    bb_upper: float | None = None
+    bb_middle: float | None = None
+    bb_lower: float | None = None
+    bb_width: float | None = None
 
     # Trend Strength
-    adx: Optional[float] = None
-    plus_di: Optional[float] = None
-    minus_di: Optional[float] = None
+    adx: float | None = None
+    plus_di: float | None = None
+    minus_di: float | None = None
 
     # Volume
-    vwap: Optional[float] = None
-    volume_sma: Optional[float] = None
-    volume_ratio: Optional[float] = None  # Current vs average
+    vwap: float | None = None
+    volume_sma: float | None = None
+    volume_ratio: float | None = None  # Current vs average
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {k: v for k, v in self.__dict__.items() if v is not None}
 
 
@@ -170,7 +171,7 @@ class FibonacciLevels:
     extension_2000: Decimal = Decimal("0")
     extension_2618: Decimal = Decimal("0")
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "swing_high": float(self.swing_high),
             "swing_low": float(self.swing_low),
@@ -201,7 +202,7 @@ class SmartMoneyTrap:
     strength: float  # 0-100 confidence
     timestamp: datetime
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "type": self.trap_type,
             "price": float(self.price_level),
@@ -219,32 +220,32 @@ class SMCAnalysis:
     trend_strength: float = 0.0  # 0-100
 
     # Structure
-    structure_points: List[StructurePoint] = field(default_factory=list)
-    last_structure: Optional[MarketStructure] = None
+    structure_points: list[StructurePoint] = field(default_factory=list)
+    last_structure: MarketStructure | None = None
 
     # Zones
-    order_blocks: List[PriceZone] = field(default_factory=list)
-    fair_value_gaps: List[PriceZone] = field(default_factory=list)
-    supply_zones: List[PriceZone] = field(default_factory=list)
-    demand_zones: List[PriceZone] = field(default_factory=list)
-    liquidity_pools: List[PriceZone] = field(default_factory=list)
+    order_blocks: list[PriceZone] = field(default_factory=list)
+    fair_value_gaps: list[PriceZone] = field(default_factory=list)
+    supply_zones: list[PriceZone] = field(default_factory=list)
+    demand_zones: list[PriceZone] = field(default_factory=list)
+    liquidity_pools: list[PriceZone] = field(default_factory=list)
 
     # Key Levels
-    support_levels: List[Decimal] = field(default_factory=list)
-    resistance_levels: List[Decimal] = field(default_factory=list)
-    pivot_points: Dict[str, Decimal] = field(default_factory=dict)
+    support_levels: list[Decimal] = field(default_factory=list)
+    resistance_levels: list[Decimal] = field(default_factory=list)
+    pivot_points: dict[str, Decimal] = field(default_factory=dict)
 
     # Fibonacci levels
-    fibonacci: Optional[FibonacciLevels] = None
+    fibonacci: FibonacciLevels | None = None
 
     # Smart Money Traps (Inducement)
-    smart_money_traps: List[SmartMoneyTrap] = field(default_factory=list)
+    smart_money_traps: list[SmartMoneyTrap] = field(default_factory=list)
 
     # Bias
     institutional_bias: str = "neutral"  # bullish, bearish, neutral
-    retail_trap_warning: Optional[str] = None
+    retail_trap_warning: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "trend": self.trend.value,
             "trend_strength": self.trend_strength,
@@ -275,16 +276,16 @@ class FullAnalysis:
 
     # Basic
     indicators: TechnicalIndicators
-    candle_patterns: List[str] = field(default_factory=list)
+    candle_patterns: list[str] = field(default_factory=list)
 
     # SMC
     smc: SMCAnalysis = field(default_factory=SMCAnalysis)
 
     # Multi-timeframe
-    mtf_trend: Dict[str, TrendDirection] = field(default_factory=dict)
+    mtf_trend: dict[str, TrendDirection] = field(default_factory=dict)
     mtf_bias: str = "neutral"  # Confluence of multiple timeframes
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "symbol": self.symbol,
             "timeframe": self.timeframe,
@@ -683,7 +684,7 @@ class TechnicalAnalysisService:
 
         return smc
 
-    def _detect_trend(self, df: pd.DataFrame) -> Tuple[TrendDirection, float]:
+    def _detect_trend(self, df: pd.DataFrame) -> tuple[TrendDirection, float]:
         """Detect market trend and strength."""
         if len(df) < 20:
             return TrendDirection.RANGING, 0.0
@@ -727,7 +728,7 @@ class TechnicalAnalysisService:
         else:
             return TrendDirection.RANGING, max(0, 50 - strength)
 
-    def _find_structure_points(self, df: pd.DataFrame, lookback: int = 5) -> List[StructurePoint]:
+    def _find_structure_points(self, df: pd.DataFrame, lookback: int = 5) -> list[StructurePoint]:
         """Find swing highs and lows (market structure)."""
         points = []
         high = df['high'].values
@@ -772,7 +773,7 @@ class TechnicalAnalysisService:
 
         return points
 
-    def _find_order_blocks(self, df: pd.DataFrame, current_price: Decimal) -> List[PriceZone]:
+    def _find_order_blocks(self, df: pd.DataFrame, current_price: Decimal) -> list[PriceZone]:
         """Find Order Blocks - last candle before a strong move."""
         blocks = []
         open_prices = df['open'].values
@@ -817,7 +818,7 @@ class TechnicalAnalysisService:
         # Keep only recent, unbroken blocks
         return [b for b in blocks if not b.broken][-5:]
 
-    def _find_fvg(self, df: pd.DataFrame, current_price: Decimal) -> List[PriceZone]:
+    def _find_fvg(self, df: pd.DataFrame, current_price: Decimal) -> list[PriceZone]:
         """Find Fair Value Gaps (Imbalances)."""
         gaps = []
         high_prices = df['high'].values
@@ -855,7 +856,7 @@ class TechnicalAnalysisService:
 
         return [g for g in gaps if not g.broken][-5:]
 
-    def _find_supply_demand(self, df: pd.DataFrame, current_price: Decimal) -> Tuple[List[PriceZone], List[PriceZone]]:
+    def _find_supply_demand(self, df: pd.DataFrame, current_price: Decimal) -> tuple[list[PriceZone], list[PriceZone]]:
         """Find Supply and Demand zones."""
         supply = []
         demand = []
@@ -903,7 +904,7 @@ class TechnicalAnalysisService:
 
         return supply[-3:], demand[-3:]
 
-    def _find_liquidity_pools(self, df: pd.DataFrame, current_price: Decimal) -> List[PriceZone]:
+    def _find_liquidity_pools(self, df: pd.DataFrame, current_price: Decimal) -> list[PriceZone]:
         """Find liquidity pools (equal highs/lows, stop hunt levels)."""
         pools = []
         high_prices = df['high'].values
@@ -938,7 +939,7 @@ class TechnicalAnalysisService:
 
         return pools[-4:]
 
-    def _find_sr_levels(self, df: pd.DataFrame, current_price: Decimal) -> Tuple[List[Decimal], List[Decimal]]:
+    def _find_sr_levels(self, df: pd.DataFrame, current_price: Decimal) -> tuple[list[Decimal], list[Decimal]]:
         """Find support and resistance levels."""
         high_prices = df['high'].values
         low_prices = df['low'].values
@@ -966,7 +967,7 @@ class TechnicalAnalysisService:
 
         return support, resistance
 
-    def _calculate_pivots(self, df: pd.DataFrame, pivot_type: str = "all") -> Dict[str, Decimal]:
+    def _calculate_pivots(self, df: pd.DataFrame, pivot_type: str = "all") -> dict[str, Decimal]:
         """
         Calculate pivot points with multiple methods.
 
@@ -1031,7 +1032,7 @@ class TechnicalAnalysisService:
 
         return pivots
 
-    def _calculate_fibonacci(self, df: pd.DataFrame, lookback: int = 50) -> Optional[FibonacciLevels]:
+    def _calculate_fibonacci(self, df: pd.DataFrame, lookback: int = 50) -> FibonacciLevels | None:
         """
         Calculate Fibonacci retracement and extension levels.
 
@@ -1107,7 +1108,7 @@ class TechnicalAnalysisService:
 
         return fib
 
-    def _detect_smart_money_traps(self, df: pd.DataFrame, current_price: Decimal) -> List[SmartMoneyTrap]:
+    def _detect_smart_money_traps(self, df: pd.DataFrame, current_price: Decimal) -> list[SmartMoneyTrap]:
         """
         Detect Smart Money Traps (Inducement/Stop Hunts).
 
@@ -1230,7 +1231,7 @@ class TechnicalAnalysisService:
             return "bearish"
         return "neutral"
 
-    def _check_retail_trap(self, smc: SMCAnalysis, df: pd.DataFrame, current_price: Decimal) -> Optional[str]:
+    def _check_retail_trap(self, smc: SMCAnalysis, df: pd.DataFrame, current_price: Decimal) -> str | None:
         """Check for potential retail traps."""
         # Check if price is near liquidity that could be swept
         for lp in smc.liquidity_pools:
@@ -1249,7 +1250,7 @@ class TechnicalAnalysisService:
         self,
         market_data: MarketData,
         include_mtf: bool = False,
-        mtf_data: Optional[Dict[str, MarketData]] = None,
+        mtf_data: dict[str, MarketData] | None = None,
     ) -> FullAnalysis:
         """
         Perform complete technical analysis.
@@ -1301,7 +1302,7 @@ class TechnicalAnalysisService:
             mtf_bias=mtf_bias,
         )
 
-    def _detect_candle_patterns(self, df: pd.DataFrame) -> List[str]:
+    def _detect_candle_patterns(self, df: pd.DataFrame) -> list[str]:
         """Detect common candlestick patterns."""
         patterns = []
 
@@ -1362,7 +1363,7 @@ class TechnicalAnalysisService:
 
 
 # Singleton
-_ta_service: Optional[TechnicalAnalysisService] = None
+_ta_service: TechnicalAnalysisService | None = None
 
 
 def get_technical_analysis_service() -> TechnicalAnalysisService:

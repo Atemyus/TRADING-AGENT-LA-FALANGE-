@@ -5,11 +5,10 @@ This service creates candlestick charts that are sent to vision-capable AI model
 (GPT-4V, Claude Vision, Gemini Vision) for pattern recognition and analysis.
 """
 
-import io
 import base64
+import io
 from datetime import datetime, timedelta
-from typing import Optional, List, Dict, Any
-import asyncio
+from typing import Any
 
 # Optional imports for chart generation
 HAS_MPLFINANCE = False
@@ -19,13 +18,12 @@ mpf = None
 
 try:
     import mplfinance as mpf
-    import pandas as pd
     import numpy as np
+    import pandas as pd
     HAS_MPLFINANCE = True
 except ImportError:
     pass
 
-from src.core.config import settings
 
 
 class ChartVisionService:
@@ -82,7 +80,7 @@ class ChartVisionService:
         self,
         symbol: str,
         timeframe: str,
-        ohlcv_data: Optional[Any] = None,  # pd.DataFrame when available
+        ohlcv_data: Any | None = None,  # pd.DataFrame when available
         include_indicators: bool = True,
         width: int = 1200,
         height: int = 800,
@@ -137,9 +135,9 @@ class ChartVisionService:
     async def generate_multi_timeframe_charts(
         self,
         symbol: str,
-        timeframes: List[str] = ["15m", "1H", "4H"],
-        ohlcv_data_map: Optional[Dict[str, Any]] = None,  # Dict[str, pd.DataFrame]
-    ) -> Dict[str, str]:
+        timeframes: list[str] = ["15m", "1H", "4H"],
+        ohlcv_data_map: dict[str, Any] | None = None,  # Dict[str, pd.DataFrame]
+    ) -> dict[str, str]:
         """
         Generate charts for multiple timeframes.
 
@@ -220,7 +218,7 @@ class ChartVisionService:
 
         return df
 
-    def _calculate_indicators(self, df: Any) -> List:  # df: pd.DataFrame
+    def _calculate_indicators(self, df: Any) -> list:  # df: pd.DataFrame
         """Calculate technical indicators for chart overlay."""
         addplots = []
 
@@ -246,8 +244,8 @@ class ChartVisionService:
     def create_vision_prompt(
         self,
         symbol: str,
-        timeframes: List[str],
-        additional_context: Optional[str] = None,
+        timeframes: list[str],
+        additional_context: str | None = None,
     ) -> str:
         """
         Create a detailed prompt for vision AI analysis.
@@ -308,7 +306,7 @@ Be specific and reference what you see in the charts. Base your analysis purely 
 
 
 # Singleton instance
-_chart_vision_service: Optional[ChartVisionService] = None
+_chart_vision_service: ChartVisionService | None = None
 
 
 def get_chart_vision_service() -> ChartVisionService:

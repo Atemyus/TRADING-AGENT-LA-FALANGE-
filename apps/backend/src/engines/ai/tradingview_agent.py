@@ -14,17 +14,17 @@ Requires: playwright
 import asyncio
 import base64
 import json
-import io
 import os
-from typing import Optional, List, Dict, Any, Tuple
+import statistics
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from typing import Any
+
 import httpx
-import statistics
 
 try:
-    from playwright.async_api import async_playwright, Browser, Page, BrowserContext
+    from playwright.async_api import Browser, BrowserContext, Page, async_playwright
     PLAYWRIGHT_AVAILABLE = True
 except ImportError:
     PLAYWRIGHT_AVAILABLE = False
@@ -84,9 +84,9 @@ class Indicator(str, Enum):
 class ChartAction:
     """Represents an action taken on the chart."""
     action_type: str  # "add_indicator", "draw", "screenshot", "change_timeframe", etc.
-    details: Dict[str, Any]
-    screenshot_before: Optional[str] = None  # base64
-    screenshot_after: Optional[str] = None   # base64
+    details: dict[str, Any]
+    screenshot_before: str | None = None  # base64
+    screenshot_after: str | None = None   # base64
     timestamp: datetime = field(default_factory=datetime.utcnow)
 
 
@@ -98,8 +98,8 @@ class TradingViewAnalysisResult:
 
     # Analysis output
     analysis_style: str  # "smc", "price_action", "indicator_based", etc.
-    indicators_used: List[str]
-    drawings_made: List[Dict[str, Any]]  # trendlines, zones, etc.
+    indicators_used: list[str]
+    drawings_made: list[dict[str, Any]]  # trendlines, zones, etc.
 
     # Trading decision
     direction: str  # LONG, SHORT, HOLD
@@ -107,25 +107,25 @@ class TradingViewAnalysisResult:
 
     # Fields with defaults must come after fields without defaults
     timeframe: str = "15"  # Timeframe analyzed
-    entry_price: Optional[float] = None
-    stop_loss: Optional[float] = None
-    take_profit: List[float] = field(default_factory=list)
+    entry_price: float | None = None
+    stop_loss: float | None = None
+    take_profit: list[float] = field(default_factory=list)
 
     # Advanced management
-    break_even_trigger: Optional[float] = None
-    trailing_stop_pips: Optional[float] = None
+    break_even_trigger: float | None = None
+    trailing_stop_pips: float | None = None
 
     # Detailed reasoning
     reasoning: str = ""
-    key_observations: List[str] = field(default_factory=list)
+    key_observations: list[str] = field(default_factory=list)
 
     # Screenshots taken during analysis
-    screenshots: List[str] = field(default_factory=list)  # base64 images
-    actions_taken: List[ChartAction] = field(default_factory=list)
+    screenshots: list[str] = field(default_factory=list)  # base64 images
+    actions_taken: list[ChartAction] = field(default_factory=list)
 
     # Metadata
     latency_ms: int = 0
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class TradingViewBrowser:
@@ -174,9 +174,9 @@ class TradingViewBrowser:
     }
 
     def __init__(self):
-        self.browser: Optional[Browser] = None
-        self.context: Optional[BrowserContext] = None
-        self.page: Optional[Page] = None
+        self.browser: Browser | None = None
+        self.context: BrowserContext | None = None
+        self.page: Page | None = None
         self._playwright = None
         self._initialized = False
         self._current_symbol = None
@@ -229,7 +229,7 @@ class TradingViewBrowser:
             ],
         }
 
-    async def _find_element(self, selector_list: List[str], timeout: int = 5000):
+    async def _find_element(self, selector_list: list[str], timeout: int = 5000):
         """Try multiple selectors and return the first matching element."""
         if isinstance(selector_list, str):
             selector_list = [selector_list]
@@ -243,7 +243,7 @@ class TradingViewBrowser:
                 continue
         return None
 
-    async def _safe_click(self, selector_list: List[str], timeout: int = 5000) -> bool:
+    async def _safe_click(self, selector_list: list[str], timeout: int = 5000) -> bool:
         """Safely click an element using multiple selector fallbacks."""
         element = await self._find_element(selector_list, timeout)
         if element:
@@ -412,7 +412,7 @@ class TradingViewBrowser:
             await self._dismiss_popups()
             await asyncio.sleep(0.5)
 
-            print(f"[TradingViewBrowser] Attempting to take screenshot...")
+            print("[TradingViewBrowser] Attempting to take screenshot...")
             print(f"[TradingViewBrowser] Current URL: {self.page.url}")
 
             # Try to screenshot the chart container
@@ -428,19 +428,19 @@ class TradingViewBrowser:
                             size_kb = len(screenshot) / 1024
                             print(f"[TradingViewBrowser] Chart screenshot: {len(screenshot)} bytes ({size_kb:.1f} KB) - {box['width']}x{box['height']} px")
                             if size_kb < 10:
-                                print(f"[TradingViewBrowser] WARNING: Screenshot is very small, chart may not have loaded properly")
+                                print("[TradingViewBrowser] WARNING: Screenshot is very small, chart may not have loaded properly")
                             return base64.b64encode(screenshot).decode('utf-8')
                 except Exception as e:
                     print(f"[TradingViewBrowser] Selector '{selector}' failed: {e}")
                     continue
 
             # Fallback: full page screenshot
-            print(f"[TradingViewBrowser] No chart element found, taking full page screenshot")
+            print("[TradingViewBrowser] No chart element found, taking full page screenshot")
             screenshot = await self.page.screenshot(full_page=True)
             size_kb = len(screenshot) / 1024
             print(f"[TradingViewBrowser] Full page screenshot: {len(screenshot)} bytes ({size_kb:.1f} KB)")
             if size_kb < 50:
-                print(f"[TradingViewBrowser] WARNING: Full page screenshot is very small, page may not have loaded")
+                print("[TradingViewBrowser] WARNING: Full page screenshot is very small, page may not have loaded")
             return base64.b64encode(screenshot).decode('utf-8')
 
         except Exception as e:
@@ -485,7 +485,7 @@ class TradingViewBrowser:
                 print(f"[TradingViewBrowser] Timeframe changed to {timeframe} via URL")
                 return True
 
-            print(f"[TradingViewBrowser] ERROR: Cannot change timeframe - no keyboard key and no current symbol")
+            print("[TradingViewBrowser] ERROR: Cannot change timeframe - no keyboard key and no current symbol")
             return False
 
         except Exception as e:
@@ -494,7 +494,7 @@ class TradingViewBrowser:
             traceback.print_exc()
             return False
 
-    async def add_indicator(self, indicator_name: str, params: Dict[str, Any] = None) -> bool:
+    async def add_indicator(self, indicator_name: str, params: dict[str, Any] = None) -> bool:
         """
         Add an indicator to the chart.
         Uses "/" search shortcut (most reliable).
@@ -548,7 +548,7 @@ class TradingViewBrowser:
             print(f"[TradingViewBrowser] Failed to remove indicators: {e}")
             return False
 
-    async def _get_chart_bounds(self) -> Optional[Dict[str, float]]:
+    async def _get_chart_bounds(self) -> dict[str, float] | None:
         """Get the bounding box of the chart area."""
         for selector in self.selectors["chart"]:
             try:
@@ -701,7 +701,7 @@ class TradingViewBrowser:
         Requires 3 points: pivot, then two reaction points.
         """
         try:
-            print(f"[TradingViewBrowser] Drawing Pitchfork with 3 points")
+            print("[TradingViewBrowser] Drawing Pitchfork with 3 points")
 
             # Activate Pitchfork tool
             await self.page.keyboard.press("Alt+Shift+p")
@@ -776,7 +776,7 @@ class TradingViewBrowser:
             print(f"[TradingViewBrowser] Failed to scroll: {e}")
             return False
 
-    async def get_price_at_position(self, x: int, y: int) -> Optional[float]:
+    async def get_price_at_position(self, x: int, y: int) -> float | None:
         """Get the price level at a specific Y position (approximation)."""
         # This is complex as it requires parsing the price scale
         # For now, return None - AI will estimate from visual context
@@ -906,7 +906,7 @@ class TradingViewAIAgent:
             max_indicators: Maximum indicators allowed by TradingView plan.
                            Default 2 (Free plan limit).
         """
-        self.browser: Optional[TradingViewBrowser] = None
+        self.browser: TradingViewBrowser | None = None
         self.api_key = settings.AIML_API_KEY
         self.base_url = settings.AIML_BASE_URL
         self.nvidia_api_key = settings.NVIDIA_API_KEY
@@ -1128,8 +1128,8 @@ class TradingViewAIAgent:
         model_id: str,
         screenshot: str,
         symbol: str,
-        preferences: Dict[str, Any]
-    ) -> List[str]:
+        preferences: dict[str, Any]
+    ) -> list[str]:
         """Ask AI which indicators to add based on initial chart."""
 
         # Respect TradingView indicator limit
@@ -1207,8 +1207,8 @@ Rispondi SOLO con un array JSON di nomi di indicatori (max {max_ind}), es.:
         model_id: str,
         screenshot: str,
         symbol: str,
-        preferences: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        preferences: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Ask AI what to draw on the chart (trendlines, S/R, zones, fibonacci, pitchfork)."""
 
         prompt = f"""Stai analizzando un grafico {symbol} con indicatori.
@@ -1294,13 +1294,13 @@ Rispondi SOLO con l'array JSON, nessun altro testo.
     async def _ask_ai_for_analysis(
         self,
         model_id: str,
-        screenshots: List[str],
+        screenshots: list[str],
         symbol: str,
         timeframe: str,
-        indicators_used: List[str],
-        drawings_made: List[Dict[str, Any]],
-        preferences: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        indicators_used: list[str],
+        drawings_made: list[dict[str, Any]],
+        preferences: dict[str, Any]
+    ) -> dict[str, Any]:
         """Ask AI for final trading analysis."""
 
         drawings_desc = "\n".join([f"- {d.get('label', d.get('type'))}" for d in drawings_made])
@@ -1591,7 +1591,7 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
         self,
         symbol: str,
         timeframe: str = "15",
-    ) -> List[TradingViewAnalysisResult]:
+    ) -> list[TradingViewAnalysisResult]:
         """
         Run analysis with all AI models sequentially.
         Each model gets a fresh chart and adds its own indicators/drawings.
@@ -1617,8 +1617,8 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
         self,
         symbol: str,
         mode: str = "standard",
-        enabled_models: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+        enabled_models: list[str] | None = None,
+    ) -> dict[str, Any]:
         """
         Run multi-timeframe analysis based on the selected mode.
 
@@ -1647,8 +1647,8 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
         # Limit to num_models based on mode
         model_keys = all_model_keys[:num_models]
 
-        all_results: List[TradingViewAnalysisResult] = []
-        timeframe_analyses: Dict[str, List[TradingViewAnalysisResult]] = {tf: [] for tf in timeframes}
+        all_results: list[TradingViewAnalysisResult] = []
+        timeframe_analyses: dict[str, list[TradingViewAnalysisResult]] = {tf: [] for tf in timeframes}
 
         print(f"\n{'='*60}")
         print(f"TradingView AI Agent - Mode: {mode.upper()} (Parallel)")
@@ -1673,9 +1673,9 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
                     "total_models": 0,
                     "error": "Failed to open TradingView chart"
                 }
-            print(f"[TradingViewAgent] Chart opened successfully!")
+            print("[TradingViewAgent] Chart opened successfully!")
         else:
-            print(f"[TradingViewAgent] ERROR: Browser not initialized!")
+            print("[TradingViewAgent] ERROR: Browser not initialized!")
             return {
                 "direction": "HOLD",
                 "confidence": 0,
@@ -1715,7 +1715,7 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
 
                 # Remove indicators for next timeframe (clean slate)
                 if tf_index < len(timeframes) - 1:
-                    print(f"[TradingViewAgent] Clearing indicators for next timeframe...")
+                    print("[TradingViewAgent] Clearing indicators for next timeframe...")
                     await self.browser.remove_all_indicators()
 
             if not screenshot:
@@ -1777,8 +1777,8 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
 
     def _calculate_timeframe_consensus(
         self,
-        results: List[TradingViewAnalysisResult]
-    ) -> Dict[str, Any]:
+        results: list[TradingViewAnalysisResult]
+    ) -> dict[str, Any]:
         """Calculate consensus for a single timeframe."""
         valid = [r for r in results if not r.error and r.direction != "HOLD"]
 
@@ -1812,8 +1812,8 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
 
     def calculate_consensus(
         self,
-        results: List[TradingViewAnalysisResult]
-    ) -> Dict[str, Any]:
+        results: list[TradingViewAnalysisResult]
+    ) -> dict[str, Any]:
         """Calculate consensus from all AI analyses."""
         valid = [r for r in results if not r.error and r.direction != "HOLD"]
         total = len([r for r in results if not r.error])
@@ -1919,7 +1919,7 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
 
 
 # Singleton instance
-_tv_agent: Optional[TradingViewAIAgent] = None
+_tv_agent: TradingViewAIAgent | None = None
 
 
 async def get_tradingview_agent(

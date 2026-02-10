@@ -5,9 +5,8 @@ All configuration is loaded from environment variables.
 
 import json
 from functools import lru_cache
-from typing import List, Optional, Union
 
-from pydantic import Field, field_validator, computed_field
+from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -36,7 +35,7 @@ class Settings(BaseSettings):
 
     @computed_field
     @property
-    def cors_origins_list(self) -> List[str]:
+    def cors_origins_list(self) -> list[str]:
         """Parse CORS_ORIGINS string into a list."""
         v = self.CORS_ORIGINS
         if not v:
@@ -65,24 +64,24 @@ class Settings(BaseSettings):
 
     # AI Providers
     # OpenAI
-    OPENAI_API_KEY: Optional[str] = None
+    OPENAI_API_KEY: str | None = None
     OPENAI_MODEL: str = "gpt-4o"
     OPENAI_MODEL_FAST: str = "gpt-4o-mini"
 
     # Anthropic (Claude)
-    ANTHROPIC_API_KEY: Optional[str] = None
+    ANTHROPIC_API_KEY: str | None = None
     ANTHROPIC_MODEL: str = "claude-3-5-sonnet-20241022"
 
     # Google (Gemini)
-    GOOGLE_API_KEY: Optional[str] = None
+    GOOGLE_API_KEY: str | None = None
     GOOGLE_MODEL: str = "gemini-1.5-flash"
 
     # Groq (Ultra-fast inference)
-    GROQ_API_KEY: Optional[str] = None
+    GROQ_API_KEY: str | None = None
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
 
     # Mistral
-    MISTRAL_API_KEY: Optional[str] = None
+    MISTRAL_API_KEY: str | None = None
     MISTRAL_MODEL: str = "mistral-large-latest"
 
     # Ollama (Local inference)
@@ -90,33 +89,33 @@ class Settings(BaseSettings):
     OLLAMA_MODEL: str = "llama3.1:8b"
 
     # AIML API (Multi-model gateway)
-    AIML_API_KEY: Optional[str] = None
+    AIML_API_KEY: str | None = None
     AIML_BASE_URL: str = "https://api.aimlapi.com/v1"
 
     # NVIDIA API (Kimi K2.5, Mistral Large 3)
-    NVIDIA_API_KEY: Optional[str] = None
+    NVIDIA_API_KEY: str | None = None
     NVIDIA_BASE_URL: str = "https://integrate.api.nvidia.com/v1"
 
     # Alpha Vantage (Market Data)
-    ALPHA_VANTAGE_API_KEY: Optional[str] = None
+    ALPHA_VANTAGE_API_KEY: str | None = None
 
     # Broker Configuration
     BROKER_TYPE: str = Field(default="none", description="none|oanda|metatrader|ig|interactive_brokers|alpaca")
 
     # OANDA
-    OANDA_API_KEY: Optional[str] = None
-    OANDA_ACCOUNT_ID: Optional[str] = None
+    OANDA_API_KEY: str | None = None
+    OANDA_ACCOUNT_ID: str | None = None
     OANDA_ENVIRONMENT: str = Field(default="practice", description="practice|live")
 
     # MetaTrader (via MetaApi.cloud)
-    METAAPI_ACCESS_TOKEN: Optional[str] = None
-    METAAPI_ACCOUNT_ID: Optional[str] = None
+    METAAPI_ACCESS_TOKEN: str | None = None
+    METAAPI_ACCOUNT_ID: str | None = None
 
     # IG Markets
-    IG_API_KEY: Optional[str] = None
-    IG_USERNAME: Optional[str] = None
-    IG_PASSWORD: Optional[str] = None
-    IG_ACCOUNT_ID: Optional[str] = None
+    IG_API_KEY: str | None = None
+    IG_USERNAME: str | None = None
+    IG_PASSWORD: str | None = None
+    IG_ACCOUNT_ID: str | None = None
     IG_ENVIRONMENT: str = Field(default="demo", description="demo|live")
 
     # Interactive Brokers
@@ -125,8 +124,8 @@ class Settings(BaseSettings):
     IB_CLIENT_ID: int = 1
 
     # Alpaca
-    ALPACA_API_KEY: Optional[str] = None
-    ALPACA_SECRET_KEY: Optional[str] = None
+    ALPACA_API_KEY: str | None = None
+    ALPACA_SECRET_KEY: str | None = None
     ALPACA_PAPER: bool = True
 
     # Trading Configuration
@@ -137,17 +136,17 @@ class Settings(BaseSettings):
     DEFAULT_RISK_PER_TRADE: float = 1.0  # Percentage of account
 
     # Market Data
-    CMC_API_KEY: Optional[str] = None
+    CMC_API_KEY: str | None = None
 
     # Email Service (Resend)
-    RESEND_API_KEY: Optional[str] = None
+    RESEND_API_KEY: str | None = None
     EMAIL_FROM: str = "Prometheus <noreply@prometheus.trading>"
     FRONTEND_URL: str = "http://localhost:3000"
 
     # Notifications
-    TELEGRAM_BOT_TOKEN: Optional[str] = None
-    TELEGRAM_CHAT_ID: Optional[str] = None
-    DISCORD_WEBHOOK_URL: Optional[str] = None
+    TELEGRAM_BOT_TOKEN: str | None = None
+    TELEGRAM_CHAT_ID: str | None = None
+    DISCORD_WEBHOOK_URL: str | None = None
 
 
 @lru_cache

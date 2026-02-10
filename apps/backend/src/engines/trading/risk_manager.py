@@ -11,7 +11,6 @@ Handles all risk-related calculations and validations:
 
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Dict, List, Optional
 
 from src.core.config import settings
 from src.engines.trading.base_broker import (
@@ -26,9 +25,9 @@ from src.engines.trading.base_broker import (
 class RiskValidationResult:
     """Result of risk validation."""
     is_valid: bool
-    adjusted_size: Optional[Decimal] = None
+    adjusted_size: Decimal | None = None
     message: str = ""
-    warnings: List[str] = None
+    warnings: list[str] = None
 
     def __post_init__(self):
         if self.warnings is None:
@@ -78,7 +77,7 @@ class RiskManager:
         account: AccountInfo,
         stop_loss_pips: Decimal,
         pip_value: Decimal,
-        risk_percent: Optional[Decimal] = None,
+        risk_percent: Decimal | None = None,
     ) -> PositionSizeResult:
         """
         Calculate optimal position size based on risk parameters.
@@ -128,7 +127,7 @@ class RiskManager:
         self,
         order: OrderRequest,
         account: AccountInfo,
-        open_positions: List[Position],
+        open_positions: list[Position],
         current_price: Decimal,
     ) -> RiskValidationResult:
         """
@@ -326,7 +325,7 @@ class RiskManager:
         self._daily_pnl = Decimal("0")
         self._daily_trades = 0
 
-    def get_daily_stats(self) -> Dict:
+    def get_daily_stats(self) -> dict:
         """Get current daily statistics."""
         return {
             "daily_pnl": str(self._daily_pnl),

@@ -4,9 +4,8 @@ Database models for persistent storage.
 
 import json
 from datetime import datetime
-from typing import Optional, List
 
-from sqlalchemy import DateTime, String, Text, Boolean, Float, Integer, func
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.core.database import Base
@@ -25,8 +24,8 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
 
     # Profile
-    full_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    avatar_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -34,12 +33,12 @@ class User(Base):
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Email verification
-    verification_token: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    verification_token_expires: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    verification_token: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    verification_token_expires: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Password reset
-    reset_token: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    reset_token_expires: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    reset_token: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    reset_token_expires: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
@@ -48,7 +47,7 @@ class User(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
-    last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     def __repr__(self) -> str:
         return f"<User(id={self.id}, email={self.email}, username={self.username})>"
@@ -63,7 +62,7 @@ class AppSettings(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     key: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
-    value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    value: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -89,16 +88,16 @@ class BrokerAccount(Base):
     broker_type: Mapped[str] = mapped_column(String(50), default="metaapi")  # "metaapi", "alpaca", etc.
 
     # MetaApi credentials
-    metaapi_account_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    metaapi_token: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # Encrypted in production
+    metaapi_account_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    metaapi_token: Mapped[str | None] = mapped_column(Text, nullable=True)  # Encrypted in production
 
     # Status
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     is_connected: Mapped[bool] = mapped_column(Boolean, default=False)
-    last_connected_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_connected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Trading configuration (stored as JSON strings)
-    symbols_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # ["EUR/USD", "XAU/USD", ...]
+    symbols_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # ["EUR/USD", "XAU/USD", ...]
 
     # Risk settings
     risk_per_trade_percent: Mapped[float] = mapped_column(Float, default=1.0)
@@ -113,7 +112,7 @@ class BrokerAccount(Base):
     min_models_agree: Mapped[int] = mapped_column(Integer, default=4)
 
     # AI models (stored as JSON)
-    enabled_models_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    enabled_models_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Trading hours
     trading_start_hour: Mapped[int] = mapped_column(Integer, default=7)
@@ -130,23 +129,23 @@ class BrokerAccount(Base):
 
     # Properties for JSON fields
     @property
-    def symbols(self) -> List[str]:
+    def symbols(self) -> list[str]:
         if self.symbols_json:
             return json.loads(self.symbols_json)
         return ["EUR/USD", "XAU/USD"]  # Default
 
     @symbols.setter
-    def symbols(self, value: List[str]):
+    def symbols(self, value: list[str]):
         self.symbols_json = json.dumps(value)
 
     @property
-    def enabled_models(self) -> List[str]:
+    def enabled_models(self) -> list[str]:
         if self.enabled_models_json:
             return json.loads(self.enabled_models_json)
         return ["chatgpt", "gemini", "grok", "qwen", "llama", "ernie", "kimi", "mistral"]
 
     @enabled_models.setter
-    def enabled_models(self, value: List[str]):
+    def enabled_models(self, value: list[str]):
         self.enabled_models_json = json.dumps(value)
 
     def __repr__(self) -> str:

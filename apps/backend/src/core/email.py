@@ -4,8 +4,7 @@ Supports Resend (recommended) and SMTP.
 """
 
 import secrets
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 import httpx
 
@@ -30,7 +29,7 @@ class EmailService:
         to: str,
         subject: str,
         html: str,
-        text: Optional[str] = None
+        text: str | None = None
     ) -> bool:
         """
         Send an email using Resend API.
@@ -275,7 +274,7 @@ def generate_verification_token() -> str:
 
 def get_token_expiry(hours: int = 24) -> datetime:
     """Get expiry datetime for a token."""
-    return datetime.now(timezone.utc) + timedelta(hours=hours)
+    return datetime.now(UTC) + timedelta(hours=hours)
 
 
 # Global email service instance

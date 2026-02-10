@@ -9,11 +9,10 @@ to support dynamic credential updates without server restart.
 """
 
 import os
-from typing import Optional
 
 from src.engines.trading.base_broker import BaseBroker
-from src.engines.trading.oanda_broker import OANDABroker
 from src.engines.trading.metatrader_broker import MetaTraderBroker
+from src.engines.trading.oanda_broker import OANDABroker
 
 
 class NoBrokerConfiguredError(Exception):
@@ -35,7 +34,7 @@ class BrokerFactory:
     _instances: dict = {}
 
     @classmethod
-    def is_configured(cls, broker_type: Optional[str] = None) -> bool:
+    def is_configured(cls, broker_type: str | None = None) -> bool:
         """Check if a broker is properly configured with credentials."""
         # Read from os.environ directly to get dynamically updated values
         broker_type = (broker_type or os.environ.get("BROKER_TYPE", "none")).lower()
@@ -56,7 +55,7 @@ class BrokerFactory:
     @classmethod
     def create(
         cls,
-        broker_type: Optional[str] = None,
+        broker_type: str | None = None,
         **kwargs,
     ) -> BaseBroker:
         """
@@ -128,7 +127,7 @@ class BrokerFactory:
     @classmethod
     async def get_instance(
         cls,
-        broker_type: Optional[str] = None,
+        broker_type: str | None = None,
         **kwargs,
     ) -> BaseBroker:
         """
@@ -162,7 +161,7 @@ class BrokerFactory:
         cls._instances.clear()
 
     @classmethod
-    async def reset_instance(cls, broker_type: Optional[str] = None) -> None:
+    async def reset_instance(cls, broker_type: str | None = None) -> None:
         """
         Reset a broker instance to force reconnection with new credentials.
 
@@ -179,6 +178,6 @@ class BrokerFactory:
 
 
 # Convenience function
-async def get_broker(broker_type: Optional[str] = None) -> BaseBroker:
+async def get_broker(broker_type: str | None = None) -> BaseBroker:
     """Get the default broker instance."""
     return await BrokerFactory.get_instance(broker_type)

@@ -7,11 +7,11 @@ without changing the core logic.
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
-from typing import AsyncIterator, Dict, List, Optional
 
 
 class OrderSide(str, Enum):
@@ -67,7 +67,7 @@ class AccountInfo:
     updated_at: datetime = field(default_factory=datetime.utcnow)
 
     @property
-    def margin_level(self) -> Optional[Decimal]:
+    def margin_level(self) -> Decimal | None:
         """Calculate margin level percentage."""
         if self.margin_used == 0:
             return None
@@ -86,8 +86,8 @@ class Position:
     unrealized_pnl: Decimal
     margin_used: Decimal
     leverage: int = 1
-    stop_loss: Optional[Decimal] = None
-    take_profit: Optional[Decimal] = None
+    stop_loss: Decimal | None = None
+    take_profit: Decimal | None = None
     opened_at: datetime = field(default_factory=datetime.utcnow)
 
     @property
@@ -108,32 +108,32 @@ class OrderRequest:
     side: OrderSide
     order_type: OrderType
     size: Decimal
-    price: Optional[Decimal] = None  # For limit orders
-    stop_price: Optional[Decimal] = None  # For stop orders
-    stop_loss: Optional[Decimal] = None
-    take_profit: Optional[Decimal] = None
+    price: Decimal | None = None  # For limit orders
+    stop_price: Decimal | None = None  # For stop orders
+    stop_loss: Decimal | None = None
+    take_profit: Decimal | None = None
     time_in_force: TimeInForce = TimeInForce.GTC
     leverage: int = 1
-    client_order_id: Optional[str] = None
+    client_order_id: str | None = None
 
 
 @dataclass
 class OrderResult:
     """Result of an order execution."""
     order_id: str
-    client_order_id: Optional[str] = None
+    client_order_id: str | None = None
     symbol: str = ""
     side: OrderSide = OrderSide.BUY
     order_type: OrderType = OrderType.MARKET
     status: OrderStatus = OrderStatus.PENDING
     size: Decimal = Decimal("0")
     filled_size: Decimal = Decimal("0")
-    price: Optional[Decimal] = None
-    average_fill_price: Optional[Decimal] = None
+    price: Decimal | None = None
+    average_fill_price: Decimal | None = None
     commission: Decimal = Decimal("0")
     created_at: datetime = field(default_factory=datetime.utcnow)
-    filled_at: Optional[datetime] = None
-    error_message: Optional[str] = None
+    filled_at: datetime | None = None
+    error_message: str | None = None
 
     @property
     def is_filled(self) -> bool:
@@ -182,14 +182,14 @@ class Instrument:
     symbol: str
     name: str
     instrument_type: str  # forex, index, commodity, stock
-    base_currency: Optional[str] = None
-    quote_currency: Optional[str] = None
+    base_currency: str | None = None
+    quote_currency: str | None = None
     pip_location: int = -4  # e.g., -4 means 0.0001
     min_size: Decimal = Decimal("1")
-    max_size: Optional[Decimal] = None
+    max_size: Decimal | None = None
     size_increment: Decimal = Decimal("1")
     margin_rate: Decimal = Decimal("0.05")  # 5% margin = 20x leverage
-    trading_hours: Optional[str] = None
+    trading_hours: str | None = None
 
 
 class BaseBroker(ABC):
@@ -218,7 +218,7 @@ class BaseBroker(ABC):
 
     def __init__(self):
         self._connected = False
-        self._instruments_cache: Dict[str, Instrument] = {}
+        self._instruments_cache: dict[str, Instrument] = {}
 
     @property
     def is_connected(self) -> bool:
@@ -233,7 +233,7 @@ class BaseBroker(ABC):
 
     @property
     @abstractmethod
-    def supported_markets(self) -> List[str]:
+    def supported_markets(self) -> list[str]:
         """List of supported market types (forex, indices, commodities, stocks)."""
         pass
 
@@ -265,11 +265,11 @@ class BaseBroker(ABC):
     # ==================== Instruments ====================
 
     @abstractmethod
-    async def get_instruments(self) -> List[Instrument]:
+    async def get_instruments(self) -> list[Instrument]:
         """Get list of available trading instruments."""
         pass
 
-    async def get_instrument(self, symbol: str) -> Optional[Instrument]:
+    async def get_instrument(self, symbol: str) -> Instrument | None:
         """Get specific instrument by symbol."""
         if not self._instruments_cache:
             instruments = await self.get_instruments()
@@ -305,24 +305,24 @@ class BaseBroker(ABC):
         pass
 
     @abstractmethod
-    async def get_order(self, order_id: str) -> Optional[OrderResult]:
+    async def get_order(self, order_id: str) -> OrderResult | None:
         """Get order by ID."""
         pass
 
     @abstractmethod
-    async def get_open_orders(self, symbol: Optional[str] = None) -> List[OrderResult]:
+    async def get_open_orders(self, symbol: str | None = None) -> list[OrderResult]:
         """Get all open/pending orders."""
         pass
 
     # ==================== Positions ====================
 
     @abstractmethod
-    async def get_positions(self) -> List[Position]:
+    async def get_positions(self) -> list[Position]:
         """Get all open positions."""
         pass
 
     @abstractmethod
-    async def get_position(self, symbol: str) -> Optional[Position]:
+    async def get_position(self, symbol: str) -> Position | None:
         """Get position for specific symbol."""
         pass
 
@@ -330,7 +330,7 @@ class BaseBroker(ABC):
     async def close_position(
         self,
         symbol: str,
-        size: Optional[Decimal] = None  # None = close all
+        size: Decimal | None = None  # None = close all
     ) -> OrderResult:
         """
         Close a position.
@@ -348,8 +348,8 @@ class BaseBroker(ABC):
     async def modify_position(
         self,
         symbol: str,
-        stop_loss: Optional[Decimal] = None,
-        take_profit: Optional[Decimal] = None,
+        stop_loss: Decimal | None = None,
+        take_profit: Decimal | None = None,
     ) -> bool:
         """
         Modify stop loss / take profit of existing position.
@@ -372,12 +372,12 @@ class BaseBroker(ABC):
         pass
 
     @abstractmethod
-    async def get_prices(self, symbols: List[str]) -> Dict[str, Tick]:
+    async def get_prices(self, symbols: list[str]) -> dict[str, Tick]:
         """Get current prices for multiple symbols."""
         pass
 
     @abstractmethod
-    async def stream_prices(self, symbols: List[str]) -> AsyncIterator[Tick]:
+    async def stream_prices(self, symbols: list[str]) -> AsyncIterator[Tick]:
         """
         Stream real-time prices.
 
@@ -395,9 +395,9 @@ class BaseBroker(ABC):
         symbol: str,
         timeframe: str,  # e.g., "M1", "M5", "M15", "H1", "D"
         count: int = 100,
-        from_time: Optional[datetime] = None,
-        to_time: Optional[datetime] = None,
-    ) -> List[Candle]:
+        from_time: datetime | None = None,
+        to_time: datetime | None = None,
+    ) -> list[Candle]:
         """
         Get historical candle data.
 

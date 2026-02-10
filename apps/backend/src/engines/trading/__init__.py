@@ -15,9 +15,9 @@ from .base_broker import (
     Tick,
     TimeInForce,
 )
-from .risk_manager import RiskManager, risk_manager
-from .oanda_broker import OANDABroker
 from .broker_factory import BrokerFactory, get_broker
+from .oanda_broker import OANDABroker
+from .risk_manager import RiskManager, risk_manager
 
 __all__ = [
     # Base broker

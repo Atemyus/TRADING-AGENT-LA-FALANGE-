@@ -5,14 +5,13 @@ Endpoints for AI-powered market analysis using multi-model consensus.
 """
 
 from decimal import Decimal
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
-from src.engines.ai.base_ai import MarketContext, TradeDirection
 from src.engines.ai.consensus_engine import AgreementLevel, ConsensusMethod
-from src.services.ai_service import get_ai_service, create_market_context
+from src.services.ai_service import create_market_context, get_ai_service
 
 # TradingView Agent imports
 try:
@@ -33,23 +32,23 @@ router = APIRouter()
 
 class IndicatorsInput(BaseModel):
     """Technical indicators input."""
-    rsi: Optional[float] = Field(None, ge=0, le=100)
-    macd: Optional[float] = None
-    macd_signal: Optional[float] = None
-    macd_histogram: Optional[float] = None
-    ema_9: Optional[float] = None
-    ema_21: Optional[float] = None
-    sma_50: Optional[float] = None
-    sma_200: Optional[float] = None
-    atr: Optional[float] = None
-    bollinger_upper: Optional[float] = None
-    bollinger_middle: Optional[float] = None
-    bollinger_lower: Optional[float] = None
-    stochastic_k: Optional[float] = None
-    stochastic_d: Optional[float] = None
-    adx: Optional[float] = None
-    volume: Optional[float] = None
-    vwap: Optional[float] = None
+    rsi: float | None = Field(None, ge=0, le=100)
+    macd: float | None = None
+    macd_signal: float | None = None
+    macd_histogram: float | None = None
+    ema_9: float | None = None
+    ema_21: float | None = None
+    sma_50: float | None = None
+    sma_200: float | None = None
+    atr: float | None = None
+    bollinger_upper: float | None = None
+    bollinger_middle: float | None = None
+    bollinger_lower: float | None = None
+    stochastic_k: float | None = None
+    stochastic_d: float | None = None
+    adx: float | None = None
+    volume: float | None = None
+    vwap: float | None = None
 
 
 class CandleInput(BaseModel):
@@ -59,7 +58,7 @@ class CandleInput(BaseModel):
     high: float
     low: float
     close: float
-    volume: Optional[float] = 0
+    volume: float | None = 0
 
 
 class AnalysisRequest(BaseModel):
@@ -68,21 +67,21 @@ class AnalysisRequest(BaseModel):
     timeframe: str = Field(default="5m", description="Chart timeframe")
     current_price: float = Field(..., gt=0, description="Current market price")
     indicators: IndicatorsInput = Field(default_factory=IndicatorsInput)
-    candles: Optional[List[CandleInput]] = Field(
+    candles: list[CandleInput] | None = Field(
         None, description="Recent OHLCV candles"
     )
-    news_sentiment: Optional[float] = Field(
+    news_sentiment: float | None = Field(
         None, ge=-1, le=1, description="News sentiment score (-1 to 1)"
     )
-    market_session: Optional[str] = Field(
+    market_session: str | None = Field(
         None, description="Current market session (e.g., london, newyork)"
     )
-    support_levels: Optional[List[float]] = None
-    resistance_levels: Optional[List[float]] = None
-    providers: Optional[List[str]] = Field(
+    support_levels: list[float] | None = None
+    resistance_levels: list[float] | None = None
+    providers: list[str] | None = Field(
         None, description="Specific providers to use (default: all)"
     )
-    mode: Optional[str] = Field(
+    mode: str | None = Field(
         "standard", description="Analysis mode: quick, standard, premium"
     )
 
@@ -95,7 +94,7 @@ class VoteDetail(BaseModel):
     confidence: float
     reasoning: str
     is_valid: bool
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class ConsensusResponse(BaseModel):
@@ -115,18 +114,18 @@ class ConsensusResponse(BaseModel):
     agreement_percentage: float
 
     # Trade parameters
-    suggested_entry: Optional[str] = None
-    suggested_stop_loss: Optional[str] = None
-    suggested_take_profit: Optional[str] = None
-    risk_reward_ratio: Optional[float] = None
+    suggested_entry: str | None = None
+    suggested_stop_loss: str | None = None
+    suggested_take_profit: str | None = None
+    risk_reward_ratio: float | None = None
 
     # Insights
-    key_factors: List[str]
-    risks: List[str]
+    key_factors: list[str]
+    risks: list[str]
     reasoning_summary: str
 
     # Individual votes
-    votes: List[VoteDetail]
+    votes: list[VoteDetail]
 
     # Costs
     total_cost_usd: float
@@ -134,8 +133,8 @@ class ConsensusResponse(BaseModel):
     processing_time_ms: int
 
     # Metadata
-    providers_used: List[str]
-    failed_providers: List[str]
+    providers_used: list[str]
+    failed_providers: list[str]
 
 
 class ProviderStatus(BaseModel):
@@ -153,7 +152,7 @@ class ServiceStatusResponse(BaseModel):
     consensus_method: str
     min_confidence: float
     min_agreement: float
-    providers: List[ProviderStatus]
+    providers: list[ProviderStatus]
 
 
 # ========== Endpoints ==========
@@ -508,16 +507,16 @@ class TradingViewModelResult(BaseModel):
     analysis_style: str
     direction: str
     confidence: float
-    indicators_used: List[str]
-    drawings_made: List[Dict[str, Any]]
+    indicators_used: list[str]
+    drawings_made: list[dict[str, Any]]
     reasoning: str
-    key_observations: List[str]
-    entry_price: Optional[float] = None
-    stop_loss: Optional[float] = None
-    take_profit: List[float] = []
-    break_even_trigger: Optional[float] = None
-    trailing_stop_pips: Optional[float] = None
-    error: Optional[str] = None
+    key_observations: list[str]
+    entry_price: float | None = None
+    stop_loss: float | None = None
+    take_profit: list[float] = []
+    break_even_trigger: float | None = None
+    trailing_stop_pips: float | None = None
+    error: str | None = None
 
 
 class TradingViewAgentResponse(BaseModel):
@@ -536,30 +535,30 @@ class TradingViewAgentResponse(BaseModel):
 
     # Multi-timeframe data
     mode: str
-    timeframes_analyzed: List[str]
-    models_used: List[str]
+    timeframes_analyzed: list[str]
+    models_used: list[str]
     timeframe_alignment: float
     is_aligned: bool
-    timeframe_consensus: Dict[str, TimeframeConsensus]
+    timeframe_consensus: dict[str, TimeframeConsensus]
 
     # Trade parameters
-    entry_price: Optional[float] = None
-    stop_loss: Optional[float] = None
-    take_profit: Optional[float] = None
-    break_even_trigger: Optional[float] = None
-    trailing_stop_pips: Optional[float] = None
+    entry_price: float | None = None
+    stop_loss: float | None = None
+    take_profit: float | None = None
+    break_even_trigger: float | None = None
+    trailing_stop_pips: float | None = None
 
     # Analysis details
-    analysis_styles_used: List[str]
-    indicators_used: List[str]
-    key_observations: List[str]
+    analysis_styles_used: list[str]
+    indicators_used: list[str]
+    key_observations: list[str]
     combined_reasoning: str
 
     # Vote breakdown
-    vote_breakdown: Dict[str, int]
+    vote_breakdown: dict[str, int]
 
     # Individual results (optional, can be large)
-    individual_results: Optional[List[TradingViewModelResult]] = None
+    individual_results: list[TradingViewModelResult] | None = None
 
 
 async def _run_fallback_analysis(symbol: str, mode: str) -> TradingViewAgentResponse:
@@ -567,8 +566,9 @@ async def _run_fallback_analysis(symbol: str, mode: str) -> TradingViewAgentResp
     Run fallback AI analysis using the standard AI service when TradingView Agent is unavailable.
     This uses the AIML API directly without browser automation.
     """
-    from src.services.ai_service import get_ai_service, create_market_context
     import logging
+
+    from src.services.ai_service import create_market_context, get_ai_service
 
     logger = logging.getLogger(__name__)
     logger.info(f"Running fallback AI analysis for {symbol} in {mode} mode")
