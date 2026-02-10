@@ -56,6 +56,7 @@ ignore = [
     "C408",  # unnecessary dict call
     "F401",  # unused import (many are intentional for availability checks)
     "F841",  # unused variable
+    "UP042", # str+Enum inheritance (keep for backwards compatibility)
 ]
 
 [tool.ruff.lint.per-file-ignores]
