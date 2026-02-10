@@ -8,7 +8,6 @@ Supports Llama 3.3, Mixtral models.
 import json
 import time
 from decimal import Decimal
-from typing import List, Optional
 
 from src.core.config import settings
 from src.engines.ai.base_ai import (
@@ -49,7 +48,7 @@ class GroqProvider(BaseAIProvider):
     def __init__(
         self,
         model_name: str = "llama3-70b",
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
     ):
         resolved_model = self.MODEL_ALIASES.get(model_name, model_name)
         super().__init__(resolved_model, api_key)
@@ -60,7 +59,7 @@ class GroqProvider(BaseAIProvider):
         return "groq"
 
     @property
-    def supported_models(self) -> List[str]:
+    def supported_models(self) -> list[str]:
         return [
             "llama-3.3-70b-versatile",
             "llama-3.1-70b-versatile",

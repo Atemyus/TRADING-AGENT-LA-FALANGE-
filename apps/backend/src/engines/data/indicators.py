@@ -13,8 +13,6 @@ Indicators included:
 """
 
 from dataclasses import dataclass
-from decimal import Decimal
-from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -27,7 +25,7 @@ class IndicatorResult:
     value: float
     signal: str  # "bullish", "bearish", "neutral"
     strength: float  # 0-100
-    details: Dict = None
+    details: dict = None
 
 
 @dataclass
@@ -38,9 +36,9 @@ class AnalysisResult:
     timestamp: str
     trend: str  # "bullish", "bearish", "neutral"
     trend_strength: float  # 0-100
-    indicators: List[IndicatorResult]
-    support_levels: List[float]
-    resistance_levels: List[float]
+    indicators: list[IndicatorResult]
+    support_levels: list[float]
+    resistance_levels: list[float]
     recommendation: str
     confidence: float
 
@@ -98,7 +96,7 @@ class TechnicalIndicators:
         typical_price = (self.df["high"] + self.df["low"] + self.df["close"]) / 3
         return (typical_price * self.df["volume"]).cumsum() / self.df["volume"].cumsum()
 
-    def supertrend(self, period: int = 10, multiplier: float = 3.0) -> Tuple[pd.Series, pd.Series]:
+    def supertrend(self, period: int = 10, multiplier: float = 3.0) -> tuple[pd.Series, pd.Series]:
         """
         Supertrend indicator.
 
@@ -148,7 +146,7 @@ class TechnicalIndicators:
         fast: int = 12,
         slow: int = 26,
         signal: int = 9,
-    ) -> Tuple[pd.Series, pd.Series, pd.Series]:
+    ) -> tuple[pd.Series, pd.Series, pd.Series]:
         """
         MACD (Moving Average Convergence Divergence).
 
@@ -168,7 +166,7 @@ class TechnicalIndicators:
         self,
         k_period: int = 14,
         d_period: int = 3,
-    ) -> Tuple[pd.Series, pd.Series]:
+    ) -> tuple[pd.Series, pd.Series]:
         """
         Stochastic Oscillator.
 
@@ -189,7 +187,7 @@ class TechnicalIndicators:
         stoch_period: int = 14,
         k_period: int = 3,
         d_period: int = 3,
-    ) -> Tuple[pd.Series, pd.Series]:
+    ) -> tuple[pd.Series, pd.Series]:
         """
         Stochastic RSI.
 
@@ -243,7 +241,7 @@ class TechnicalIndicators:
         self,
         period: int = 20,
         std_dev: float = 2.0,
-    ) -> Tuple[pd.Series, pd.Series, pd.Series]:
+    ) -> tuple[pd.Series, pd.Series, pd.Series]:
         """
         Bollinger Bands.
 
@@ -268,7 +266,7 @@ class TechnicalIndicators:
         ema_period: int = 20,
         atr_period: int = 10,
         multiplier: float = 2.0,
-    ) -> Tuple[pd.Series, pd.Series, pd.Series]:
+    ) -> tuple[pd.Series, pd.Series, pd.Series]:
         """
         Keltner Channels.
 
@@ -290,7 +288,7 @@ class TechnicalIndicators:
         kc_period: int = 20,
         kc_atr_period: int = 10,
         kc_multiplier: float = 1.5,
-    ) -> Tuple[pd.Series, pd.Series]:
+    ) -> tuple[pd.Series, pd.Series]:
         """
         TTM Squeeze indicator.
 
@@ -340,7 +338,7 @@ class TechnicalIndicators:
 
     # ==================== Support/Resistance ====================
 
-    def pivot_points(self) -> Dict[str, float]:
+    def pivot_points(self) -> dict[str, float]:
         """
         Calculate pivot points from the last completed period.
 
@@ -372,7 +370,7 @@ class TechnicalIndicators:
             "S3": s3,
         }
 
-    def fibonacci_levels(self) -> Dict[str, float]:
+    def fibonacci_levels(self) -> dict[str, float]:
         """
         Calculate Fibonacci retracement levels from recent high/low.
 
@@ -566,7 +564,7 @@ class TechnicalIndicators:
             confidence=confidence,
         )
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """Get all indicators as a dictionary."""
         rsi = self.rsi()
         macd_line, signal_line, histogram = self.macd()

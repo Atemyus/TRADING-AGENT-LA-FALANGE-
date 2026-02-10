@@ -7,7 +7,6 @@ Supports Claude Sonnet, Claude Haiku, Claude Opus models.
 import json
 import time
 from decimal import Decimal
-from typing import List, Optional
 
 from src.core.config import settings
 from src.engines.ai.base_ai import (
@@ -48,7 +47,7 @@ class AnthropicProvider(BaseAIProvider):
     def __init__(
         self,
         model_name: str = "claude-sonnet",
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
     ):
         # Resolve alias
         resolved_model = self.MODEL_ALIASES.get(model_name, model_name)
@@ -60,7 +59,7 @@ class AnthropicProvider(BaseAIProvider):
         return "anthropic"
 
     @property
-    def supported_models(self) -> List[str]:
+    def supported_models(self) -> list[str]:
         return list(self.MODEL_ALIASES.keys()) + list(self.MODEL_ALIASES.values())
 
     @property

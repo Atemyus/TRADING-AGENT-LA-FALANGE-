@@ -8,7 +8,6 @@ Supports any model available in Ollama: Llama, Mistral, Qwen, DeepSeek, etc.
 import json
 import time
 from decimal import Decimal
-from typing import List, Optional
 
 import httpx
 
@@ -60,19 +59,19 @@ class OllamaProvider(BaseAIProvider):
     def __init__(
         self,
         model_name: str = "llama3.1:8b",
-        base_url: Optional[str] = None,
-        api_key: Optional[str] = None,  # Not used for Ollama
+        base_url: str | None = None,
+        api_key: str | None = None,  # Not used for Ollama
     ):
         super().__init__(model_name, api_key)
         self._base_url = base_url or getattr(settings, 'OLLAMA_BASE_URL', None) or "http://localhost:11434"
-        self._http_client: Optional[httpx.AsyncClient] = None
+        self._http_client: httpx.AsyncClient | None = None
 
     @property
     def provider_name(self) -> str:
         return "ollama"
 
     @property
-    def supported_models(self) -> List[str]:
+    def supported_models(self) -> list[str]:
         return self.RECOMMENDED_MODELS
 
     @property
@@ -120,7 +119,7 @@ class OllamaProvider(BaseAIProvider):
         except Exception:
             return False
 
-    async def list_available_models(self) -> List[str]:
+    async def list_available_models(self) -> list[str]:
         """List all models available in local Ollama installation."""
         try:
             await self.initialize()

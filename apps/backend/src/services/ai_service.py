@@ -12,38 +12,30 @@ import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Any
 
-from src.core.config import settings
 from src.engines.ai.base_ai import AIAnalysis, BaseAIProvider, MarketContext, TradeDirection
 from src.engines.ai.consensus_engine import (
-    ConsensusEngine,
     ConsensusMethod,
     ConsensusResult,
     create_consensus_engine,
 )
 from src.engines.ai.providers import (
     AIMLProvider,
-    AnthropicProvider,
-    GoogleProvider,
-    GroqProvider,
-    MistralProvider,
-    OllamaProvider,
-    OpenAIProvider,
 )
-from src.services.market_data_service import get_market_data_service, MarketData
-from src.services.technical_analysis_service import get_technical_analysis_service, FullAnalysis
+from src.services.market_data_service import get_market_data_service
+from src.services.technical_analysis_service import get_technical_analysis_service
 
 
 @dataclass
 class ProviderConfig:
     """Configuration for an AI provider."""
-    provider_class: Type[BaseAIProvider]
+    provider_class: type[BaseAIProvider]
     model_name: str
     enabled: bool = True
     weight: float = 1.0
-    api_key: Optional[str] = None
-    extra_config: Dict[str, Any] = field(default_factory=dict)
+    api_key: str | None = None
+    extra_config: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -63,47 +55,48 @@ class AIServiceConfig:
     max_retries: int = 2
 
     # Provider settings
-    providers: List[ProviderConfig] = field(default_factory=list)
+    providers: list[ProviderConfig] = field(default_factory=list)
 
 
-# Default provider configurations - AIML API with 6 models
+# Default provider configurations - AIML API with 8 models
 # All models accessed via api.aimlapi.com with single API key
 # Model IDs verified from https://docs.aimlapi.com/api-references/model-database
+# Vision-capable models + Llama 4 Scout + ERNIE 4.5 VL for analysis
 DEFAULT_PROVIDERS = [
-    # ChatGPT 5.2 (OpenAI via AIML)
+    # ChatGPT 5.2 (OpenAI via AIML) - Vision: YES
     ProviderConfig(
         provider_class=AIMLProvider,
         model_name="chatgpt-5.2",
         weight=1.0,
     ),
-    # Gemini 3 Pro Preview (Google via AIML)
+    # Gemini 3 Pro Preview (Google via AIML) - Vision: YES
     ProviderConfig(
         provider_class=AIMLProvider,
         model_name="gemini-3-pro",
         weight=1.0,
     ),
-    # DeepSeek V3.2 (DeepSeek via AIML)
-    ProviderConfig(
-        provider_class=AIMLProvider,
-        model_name="deepseek-v3.2",
-        weight=1.0,
-    ),
-    # Grok 4.1 Fast (xAI via AIML)
+    # Grok 4.1 Fast (xAI via AIML) - Vision: YES
     ProviderConfig(
         provider_class=AIMLProvider,
         model_name="grok-4.1-fast",
         weight=1.0,
     ),
-    # Qwen Max (Alibaba via AIML)
+    # Qwen3 VL (Alibaba via AIML) - Vision: YES (VL = Vision-Language)
     ProviderConfig(
         provider_class=AIMLProvider,
-        model_name="qwen-max",
+        model_name="qwen3-vl",
         weight=1.0,
     ),
-    # GLM 4.5 Air (Zhipu via AIML)
+    # Llama 4 Scout (Meta via AIML) - Text analysis
     ProviderConfig(
         provider_class=AIMLProvider,
-        model_name="glm-4.5",
+        model_name="llama-4-scout",
+        weight=1.0,
+    ),
+    # ERNIE 4.5 VL (Baidu via AIML) - Vision: YES (VL = Vision-Language)
+    ProviderConfig(
+        provider_class=AIMLProvider,
+        model_name="ernie-4.5-vl",
         weight=1.0,
     ),
 ]
@@ -117,7 +110,7 @@ class AIService:
     and produces consensus-based trading decisions.
     """
 
-    def __init__(self, config: Optional[AIServiceConfig] = None):
+    def __init__(self, config: AIServiceConfig | None = None):
         """
         Initialize AI Service.
 
@@ -140,7 +133,7 @@ class AIService:
         )
 
         # Initialize providers (uses _consensus_engine)
-        self._providers: Dict[str, BaseAIProvider] = {}
+        self._providers: dict[str, BaseAIProvider] = {}
         self._initialize_providers()
 
     def _initialize_providers(self) -> None:
@@ -176,15 +169,15 @@ class AIService:
         return len(self._providers)
 
     @property
-    def provider_names(self) -> List[str]:
+    def provider_names(self) -> list[str]:
         """Get list of active provider names."""
         return list(self._providers.keys())
 
-    async def health_check(self) -> Dict[str, bool]:
+    async def health_check(self) -> dict[str, bool]:
         """Check health of all providers."""
         results = {}
 
-        async def check_provider(key: str, provider: BaseAIProvider) -> Tuple[str, bool]:
+        async def check_provider(key: str, provider: BaseAIProvider) -> tuple[str, bool]:
             try:
                 healthy = await provider.health_check()
                 return key, healthy
@@ -211,7 +204,7 @@ class AIService:
     async def analyze(
         self,
         context: MarketContext,
-        providers: Optional[List[str]] = None,
+        providers: list[str] | None = None,
         mode: str = "standard",
         trading_style: str = "intraday",
     ) -> ConsensusResult:
@@ -251,10 +244,10 @@ class AIService:
     async def _run_parallel(
         self,
         context: MarketContext,
-        providers: Dict[str, BaseAIProvider],
+        providers: dict[str, BaseAIProvider],
         mode: str = "standard",
         trading_style: str = "intraday",
-    ) -> List[AIAnalysis]:
+    ) -> list[AIAnalysis]:
         """Run all providers in parallel."""
 
         async def analyze_with_provider(
@@ -272,7 +265,7 @@ class AIService:
                         provider.analyze(context),
                         timeout=self.config.timeout_seconds,
                     )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 return AIAnalysis(
                     provider_name=provider.provider_name,
                     model_name=provider.model_name,
@@ -336,10 +329,10 @@ class AIService:
     async def _run_sequential(
         self,
         context: MarketContext,
-        providers: Dict[str, BaseAIProvider],
+        providers: dict[str, BaseAIProvider],
         mode: str = "standard",
         trading_style: str = "intraday",
-    ) -> List[AIAnalysis]:
+    ) -> list[AIAnalysis]:
         """Run providers sequentially."""
         analyses = []
 
@@ -376,23 +369,22 @@ class AIService:
         trading_style: str = "scalping",
     ) -> ConsensusResult:
         """
-        Quick analysis using fastest AIML models.
+        Analisi rapida usando i modelli AIML più veloci con vision.
 
-        Uses Grok 4.1 Fast, DeepSeek, and Qwen for rapid decisions.
-        Good for real-time scalping scenarios.
-        Focuses on momentum and immediate price action.
+        Usa Grok 4.1 Fast e Qwen3 VL per decisioni rapide.
+        Ideale per scenari di scalping in tempo reale.
+        Focus su momentum e price action immediata.
         """
         fast_providers = [
             "aiml_xai_grok-4.1-fast",
-            "aiml_deepseek_deepseek-v3.2",
-            "aiml_alibaba_qwen-max",
+            "aiml_alibaba_qwen3-vl",
         ]
 
         available = [p for p in fast_providers if p in self._providers]
 
         if not available:
-            # Fall back to first 3 available
-            available = list(self._providers.keys())[:3]
+            # Fall back to first 2 available
+            available = list(self._providers.keys())[:2]
 
         return await self.analyze(
             context,
@@ -407,13 +399,13 @@ class AIService:
         trading_style: str = "intraday",
     ) -> ConsensusResult:
         """
-        Premium analysis using all 6 AIML models with comprehensive prompts.
+        Analisi premium usando tutti i 4 modelli AIML con vision.
 
-        Uses ChatGPT 5.2, Gemini 3 Pro, DeepSeek, Grok, Qwen, GLM.
-        Full institutional-grade analysis with SMC concepts, liquidity analysis,
-        and detailed trade narrative.
+        Usa ChatGPT 5.2, Gemini 3 Pro, Grok 4.1 Fast, Qwen3 VL.
+        Analisi di grado istituzionale completa con concetti SMC,
+        analisi della liquidità e narrativa di trade dettagliata.
         """
-        # Use all 6 models with premium prompts for best analysis
+        # Usa tutti i 4 modelli vision per la migliore analisi
         return await self.analyze(
             context,
             mode="premium",
@@ -441,7 +433,7 @@ class AIService:
             return True
         return False
 
-    def get_provider_stats(self) -> Dict[str, Any]:
+    def get_provider_stats(self) -> dict[str, Any]:
         """Get statistics about configured providers."""
         enabled = [c for c in self.config.providers if c.enabled]
         disabled = [c for c in self.config.providers if not c.enabled]
@@ -458,7 +450,7 @@ class AIService:
 
 
 # Singleton instance
-_ai_service: Optional[AIService] = None
+_ai_service: AIService | None = None
 
 
 def get_ai_service() -> AIService:
@@ -478,14 +470,14 @@ def reset_ai_service() -> None:
 async def create_market_context(
     symbol: str,
     timeframe: str,
-    current_price: Optional[Decimal] = None,
-    indicators: Optional[Dict[str, Any]] = None,
-    candles: Optional[List[Dict[str, Any]]] = None,
-    news_sentiment: Optional[float] = None,
-    market_session: Optional[str] = None,
-    economic_events: Optional[List[Dict[str, Any]]] = None,
-    support_levels: Optional[List[Decimal]] = None,
-    resistance_levels: Optional[List[Decimal]] = None,
+    current_price: Decimal | None = None,
+    indicators: dict[str, Any] | None = None,
+    candles: list[dict[str, Any]] | None = None,
+    news_sentiment: float | None = None,
+    market_session: str | None = None,
+    economic_events: list[dict[str, Any]] | None = None,
+    support_levels: list[Decimal] | None = None,
+    resistance_levels: list[Decimal] | None = None,
     fetch_real_data: bool = True,
     include_mtf: bool = False,
 ) -> MarketContext:
@@ -590,7 +582,6 @@ async def create_market_context(
 
 def _detect_session() -> str:
     """Detect current trading session based on UTC time."""
-    from datetime import datetime
     hour = datetime.utcnow().hour
 
     if 7 <= hour < 16:

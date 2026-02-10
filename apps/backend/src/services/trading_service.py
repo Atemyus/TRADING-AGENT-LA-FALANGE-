@@ -6,11 +6,10 @@ Integrates broker, risk management, and market data.
 """
 
 from dataclasses import dataclass
-from datetime import datetime
 from decimal import Decimal
-from typing import Dict, List, Optional
 
 from src.core.config import settings
+from src.engines.data.market_data import MarketDataService, get_market_data_service
 from src.engines.trading.base_broker import (
     AccountInfo,
     BaseBroker,
@@ -22,7 +21,6 @@ from src.engines.trading.base_broker import (
 )
 from src.engines.trading.broker_factory import BrokerFactory
 from src.engines.trading.risk_manager import RiskManager, risk_manager
-from src.engines.data.market_data import MarketDataService, get_market_data_service
 
 
 @dataclass
@@ -30,9 +28,9 @@ class TradeSignal:
     """Trading signal from AI or strategy."""
     symbol: str
     action: str  # "buy", "sell", "close"
-    size: Optional[Decimal] = None
-    stop_loss: Optional[Decimal] = None
-    take_profit: Optional[Decimal] = None
+    size: Decimal | None = None
+    stop_loss: Decimal | None = None
+    take_profit: Decimal | None = None
     leverage: int = 1
     reason: str = ""
     confidence: float = 0.0
@@ -42,9 +40,9 @@ class TradeSignal:
 class TradeResult:
     """Result of trade execution."""
     success: bool
-    order_result: Optional[OrderResult] = None
+    order_result: OrderResult | None = None
     message: str = ""
-    risk_warnings: List[str] = None
+    risk_warnings: list[str] = None
 
     def __post_init__(self):
         if self.risk_warnings is None:
@@ -72,8 +70,8 @@ class TradingService:
     """
 
     def __init__(self):
-        self._broker: Optional[BaseBroker] = None
-        self._market_data: Optional[MarketDataService] = None
+        self._broker: BaseBroker | None = None
+        self._market_data: MarketDataService | None = None
         self._risk_manager: RiskManager = risk_manager
         self._running = False
 
@@ -111,7 +109,7 @@ class TradingService:
             await self.start()
         return await self._broker.get_account_info()
 
-    async def get_account_summary(self) -> Dict:
+    async def get_account_summary(self) -> dict:
         """Get account summary as dictionary."""
         account = await self.get_account_info()
 
@@ -130,19 +128,19 @@ class TradingService:
 
     # ==================== Positions ====================
 
-    async def get_positions(self) -> List[Position]:
+    async def get_positions(self) -> list[Position]:
         """Get all open positions."""
         if not self._broker:
             await self.start()
         return await self._broker.get_positions()
 
-    async def get_position(self, symbol: str) -> Optional[Position]:
+    async def get_position(self, symbol: str) -> Position | None:
         """Get position for specific symbol."""
         if not self._broker:
             await self.start()
         return await self._broker.get_position(symbol)
 
-    async def get_positions_with_prices(self) -> List[Dict]:
+    async def get_positions_with_prices(self) -> list[dict]:
         """Get positions with current prices and P&L."""
         positions = await self.get_positions()
 
@@ -187,7 +185,7 @@ class TradingService:
     async def close_position(
         self,
         symbol: str,
-        size: Optional[Decimal] = None,
+        size: Decimal | None = None,
     ) -> TradeResult:
         """Close a position."""
         if not self._broker:
@@ -209,8 +207,8 @@ class TradingService:
     async def modify_position(
         self,
         symbol: str,
-        stop_loss: Optional[Decimal] = None,
-        take_profit: Optional[Decimal] = None,
+        stop_loss: Decimal | None = None,
+        take_profit: Decimal | None = None,
     ) -> bool:
         """Modify position stop loss / take profit."""
         if not self._broker:
@@ -352,7 +350,7 @@ class TradingService:
             await self.start()
         return await self._broker.cancel_order(order_id)
 
-    async def get_open_orders(self, symbol: Optional[str] = None) -> List[OrderResult]:
+    async def get_open_orders(self, symbol: str | None = None) -> list[OrderResult]:
         """Get pending orders."""
         if not self._broker:
             await self.start()
@@ -360,7 +358,7 @@ class TradingService:
 
     # ==================== Market Data ====================
 
-    async def get_price(self, symbol: str) -> Optional[Dict]:
+    async def get_price(self, symbol: str) -> dict | None:
         """Get current price for symbol."""
         if not self._market_data:
             await self.start()
@@ -377,7 +375,7 @@ class TradingService:
             }
         return None
 
-    async def get_prices(self, symbols: List[str]) -> Dict[str, Dict]:
+    async def get_prices(self, symbols: list[str]) -> dict[str, dict]:
         """Get current prices for multiple symbols."""
         if not self._market_data:
             await self.start()
@@ -397,7 +395,7 @@ class TradingService:
 
 
 # Global instance
-_trading_service: Optional[TradingService] = None
+_trading_service: TradingService | None = None
 
 
 async def get_trading_service() -> TradingService:

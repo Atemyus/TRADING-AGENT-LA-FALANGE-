@@ -21,14 +21,162 @@ import {
   CheckCircle,
   XCircle,
   Eye,
+  Brain,
+  MessageSquare,
+  Ban,
+  Newspaper,
+  ArrowUpCircle,
+  Users,
+  Server,
+  Loader2,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
-import { botApi } from "@/lib/api";
+import { botApi, brokerAccountsApi, BrokerAccountData, BrokerBotStatus } from "@/lib/api";
 
 // Dynamic import for TradingView widget
 const TradingViewWidget = dynamic(
   () => import("@/components/charts/TradingViewWidget"),
   { ssr: false, loading: () => <div className="h-[300px] bg-slate-900 rounded-xl animate-pulse" /> }
 );
+
+// ============ AI Reasoning Panel ============
+
+interface AnalysisLog {
+  timestamp: string;
+  symbol: string;
+  type: string;
+  message: string;
+  details: Record<string, unknown> | null;
+}
+
+interface AIReasoningPanelProps {
+  brokerId?: number;
+  brokerName?: string;
+  compact?: boolean;
+}
+
+function AIReasoningPanel({ brokerId, brokerName, compact = false }: AIReasoningPanelProps) {
+  const [logs, setLogs] = React.useState<AnalysisLog[]>([]);
+  const [autoScroll, setAutoScroll] = React.useState(true);
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+  const prevLengthRef = React.useRef(0);
+
+  // Poll for logs every 3 seconds
+  React.useEffect(() => {
+    const fetchLogs = async () => {
+      try {
+        // Use broker-specific logs if brokerId is provided
+        if (brokerId) {
+          const data = await brokerAccountsApi.getLogs(brokerId, 50);
+          setLogs(data.logs);
+        } else {
+          const data = await botApi.getLogs(50);
+          setLogs(data.logs);
+        }
+      } catch {
+        // silently ignore
+      }
+    };
+    fetchLogs();
+    const interval = setInterval(fetchLogs, 3000);
+    return () => clearInterval(interval);
+  }, [brokerId]);
+
+  // Auto-scroll to bottom when new logs arrive
+  React.useEffect(() => {
+    if (autoScroll && scrollRef.current && logs.length > prevLengthRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+    prevLengthRef.current = logs.length;
+  }, [logs, autoScroll]);
+
+  const getLogIcon = (type: string) => {
+    switch (type) {
+      case 'analysis': return <Brain size={14} className="text-purple-400" />;
+      case 'trade': return <ArrowUpCircle size={14} className="text-green-400" />;
+      case 'skip': return <Ban size={14} className="text-yellow-400" />;
+      case 'error': return <XCircle size={14} className="text-red-400" />;
+      case 'news': return <Newspaper size={14} className="text-orange-400" />;
+      default: return <MessageSquare size={14} className="text-slate-400" />;
+    }
+  };
+
+  const getLogColor = (type: string) => {
+    switch (type) {
+      case 'analysis': return 'text-purple-300';
+      case 'trade': return 'text-green-300';
+      case 'skip': return 'text-yellow-300';
+      case 'error': return 'text-red-300';
+      case 'news': return 'text-orange-300';
+      default: return 'text-slate-300';
+    }
+  };
+
+  return (
+    <div className={`bg-slate-800 rounded-xl border border-slate-700 ${compact ? 'p-4' : 'p-6'}`}>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className={`${compact ? 'text-sm' : 'text-lg'} font-semibold flex items-center gap-2`}>
+          <Brain size={compact ? 16 : 20} className="text-purple-400" />
+          {brokerName ? `AI Reasoning - ${brokerName}` : 'AI Reasoning - Analisi in Tempo Reale'}
+        </h3>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-slate-400">{logs.length} log</span>
+          <button
+            onClick={() => setAutoScroll(!autoScroll)}
+            className={`text-xs px-2 py-1 rounded ${autoScroll ? 'bg-purple-500/20 text-purple-400' : 'bg-slate-700 text-slate-400'}`}
+          >
+            Auto-scroll {autoScroll ? 'ON' : 'OFF'}
+          </button>
+          <div className="flex items-center gap-1">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+            <span className="text-xs text-green-400">Live</span>
+          </div>
+        </div>
+      </div>
+      <div
+        ref={scrollRef}
+        className={`bg-slate-900/80 rounded-lg p-3 ${compact ? 'max-h-[250px]' : 'max-h-[400px]'} overflow-y-auto font-mono text-xs space-y-1 border border-slate-700/50`}
+        onScroll={() => {
+          if (scrollRef.current) {
+            const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
+            setAutoScroll(scrollHeight - scrollTop - clientHeight < 50);
+          }
+        }}
+      >
+        {logs.length === 0 ? (
+          <div className={`text-center text-slate-500 ${compact ? 'py-4' : 'py-8'}`}>
+            <Brain size={compact ? 24 : 32} className="mx-auto mb-2 opacity-50" />
+            <p>In attesa delle analisi AI...</p>
+            <p className="text-xs mt-1">I log appariranno quando il bot inizia l&apos;analisi</p>
+          </div>
+        ) : (
+          logs.map((log, i) => (
+            <div
+              key={`${log.timestamp}-${i}`}
+              className={`flex items-start gap-2 py-1 px-2 rounded hover:bg-slate-800/50 ${
+                log.type === 'trade' ? 'bg-green-500/5 border-l-2 border-green-500' :
+                log.type === 'error' ? 'bg-red-500/5 border-l-2 border-red-500' :
+                ''
+              }`}
+            >
+              <span className="flex-shrink-0 mt-0.5">{getLogIcon(log.type)}</span>
+              <span className="text-slate-500 flex-shrink-0">
+                {new Date(log.timestamp).toLocaleTimeString('it-IT')}
+              </span>
+              <span className="text-cyan-400 flex-shrink-0 font-bold">
+                [{log.symbol}]
+              </span>
+              <span className={getLogColor(log.type)}>
+                {log.message}
+              </span>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
 
 // Reusable Toggle Component
 function Toggle({
@@ -107,9 +255,12 @@ interface BotConfig {
   // TradingView AI Agent (always enabled - the only analysis method)
   tradingview_headless: boolean;
   tradingview_max_indicators: number;
+  // AI Models
+  enabled_models: string[];
 }
 
 const AVAILABLE_SYMBOLS = [
+  // ============ FOREX MAJORS ============
   "EUR/USD",
   "GBP/USD",
   "USD/JPY",
@@ -117,11 +268,40 @@ const AVAILABLE_SYMBOLS = [
   "AUD/USD",
   "USD/CAD",
   "NZD/USD",
+  // ============ FOREX CROSS ============
+  "EUR/GBP",
+  "EUR/JPY",
+  "GBP/JPY",
+  "EUR/CHF",
+  "EUR/AUD",
+  "EUR/CAD",
+  "GBP/CHF",
+  "GBP/AUD",
+  "AUD/JPY",
+  "AUD/CAD",
+  "AUD/NZD",
+  "CAD/JPY",
+  "NZD/JPY",
+  "CHF/JPY",
+  // ============ METALS ============
   "XAU/USD",
   "XAG/USD",
+  // ============ COMMODITIES ============
+  "WTI/USD",
+  "BRENT/USD",
+  // ============ US INDICES ============
   "US30",
+  "US500",
   "NAS100",
-  "SPX500",
+  // ============ EUROPEAN INDICES ============
+  "DE40",
+  "UK100",
+  "FR40",
+  "EU50",
+  // ============ ASIAN INDICES ============
+  "JP225",
+  "HK50",
+  "AU200",
 ];
 
 const ANALYSIS_MODES = [
@@ -139,6 +319,14 @@ export default function BotControlPage() {
   const [showConfig, setShowConfig] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [previewSymbol, setPreviewSymbol] = useState<string>("EUR/USD");
+
+  // Multi-broker state
+  const [brokers, setBrokers] = useState<BrokerAccountData[]>([]);
+  const [brokerStatuses, setBrokerStatuses] = useState<Record<number, BrokerBotStatus>>({});
+  const [brokerBalances, setBrokerBalances] = useState<Record<number, { balance: number | null; equity: number | null }>>({});
+  const [selectedBrokerId, setSelectedBrokerId] = useState<number | null>(null);
+  const [brokerLoading, setBrokerLoading] = useState<Record<number, boolean>>({});
+  const [showBrokersPanel, setShowBrokersPanel] = useState(true);
 
   // Demo data for visualization
   const demoStatus: BotStatus = {
@@ -180,32 +368,33 @@ export default function BotControlPage() {
     discord_enabled: false,
     // TradingView AI Agent - full browser control (always enabled)
     tradingview_headless: true,
-    tradingview_max_indicators: 3,  // TradingView Basic plan limit
+    tradingview_max_indicators: 2,  // TradingView Free plan limit
+    enabled_models: ["chatgpt", "gemini", "grok", "qwen", "llama", "ernie", "kimi", "mistral"],
   };
 
   const fetchStatus = useCallback(async () => {
     try {
       const data = await botApi.getStatus();
-      // Map the API response to match our BotStatus interface
+      // API returns: status, started_at, last_analysis_at, config, statistics, open_positions, recent_errors
       setStatus({
-        status: data.is_running ? 'running' : 'stopped',
-        started_at: null,
-        last_analysis_at: data.last_analysis || null,
-        config: {
-          symbols: [data.current_symbol || 'EUR/USD'],
-          analysis_mode: data.mode || 'standard',
+        status: data.status || 'stopped',
+        started_at: data.started_at || null,
+        last_analysis_at: data.last_analysis_at || null,
+        config: data.config || {
+          symbols: ['EUR/USD'],
+          analysis_mode: 'standard',
           min_confidence: 75,
           risk_per_trade: 1,
           max_positions: 3,
         },
-        statistics: {
+        statistics: data.statistics || {
           analyses_today: 0,
-          trades_today: data.trades_today || 0,
-          daily_pnl: parseFloat(data.pnl_today) || 0,
+          trades_today: 0,
+          daily_pnl: 0,
           open_positions: 0,
         },
-        open_positions: [],
-        recent_errors: [],
+        open_positions: data.open_positions || [],
+        recent_errors: data.recent_errors || [],
       });
     } catch {
       setStatus(demoStatus);
@@ -222,14 +411,129 @@ export default function BotControlPage() {
     setIsLoading(false);
   }, []);
 
+  // Fetch all broker accounts
+  const fetchBrokers = useCallback(async () => {
+    try {
+      const data = await brokerAccountsApi.list();
+      setBrokers(data);
+
+      // Fetch status and balance for each enabled broker
+      const statuses: Record<number, BrokerBotStatus> = {};
+      const balances: Record<number, { balance: number | null; equity: number | null }> = {};
+      for (const broker of data) {
+        if (broker.is_enabled) {
+          try {
+            const status = await brokerAccountsApi.getBotStatus(broker.id);
+            statuses[broker.id] = status;
+
+            // Fetch balance if broker is running
+            if (status?.status === 'running') {
+              try {
+                const accountInfo = await brokerAccountsApi.getAccountInfo(broker.id);
+                balances[broker.id] = {
+                  balance: accountInfo.balance,
+                  equity: accountInfo.equity
+                };
+              } catch {
+                // Balance not available
+              }
+            }
+          } catch {
+            // Broker not running
+          }
+        }
+      }
+      setBrokerStatuses(statuses);
+      setBrokerBalances(balances);
+    } catch {
+      // API not available
+    }
+  }, []);
+
+  // Start a specific broker
+  const handleStartBroker = async (brokerId: number) => {
+    setBrokerLoading(prev => ({ ...prev, [brokerId]: true }));
+    try {
+      await brokerAccountsApi.startBot(brokerId);
+      await fetchBrokers();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to start broker");
+    }
+    setBrokerLoading(prev => ({ ...prev, [brokerId]: false }));
+  };
+
+  // Stop a specific broker
+  const handleStopBroker = async (brokerId: number) => {
+    setBrokerLoading(prev => ({ ...prev, [brokerId]: true }));
+    try {
+      await brokerAccountsApi.stopBot(brokerId);
+      await fetchBrokers();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to stop broker");
+    }
+    setBrokerLoading(prev => ({ ...prev, [brokerId]: false }));
+  };
+
+  // Pause a specific broker (stops new trades, keeps monitoring)
+  const handlePauseBroker = async (brokerId: number) => {
+    setBrokerLoading(prev => ({ ...prev, [brokerId]: true }));
+    try {
+      await brokerAccountsApi.pauseBot(brokerId);
+      await fetchBrokers();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to pause broker");
+    }
+    setBrokerLoading(prev => ({ ...prev, [brokerId]: false }));
+  };
+
+  // Resume a specific broker after pause
+  const handleResumeBroker = async (brokerId: number) => {
+    setBrokerLoading(prev => ({ ...prev, [brokerId]: true }));
+    try {
+      await brokerAccountsApi.resumeBot(brokerId);
+      await fetchBrokers();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to resume broker");
+    }
+    setBrokerLoading(prev => ({ ...prev, [brokerId]: false }));
+  };
+
+  // Start all enabled brokers
+  const handleStartAllBrokers = async () => {
+    setIsActioning(true);
+    try {
+      await brokerAccountsApi.startAll();
+      await fetchBrokers();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to start all brokers");
+    }
+    setIsActioning(false);
+  };
+
+  // Stop all brokers
+  const handleStopAllBrokers = async () => {
+    setIsActioning(true);
+    try {
+      await brokerAccountsApi.stopAll();
+      await fetchBrokers();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to stop all brokers");
+    }
+    setIsActioning(false);
+  };
+
   useEffect(() => {
     fetchStatus();
     fetchConfig();
+    fetchBrokers();
 
     // Poll status every 5 seconds
-    const interval = setInterval(fetchStatus, 5000);
+    const interval = setInterval(() => {
+      fetchStatus();
+      fetchBrokers();
+    }, 5000);
     return () => clearInterval(interval);
-  }, [fetchStatus, fetchConfig]);
+  }, [fetchStatus, fetchConfig, fetchBrokers]);
 
   const handleAction = async (action: "start" | "stop" | "pause" | "resume") => {
     setIsActioning(true);
@@ -347,6 +651,295 @@ export default function BotControlPage() {
             <XCircle size={18} />
           </button>
         </motion.div>
+      )}
+
+      {/* Multi-Broker Panel */}
+      {brokers.length > 0 && (
+        <div className="bg-slate-800 rounded-xl border border-slate-700">
+          <button
+            onClick={() => setShowBrokersPanel(!showBrokersPanel)}
+            className="w-full p-4 flex items-center justify-between hover:bg-slate-700/50 transition-colors rounded-xl"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-indigo-500/20 rounded-lg">
+                <Server size={20} className="text-indigo-400" />
+              </div>
+              <div className="text-left">
+                <h3 className="font-semibold flex items-center gap-2">
+                  Broker Accounts
+                  <span className="text-xs px-2 py-0.5 bg-slate-700 rounded-full text-slate-300">
+                    {brokers.length} configurati
+                  </span>
+                </h3>
+                <p className="text-sm text-slate-400">
+                  {Object.values(brokerStatuses).filter(s => s?.status === 'running').length} in esecuzione
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              {/* Global controls */}
+              <button
+                onClick={(e) => { e.stopPropagation(); handleStartAllBrokers(); }}
+                disabled={isActioning}
+                className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <Play size={14} />
+                Avvia Tutti
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); handleStopAllBrokers(); }}
+                disabled={isActioning}
+                className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <Square size={14} />
+                Ferma Tutti
+              </button>
+              {showBrokersPanel ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </div>
+          </button>
+
+          {showBrokersPanel && (
+            <div className="px-4 pb-4 space-y-3">
+              {brokers.map((broker) => {
+                const brokerStatus = brokerStatuses[broker.id];
+                const isRunning = brokerStatus?.status === 'running';
+                const isPaused = brokerStatus?.status === 'paused';
+                const isLoading = brokerLoading[broker.id];
+                const isSelected = selectedBrokerId === broker.id;
+
+                return (
+                  <motion.div
+                    key={broker.id}
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={`p-4 rounded-lg border transition-colors cursor-pointer ${
+                      isSelected
+                        ? 'bg-indigo-500/10 border-indigo-500'
+                        : 'bg-slate-900 border-slate-700 hover:border-slate-600'
+                    }`}
+                    onClick={() => setSelectedBrokerId(isSelected ? null : broker.id)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        {/* Status indicator */}
+                        <div className={`w-3 h-3 rounded-full ${
+                          isRunning ? 'bg-green-500 animate-pulse' :
+                          isPaused ? 'bg-yellow-500' :
+                          broker.is_enabled ? 'bg-slate-500' : 'bg-slate-700'
+                        }`} />
+
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-medium">{broker.name}</h4>
+                            {!broker.is_enabled && (
+                              <span className="text-xs px-1.5 py-0.5 bg-slate-700 rounded text-slate-400">
+                                Disabilitato
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-400">
+                            {broker.symbols.slice(0, 3).join(', ')}
+                            {broker.symbols.length > 3 && ` +${broker.symbols.length - 3}`}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        {/* Balance */}
+                        {brokerBalances[broker.id]?.balance != null && (
+                          <div className="text-center px-3 py-1 bg-indigo-500/10 rounded-lg border border-indigo-500/30">
+                            <p className="text-indigo-400 text-xs">Balance</p>
+                            <p className="font-bold text-indigo-300">
+                              ${brokerBalances[broker.id].balance?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Statistics */}
+                        {brokerStatus && (
+                          <div className="flex items-center gap-4 text-sm">
+                            <div className="text-center">
+                              <p className="text-slate-400 text-xs">Analisi</p>
+                              <p className="font-medium">{brokerStatus.statistics?.analyses_today || 0}</p>
+                            </div>
+                            <div className="text-center">
+                              <p className="text-slate-400 text-xs">Trade</p>
+                              <p className="font-medium">{brokerStatus.statistics?.trades_today || 0}</p>
+                            </div>
+                            <div className="text-center">
+                              <p className="text-slate-400 text-xs">P&L</p>
+                              <p className={`font-medium ${
+                                (brokerStatus.statistics?.daily_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'
+                              }`}>
+                                ${(brokerStatus.statistics?.daily_pnl || 0).toFixed(2)}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Control buttons */}
+                        {broker.is_enabled && (
+                          <div className="flex items-center gap-2">
+                            {isRunning ? (
+                              <>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handlePauseBroker(broker.id); }}
+                                  disabled={isLoading}
+                                  className="px-3 py-1.5 bg-yellow-600 hover:bg-yellow-700 text-white text-sm rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+                                >
+                                  {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Pause size={14} />}
+                                  Pause
+                                </button>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleStopBroker(broker.id); }}
+                                  disabled={isLoading}
+                                  className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+                                >
+                                  {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Square size={14} />}
+                                  Stop
+                                </button>
+                              </>
+                            ) : isPaused ? (
+                              <>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleResumeBroker(broker.id); }}
+                                  disabled={isLoading}
+                                  className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+                                >
+                                  {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+                                  Resume
+                                </button>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleStopBroker(broker.id); }}
+                                  disabled={isLoading}
+                                  className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+                                >
+                                  {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Square size={14} />}
+                                  Stop
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleStartBroker(broker.id); }}
+                                disabled={isLoading}
+                                className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+                              >
+                                {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+                                Start
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Expanded details */}
+                    {isSelected && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        className="mt-4 pt-4 border-t border-slate-700"
+                      >
+                        {/* Statistics Grid - Always visible when expanded */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-4">
+                          <div className="bg-slate-800 rounded-lg p-3">
+                            <div className="flex items-center gap-2 text-slate-400 mb-1">
+                              <Zap size={14} />
+                              <span className="text-xs">Analisi Oggi</span>
+                            </div>
+                            <p className="text-xl font-bold">{brokerStatus?.statistics?.analyses_today || 0}</p>
+                          </div>
+                          <div className="bg-slate-800 rounded-lg p-3">
+                            <div className="flex items-center gap-2 text-slate-400 mb-1">
+                              <BarChart3 size={14} />
+                              <span className="text-xs">Trade Oggi</span>
+                            </div>
+                            <p className="text-xl font-bold">{brokerStatus?.statistics?.trades_today || 0}</p>
+                          </div>
+                          <div className="bg-slate-800 rounded-lg p-3">
+                            <div className="flex items-center gap-2 text-slate-400 mb-1">
+                              <DollarSign size={14} />
+                              <span className="text-xs">P&L Giornaliero</span>
+                            </div>
+                            <p className={`text-xl font-bold ${
+                              (brokerStatus?.statistics?.daily_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'
+                            }`}>
+                              {(brokerStatus?.statistics?.daily_pnl || 0) >= 0 ? '+' : ''}${(brokerStatus?.statistics?.daily_pnl || 0).toFixed(2)}
+                            </p>
+                          </div>
+                          <div className="bg-slate-800 rounded-lg p-3">
+                            <div className="flex items-center gap-2 text-slate-400 mb-1">
+                              <Activity size={14} />
+                              <span className="text-xs">Posizioni Aperte</span>
+                            </div>
+                            <p className="text-xl font-bold">{brokerStatus?.statistics?.open_positions || 0}</p>
+                          </div>
+                          <div className="bg-slate-800 rounded-lg p-3">
+                            <div className="flex items-center gap-2 text-slate-400 mb-1">
+                              <Clock size={14} />
+                              <span className="text-xs">Intervallo</span>
+                            </div>
+                            <p className="text-xl font-bold">{brokerStatus?.config?.analysis_interval ? `${Math.floor(brokerStatus.config.analysis_interval / 60)}m` : '-'}</p>
+                          </div>
+                          <div className="bg-slate-800 rounded-lg p-3">
+                            <div className="flex items-center gap-2 text-slate-400 mb-1">
+                              <Brain size={14} />
+                              <span className="text-xs">Modelli AI</span>
+                            </div>
+                            <p className="text-xl font-bold">{brokerStatus?.config?.enabled_models?.length || 8}</p>
+                          </div>
+                        </div>
+
+                        {/* Config info */}
+                        <div className="flex flex-wrap gap-2 mb-4">
+                          <span className="px-2 py-1 bg-purple-500/20 text-purple-300 text-xs rounded-full capitalize">
+                            Modalità: {brokerStatus?.config?.analysis_mode || broker.analysis_mode}
+                          </span>
+                          <span className="px-2 py-1 bg-blue-500/20 text-blue-300 text-xs rounded-full">
+                            Risk: {broker.risk_per_trade_percent}%
+                          </span>
+                          <span className="px-2 py-1 bg-green-500/20 text-green-300 text-xs rounded-full">
+                            Max Posizioni: {broker.max_open_positions}
+                          </span>
+                          <span className="px-2 py-1 bg-orange-500/20 text-orange-300 text-xs rounded-full">
+                            Orario: {broker.trading_start_hour}:00 - {broker.trading_end_hour}:00 UTC
+                          </span>
+                        </div>
+
+                        {brokerStatus?.last_error && (
+                          <div className="mb-4 p-2 bg-red-500/10 border border-red-500/30 rounded text-sm text-red-400">
+                            <AlertTriangle size={14} className="inline mr-1" />
+                            {brokerStatus.last_error}
+                          </div>
+                        )}
+
+                        {/* AI Reasoning Panel for this broker */}
+                        {isRunning && (
+                          <div className="mt-4">
+                            <AIReasoningPanel
+                              brokerId={broker.id}
+                              brokerName={broker.name}
+                              compact={true}
+                            />
+                          </div>
+                        )}
+                      </motion.div>
+                    )}
+                  </motion.div>
+                );
+              })}
+
+              {/* No brokers configured */}
+              {brokers.filter(b => b.is_enabled).length === 0 && (
+                <div className="text-center py-6 text-slate-400">
+                  <Users size={32} className="mx-auto mb-2 opacity-50" />
+                  <p>Nessun broker abilitato</p>
+                  <p className="text-sm">Vai su Settings → Broker Accounts per configurare</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       {/* Main Status Card */}
@@ -711,6 +1304,42 @@ export default function BotControlPage() {
               </div>
             </div>
 
+            {/* Analysis Interval */}
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Intervallo Analisi
+              </label>
+              <p className="text-xs text-slate-400 mb-3">
+                Frequenza con cui il bot analizza i mercati (riduce consumo API)
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { value: 300, label: "5 min", desc: "Più reattivo" },
+                  { value: 600, label: "10 min", desc: "Bilanciato" },
+                  { value: 900, label: "15 min", desc: "Moderato" },
+                  { value: 1800, label: "30 min", desc: "Economico" },
+                  { value: 3600, label: "1 ora", desc: "Risparmio" },
+                  { value: 7200, label: "2 ore", desc: "Minimo" },
+                ].map((interval) => (
+                  <button
+                    key={interval.value}
+                    onClick={() => handleConfigUpdate({ analysis_interval_seconds: interval.value })}
+                    className={`px-3 py-2 rounded-lg text-sm transition-colors ${
+                      currentConfig.analysis_interval_seconds === interval.value
+                        ? "bg-indigo-600 text-white"
+                        : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+                    }`}
+                  >
+                    <div className="font-medium">{interval.label}</div>
+                    <div className="text-[10px] opacity-70">{interval.desc}</div>
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-slate-500 mt-2">
+                Nota: i simboli con posizioni aperte vengono automaticamente saltati
+              </p>
+            </div>
+
             {/* Trading Hours */}
             <div>
               <label className="block text-sm font-medium mb-2">
@@ -779,21 +1408,14 @@ export default function BotControlPage() {
                 </div>
               </div>
               <div className="mt-3 pt-3 border-t border-purple-500/30 space-y-4">
-                {/* TradingView Plan / Max Indicators */}
+                {/* TradingView Free Plan Info */}
                 <div>
                   <label className="block text-xs text-slate-400 mb-2">
-                    TradingView Plan (Max Indicators: {currentConfig.tradingview_max_indicators})
+                    TradingView Free Plan - Max 2 Indicators
                   </label>
-                  <select
-                    value={currentConfig.tradingview_max_indicators}
-                    onChange={(e) => handleConfigUpdate({ tradingview_max_indicators: parseInt(e.target.value) })}
-                    className="select-input text-sm"
-                  >
-                    <option value={3}>Basic (Free) - 3 indicators</option>
-                    <option value={5}>Essential - 5 indicators</option>
-                    <option value={10}>Plus - 10 indicators</option>
-                    <option value={25}>Premium - 25 indicators</option>
-                  </select>
+                  <div className="bg-slate-700 rounded-lg px-3 py-2 text-sm text-slate-300">
+                    Ogni AI può aggiungere fino a 2 indicatori sul grafico (limite piano Free)
+                  </div>
                 </div>
 
                 {/* Headless Mode */}
@@ -813,6 +1435,68 @@ export default function BotControlPage() {
                 <p className="text-xs text-slate-500 mt-2">
                   AI can add indicators, draw zones/trendlines, and take screenshots on TradingView.com
                 </p>
+
+                {/* AI Models Toggle */}
+                <div className="mt-4 pt-3 border-t border-purple-500/30">
+                  <label className="block text-sm font-medium mb-3">
+                    Modelli AI Attivi
+                  </label>
+                  <div className="space-y-2">
+                    {[
+                      { key: "chatgpt", name: "ChatGPT 5.2", style: "SMC / Order Blocks", provider: "AIML" },
+                      { key: "gemini", name: "Gemini 3 Pro", style: "Trend / MACD", provider: "AIML" },
+                      { key: "grok", name: "Grok 4.1 Fast", style: "Volatility / Bollinger", provider: "AIML" },
+                      { key: "qwen", name: "Qwen3 VL", style: "Ichimoku / RSI", provider: "AIML" },
+                      { key: "llama", name: "Llama 4 Scout", style: "Momentum / Stochastic", provider: "AIML" },
+                      { key: "ernie", name: "ERNIE 4.5 VL", style: "Price Action / Volume", provider: "AIML" },
+                      { key: "kimi", name: "Kimi K2.5", style: "Multi-Strategy / Adaptive", provider: "NVIDIA" },
+                      { key: "mistral", name: "Mistral Large 3", style: "Quantitative / Statistical", provider: "NVIDIA" },
+                    ].map((model) => {
+                      const ALL_MODELS = ["chatgpt", "gemini", "grok", "qwen", "llama", "ernie", "kimi", "mistral"];
+                      const currentModels = currentConfig.enabled_models && currentConfig.enabled_models.length > 0
+                        ? currentConfig.enabled_models
+                        : ALL_MODELS;
+                      const isEnabled = currentModels.includes(model.key);
+                      const isLastEnabled = isEnabled && currentModels.length <= 1;
+
+                      return (
+                        <div key={model.key} className="flex items-center justify-between py-1.5 px-2 rounded-lg hover:bg-slate-700/50">
+                          <div className="flex flex-col">
+                            <div className="flex items-center gap-2">
+                              <span className={`text-sm font-medium ${isEnabled ? "text-white" : "text-slate-500 line-through"}`}>
+                                {model.name}
+                              </span>
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                                model.provider === "NVIDIA"
+                                  ? "bg-green-500/20 text-green-400"
+                                  : "bg-blue-500/20 text-blue-400"
+                              }`}>
+                                {model.provider}
+                              </span>
+                            </div>
+                            <span className={`text-xs ${isEnabled ? "text-slate-400" : "text-slate-600"}`}>
+                              {model.style}
+                            </span>
+                          </div>
+                          <Toggle
+                            enabled={isEnabled}
+                            disabled={isLastEnabled}
+                            onChange={() => {
+                              if (isLastEnabled) return;
+                              const updated = isEnabled
+                                ? currentModels.filter((k: string) => k !== model.key)
+                                : [...currentModels, model.key];
+                              handleConfigUpdate({ enabled_models: updated });
+                            }}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-slate-500 mt-2">
+                    Almeno 1 modello deve restare attivo. I modelli disabilitati non verranno utilizzati nelle analisi.
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -844,6 +1528,11 @@ export default function BotControlPage() {
             </div>
           </div>
         </motion.div>
+      )}
+
+      {/* AI Reasoning Panel - Live Analysis Logs */}
+      {currentStatus.status === 'running' && (
+        <AIReasoningPanel />
       )}
 
       {/* Open Positions */}

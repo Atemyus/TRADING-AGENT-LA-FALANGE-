@@ -6,14 +6,14 @@ Supports real-time streaming and historical data.
 """
 
 import asyncio
+from collections.abc import AsyncIterator, Callable
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import AsyncIterator, Callable, Dict, List, Optional, Set
-from dataclasses import dataclass, field
 
 import pandas as pd
 
-from src.engines.trading.base_broker import BaseBroker, Tick, Candle
+from src.engines.trading.base_broker import BaseBroker, Candle
 from src.engines.trading.broker_factory import get_broker
 
 
@@ -33,8 +33,8 @@ class PriceUpdate:
 @dataclass
 class MarketDataCache:
     """Cache for market data."""
-    prices: Dict[str, PriceUpdate] = field(default_factory=dict)
-    candles: Dict[str, Dict[str, List[Candle]]] = field(default_factory=dict)
+    prices: dict[str, PriceUpdate] = field(default_factory=dict)
+    candles: dict[str, dict[str, list[Candle]]] = field(default_factory=dict)
     last_update: datetime = field(default_factory=datetime.utcnow)
 
 
@@ -64,7 +64,7 @@ class MarketDataService:
         candles = await service.get_candles("EUR_USD", "M5", count=100)
     """
 
-    def __init__(self, broker: Optional[BaseBroker] = None):
+    def __init__(self, broker: BaseBroker | None = None):
         """
         Initialize market data service.
 
@@ -73,12 +73,12 @@ class MarketDataService:
         """
         self._broker = broker
         self._cache = MarketDataCache()
-        self._subscribers: Dict[str, Set[Callable]] = {}
-        self._streaming_task: Optional[asyncio.Task] = None
-        self._streaming_symbols: Set[str] = set()
+        self._subscribers: dict[str, set[Callable]] = {}
+        self._streaming_task: asyncio.Task | None = None
+        self._streaming_symbols: set[str] = set()
         self._running = False
 
-    async def start(self, symbols: Optional[List[str]] = None) -> None:
+    async def start(self, symbols: list[str] | None = None) -> None:
         """
         Start the market data service.
 
@@ -113,7 +113,7 @@ class MarketDataService:
         self._streaming_symbols.clear()
         self._subscribers.clear()
 
-    async def subscribe(self, symbols: List[str]) -> None:
+    async def subscribe(self, symbols: list[str]) -> None:
         """
         Subscribe to price updates for symbols.
 
@@ -138,7 +138,7 @@ class MarketDataService:
             self._stream_prices(list(self._streaming_symbols))
         )
 
-    async def unsubscribe(self, symbols: List[str]) -> None:
+    async def unsubscribe(self, symbols: list[str]) -> None:
         """
         Unsubscribe from price updates.
 
@@ -167,7 +167,7 @@ class MarketDataService:
         if symbol in self._subscribers:
             self._subscribers[symbol].discard(callback)
 
-    async def _stream_prices(self, symbols: List[str]) -> None:
+    async def _stream_prices(self, symbols: list[str]) -> None:
         """Internal price streaming loop."""
         if not self._broker:
             return
@@ -222,7 +222,7 @@ class MarketDataService:
                     self._stream_prices(symbols)
                 )
 
-    async def get_price(self, symbol: str, use_cache: bool = True) -> Optional[PriceUpdate]:
+    async def get_price(self, symbol: str, use_cache: bool = True) -> PriceUpdate | None:
         """
         Get current price for a symbol.
 
@@ -259,7 +259,7 @@ class MarketDataService:
         except Exception:
             return self._cache.prices.get(symbol)
 
-    async def get_prices(self, symbols: List[str]) -> Dict[str, PriceUpdate]:
+    async def get_prices(self, symbols: list[str]) -> dict[str, PriceUpdate]:
         """
         Get current prices for multiple symbols.
 
@@ -292,7 +292,7 @@ class MarketDataService:
         except Exception:
             return {s: self._cache.prices[s] for s in symbols if s in self._cache.prices}
 
-    async def stream_prices(self, symbols: List[str]) -> AsyncIterator[PriceUpdate]:
+    async def stream_prices(self, symbols: list[str]) -> AsyncIterator[PriceUpdate]:
         """
         Stream real-time prices.
 
@@ -334,10 +334,10 @@ class MarketDataService:
         symbol: str,
         timeframe: str,
         count: int = 100,
-        from_time: Optional[datetime] = None,
-        to_time: Optional[datetime] = None,
+        from_time: datetime | None = None,
+        to_time: datetime | None = None,
         use_cache: bool = True,
-    ) -> List[Candle]:
+    ) -> list[Candle]:
         """
         Get historical candle data.
 
@@ -384,8 +384,8 @@ class MarketDataService:
         symbol: str,
         timeframe: str,
         count: int = 100,
-        from_time: Optional[datetime] = None,
-        to_time: Optional[datetime] = None,
+        from_time: datetime | None = None,
+        to_time: datetime | None = None,
     ) -> pd.DataFrame:
         """
         Get historical candle data as DataFrame.
@@ -429,7 +429,7 @@ class MarketDataService:
 
 
 # Global instance
-_market_data_service: Optional[MarketDataService] = None
+_market_data_service: MarketDataService | None = None
 
 
 async def get_market_data_service() -> MarketDataService:

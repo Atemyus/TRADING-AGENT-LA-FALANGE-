@@ -3,7 +3,6 @@ Positions routes - Open positions management.
 """
 
 from decimal import Decimal
-from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
@@ -25,20 +24,20 @@ class PositionResponse(BaseModel):
     unrealized_pnl_percent: str
     margin_used: str
     leverage: int
-    stop_loss: Optional[str] = None
-    take_profit: Optional[str] = None
+    stop_loss: str | None = None
+    take_profit: str | None = None
     opened_at: str
 
 
 class PositionModify(BaseModel):
     """Request to modify position."""
-    stop_loss: Optional[Decimal] = Field(None, description="New stop loss price")
-    take_profit: Optional[Decimal] = Field(None, description="New take profit price")
+    stop_loss: Decimal | None = Field(None, description="New stop loss price")
+    take_profit: Decimal | None = Field(None, description="New take profit price")
 
 
 class PositionsListResponse(BaseModel):
     """List of positions."""
-    positions: List[PositionResponse]
+    positions: list[PositionResponse]
     total_unrealized_pnl: str
     total_margin_used: str
 
@@ -104,7 +103,7 @@ async def modify_position(symbol: str, modification: PositionModify):
 
 
 @router.delete("/{symbol}")
-async def close_position(symbol: str, size: Optional[Decimal] = None):
+async def close_position(symbol: str, size: Decimal | None = None):
     """
     Close a position (fully or partially).
 

@@ -10,10 +10,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
+
 import httpx
 import pandas as pd
-import numpy as np
 
 
 class DataSource(str, Enum):
@@ -34,7 +34,7 @@ class OHLCV:
     close: Decimal
     volume: float = 0.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "timestamp": self.timestamp.isoformat(),
             "open": float(self.open),
@@ -50,16 +50,16 @@ class MarketData:
     """Complete market data package."""
     symbol: str
     timeframe: str
-    candles: List[OHLCV]
+    candles: list[OHLCV]
     current_price: Decimal
-    bid: Optional[Decimal] = None
-    ask: Optional[Decimal] = None
-    spread: Optional[Decimal] = None
-    daily_high: Optional[Decimal] = None
-    daily_low: Optional[Decimal] = None
-    daily_change: Optional[float] = None
-    daily_change_percent: Optional[float] = None
-    volume_24h: Optional[float] = None
+    bid: Decimal | None = None
+    ask: Decimal | None = None
+    spread: Decimal | None = None
+    daily_high: Decimal | None = None
+    daily_low: Decimal | None = None
+    daily_change: float | None = None
+    daily_change_percent: float | None = None
+    volume_24h: float | None = None
     last_updated: datetime = field(default_factory=datetime.utcnow)
     source: DataSource = DataSource.YAHOO
 
@@ -137,18 +137,29 @@ class MarketDataService:
 
     def __init__(
         self,
-        twelve_data_api_key: Optional[str] = None,
-        alpha_vantage_api_key: Optional[str] = None,
+        twelve_data_api_key: str | None = None,
+        alpha_vantage_api_key: str | None = None,
     ):
         self.twelve_data_api_key = twelve_data_api_key
         self.alpha_vantage_api_key = alpha_vantage_api_key
-        self._cache: Dict[str, Tuple[MarketData, datetime]] = {}
+        self._cache: dict[str, tuple[MarketData, datetime]] = {}
         self._cache_ttl = timedelta(seconds=30)  # Cache for 30 seconds
+
+    def _normalize_symbol(self, symbol: str) -> str:
+        """Normalize symbol to internal underscore format (EUR/USD -> EUR_USD)."""
+        normalized = symbol.replace("/", "_")
+        return normalized
 
     def _get_yahoo_symbol(self, symbol: str) -> str:
         """Convert internal symbol to Yahoo Finance format."""
+        normalized = self._normalize_symbol(symbol)
+        if normalized in SYMBOL_MAPPINGS:
+            return SYMBOL_MAPPINGS[normalized]["yahoo"]
         if symbol in SYMBOL_MAPPINGS:
             return SYMBOL_MAPPINGS[symbol]["yahoo"]
+        # Try common forex pattern: EUR/USD -> EURUSD=X
+        if "/" in symbol:
+            return symbol.replace("/", "") + "=X"
         return symbol
 
     def _get_cache_key(self, symbol: str, timeframe: str) -> str:
@@ -167,7 +178,7 @@ class MarketDataService:
         symbol: str,
         timeframe: str = "5m",
         bars: int = 200,
-        source: Optional[DataSource] = None,
+        source: DataSource | None = None,
     ) -> MarketData:
         """
         Fetch market data for a symbol.
@@ -197,13 +208,29 @@ class MarketDataService:
                 print(f"Twelve Data fetch failed: {e}")
 
         if data is None:
-            # Fallback to Yahoo Finance
-            try:
-                data = await self._fetch_yahoo(symbol, timeframe, bars)
-            except Exception as e:
-                print(f"Yahoo Finance fetch failed: {e}")
-                # Return empty data with static price
-                data = self._get_fallback_data(symbol, timeframe)
+            # Fallback to Yahoo Finance - con retry per 429 rate limit
+            yahoo_sym = self._get_yahoo_symbol(symbol)
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    if attempt > 0:
+                        wait_time = 2 ** attempt  # 2s, 4s
+                        print(f"[MarketData] Retry {attempt+1}/{max_retries} per {symbol} dopo {wait_time}s...")
+                        await asyncio.sleep(wait_time)
+                    print(f"[MarketData] Fetching {symbol} from Yahoo Finance (yahoo_symbol={yahoo_sym}, timeframe={timeframe})")
+                    data = await self._fetch_yahoo(symbol, timeframe, bars)
+                    if data and data.candles:
+                        print(f"[MarketData] Got {len(data.candles)} candles for {symbol} from Yahoo")
+                    else:
+                        print(f"[MarketData] Yahoo returned no candles for {symbol}")
+                    break  # Successo, esci dal retry loop
+                except Exception as e:
+                    error_msg = str(e)
+                    print(f"[MarketData] Yahoo Finance fetch failed for {symbol} (attempt {attempt+1}): {e}")
+                    if "429" in error_msg and attempt < max_retries - 1:
+                        continue  # Ritenta
+                    # Ultimo tentativo fallito o errore non-429
+                    data = self._get_fallback_data(symbol, timeframe)
 
         # Cache the result
         self._cache[cache_key] = (data, datetime.utcnow())
@@ -304,7 +331,8 @@ class MarketDataService:
         if not self.twelve_data_api_key:
             raise ValueError("Twelve Data API key not configured")
 
-        twelve_symbol = SYMBOL_MAPPINGS.get(symbol, {}).get("twelve", symbol)
+        normalized = self._normalize_symbol(symbol)
+        twelve_symbol = SYMBOL_MAPPINGS.get(normalized, SYMBOL_MAPPINGS.get(symbol, {})).get("twelve", symbol)
 
         url = "https://api.twelvedata.com/time_series"
         params = {
@@ -343,7 +371,7 @@ class MarketDataService:
             source=DataSource.TWELVE_DATA,
         )
 
-    def _aggregate_candles(self, candles: List[OHLCV], hours: int) -> List[OHLCV]:
+    def _aggregate_candles(self, candles: list[OHLCV], hours: int) -> list[OHLCV]:
         """Aggregate hourly candles to larger timeframe."""
         if not candles:
             return []
@@ -381,7 +409,8 @@ class MarketDataService:
             "ETH_USD": Decimal("2650"),
         }
 
-        price = fallback_prices.get(symbol, Decimal("1.0"))
+        normalized = self._normalize_symbol(symbol)
+        price = fallback_prices.get(normalized, fallback_prices.get(symbol, Decimal("1.0")))
 
         return MarketData(
             symbol=symbol,
@@ -399,9 +428,9 @@ class MarketDataService:
     async def get_multiple_timeframes(
         self,
         symbol: str,
-        timeframes: List[str] = ["5m", "15m", "1h", "4h"],
+        timeframes: list[str] = ["5m", "15m", "1h", "4h"],
         bars: int = 100,
-    ) -> Dict[str, MarketData]:
+    ) -> dict[str, MarketData]:
         """Fetch data for multiple timeframes in parallel."""
         tasks = [
             self.get_market_data(symbol, tf, bars)
@@ -418,7 +447,7 @@ class MarketDataService:
 
 
 # Singleton instance
-_market_data_service: Optional[MarketDataService] = None
+_market_data_service: MarketDataService | None = None
 
 
 def get_market_data_service() -> MarketDataService:

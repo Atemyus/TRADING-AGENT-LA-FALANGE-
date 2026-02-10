@@ -7,11 +7,10 @@ Supports both practice (demo) and live trading environments.
 OANDA API Documentation: https://developer.oanda.com/rest-live-v20/introduction/
 """
 
-import asyncio
+import json
+from collections.abc import AsyncIterator
 from datetime import datetime
 from decimal import Decimal
-from typing import AsyncIterator, Dict, List, Optional
-import json
 
 import httpx
 
@@ -55,10 +54,58 @@ class OANDABroker(BaseBroker):
     PRACTICE_STREAM = "https://stream-fxpractice.oanda.com"
     LIVE_STREAM = "https://stream-fxtrade.oanda.com"
 
+    # Symbol mapping: App symbol -> OANDA symbol
+    # OANDA uses specific naming conventions for CFD indices
+    SYMBOL_MAP = {
+        # ============ US INDICES ============
+        'US30': 'US30_USD',          # Dow Jones Industrial Average
+        'US500': 'SPX500_USD',       # S&P 500
+        'NAS100': 'NAS100_USD',      # NASDAQ 100
+        'US2000': 'US2000_USD',      # Russell 2000
+
+        # ============ EUROPEAN INDICES ============
+        'DE40': 'DE30_EUR',          # DAX (OANDA still uses DE30)
+        'UK100': 'UK100_GBP',        # FTSE 100
+        'FR40': 'FR40_EUR',          # CAC 40
+        'EU50': 'EU50_EUR',          # Euro Stoxx 50
+        'ES35': 'ES35_EUR',          # IBEX 35
+        'IT40': 'IT40_EUR',          # FTSE MIB (if available, may vary)
+
+        # ============ ASIAN INDICES ============
+        'JP225': 'JP225_USD',        # Nikkei 225
+        'HK50': 'HK33_HKD',          # Hang Seng (OANDA uses HK33)
+        'AU200': 'AU200_AUD',        # ASX 200
+        'CN50': 'CN50_USD',          # China A50
+
+        # ============ METALS ============
+        'XAU_USD': 'XAU_USD',        # Gold
+        'XAG_USD': 'XAG_USD',        # Silver
+        'XPT_USD': 'XPT_USD',        # Platinum
+        'XPD_USD': 'XPD_USD',        # Palladium
+        'XCU_USD': 'XCU_USD',        # Copper
+
+        # ============ ENERGY / COMMODITIES ============
+        'WTI_USD': 'WTICO_USD',      # WTI Crude Oil
+        'BRENT_USD': 'BCO_USD',      # Brent Crude Oil
+        'NATGAS_USD': 'NATGAS_USD',  # Natural Gas
+
+        # ============ AGRICULTURAL (may not be available) ============
+        'WHEAT_USD': 'WHEAT_USD',
+        'CORN_USD': 'CORN_USD',
+        'SOYBEAN_USD': 'SOYBN_USD',
+        'COFFEE_USD': 'COFFEE_USD',
+        'SUGAR_USD': 'SUGAR_USD',
+        'COCOA_USD': 'COCOA_USD',
+        'COTTON_USD': 'COTTON_USD',
+    }
+
+    # Reverse mapping for converting OANDA symbols back to app symbols
+    REVERSE_SYMBOL_MAP = {v: k for k, v in SYMBOL_MAP.items()}
+
     def __init__(
         self,
-        api_key: Optional[str] = None,
-        account_id: Optional[str] = None,
+        api_key: str | None = None,
+        account_id: str | None = None,
         environment: str = "practice",
     ):
         """
@@ -89,17 +136,17 @@ class OANDABroker(BaseBroker):
             self.stream_url = self.PRACTICE_STREAM
 
         # HTTP client
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
 
     @property
     def name(self) -> str:
         return "OANDA"
 
     @property
-    def supported_markets(self) -> List[str]:
+    def supported_markets(self) -> list[str]:
         return ["forex", "indices", "commodities", "bonds"]
 
-    def _get_headers(self) -> Dict[str, str]:
+    def _get_headers(self) -> dict[str, str]:
         """Get authentication headers."""
         return {
             "Authorization": f"Bearer {self.api_key}",
@@ -140,9 +187,9 @@ class OANDABroker(BaseBroker):
         self,
         method: str,
         endpoint: str,
-        data: Optional[Dict] = None,
-        params: Optional[Dict] = None,
-    ) -> Dict:
+        data: dict | None = None,
+        params: dict | None = None,
+    ) -> dict:
         """Make API request with error handling."""
         if not self._client:
             raise ConnectionError("Not connected to OANDA")
@@ -192,7 +239,7 @@ class OANDABroker(BaseBroker):
 
     # ==================== Instruments ====================
 
-    async def get_instruments(self) -> List[Instrument]:
+    async def get_instruments(self) -> list[Instrument]:
         """Get list of available trading instruments."""
         data = await self._request(
             "GET",
@@ -234,7 +281,7 @@ class OANDABroker(BaseBroker):
         if order.side == OrderSide.SELL:
             units = f"-{units}"
 
-        order_data: Dict = {
+        order_data: dict = {
             "order": {
                 "instrument": symbol,
                 "units": units,
@@ -338,7 +385,7 @@ class OANDABroker(BaseBroker):
         except Exception:
             return False
 
-    async def get_order(self, order_id: str) -> Optional[OrderResult]:
+    async def get_order(self, order_id: str) -> OrderResult | None:
         """Get order by ID."""
         try:
             data = await self._request(
@@ -350,7 +397,7 @@ class OANDABroker(BaseBroker):
         except Exception:
             return None
 
-    async def get_open_orders(self, symbol: Optional[str] = None) -> List[OrderResult]:
+    async def get_open_orders(self, symbol: str | None = None) -> list[OrderResult]:
         """Get all open/pending orders."""
         params = {}
         if symbol:
@@ -364,7 +411,7 @@ class OANDABroker(BaseBroker):
 
         return [self._parse_order(o) for o in data.get("orders", [])]
 
-    def _parse_order(self, order: Dict) -> OrderResult:
+    def _parse_order(self, order: dict) -> OrderResult:
         """Parse OANDA order response."""
         units = Decimal(order["units"])
         side = OrderSide.BUY if units > 0 else OrderSide.SELL
@@ -387,7 +434,7 @@ class OANDABroker(BaseBroker):
 
     # ==================== Positions ====================
 
-    async def get_positions(self) -> List[Position]:
+    async def get_positions(self) -> list[Position]:
         """Get all open positions."""
         data = await self._request(
             "GET",
@@ -404,7 +451,7 @@ class OANDABroker(BaseBroker):
 
         return positions
 
-    async def get_position(self, symbol: str) -> Optional[Position]:
+    async def get_position(self, symbol: str) -> Position | None:
         """Get position for specific symbol."""
         symbol = self.normalize_symbol(symbol)
 
@@ -423,7 +470,7 @@ class OANDABroker(BaseBroker):
         except Exception:
             return None
 
-    def _parse_position(self, pos: Dict, side: str) -> Position:
+    def _parse_position(self, pos: dict, side: str) -> Position:
         """Parse OANDA position response."""
         side_data = pos[side]
         units = Decimal(side_data["units"])
@@ -442,7 +489,7 @@ class OANDABroker(BaseBroker):
     async def close_position(
         self,
         symbol: str,
-        size: Optional[Decimal] = None,
+        size: Decimal | None = None,
     ) -> OrderResult:
         """Close a position."""
         symbol = self.normalize_symbol(symbol)
@@ -498,8 +545,8 @@ class OANDABroker(BaseBroker):
     async def modify_position(
         self,
         symbol: str,
-        stop_loss: Optional[Decimal] = None,
-        take_profit: Optional[Decimal] = None,
+        stop_loss: Decimal | None = None,
+        take_profit: Decimal | None = None,
     ) -> bool:
         """Modify stop loss / take profit of existing position."""
         symbol = self.normalize_symbol(symbol)
@@ -518,7 +565,7 @@ class OANDABroker(BaseBroker):
         # Modify each trade
         for trade in trades:
             trade_id = trade["id"]
-            update_data: Dict = {}
+            update_data: dict = {}
 
             if stop_loss is not None:
                 update_data["stopLoss"] = {"price": str(stop_loss), "timeInForce": "GTC"}
@@ -538,17 +585,18 @@ class OANDABroker(BaseBroker):
 
     async def get_current_price(self, symbol: str) -> Tick:
         """Get current bid/ask price for symbol."""
-        symbol = self.normalize_symbol(symbol)
+        original_symbol = symbol
+        oanda_symbol = self.normalize_symbol(symbol)
 
         data = await self._request(
             "GET",
             f"/v3/accounts/{self.account_id}/pricing",
-            params={"instruments": symbol},
+            params={"instruments": oanda_symbol},
         )
 
         price = data["prices"][0]
         return Tick(
-            symbol=price["instrument"],
+            symbol=original_symbol,  # Return with original app symbol
             bid=Decimal(price["bids"][0]["price"]),
             ask=Decimal(price["asks"][0]["price"]),
             timestamp=datetime.fromisoformat(
@@ -556,20 +604,30 @@ class OANDABroker(BaseBroker):
             ),
         )
 
-    async def get_prices(self, symbols: List[str]) -> Dict[str, Tick]:
+    async def get_prices(self, symbols: list[str]) -> dict[str, Tick]:
         """Get current prices for multiple symbols."""
-        normalized = [self.normalize_symbol(s) for s in symbols]
+        # Create mapping from OANDA symbol to original app symbol
+        symbol_mapping = {}
+        oanda_symbols = []
+        for s in symbols:
+            oanda_sym = self.normalize_symbol(s)
+            oanda_symbols.append(oanda_sym)
+            symbol_mapping[oanda_sym] = s  # Map OANDA symbol back to app symbol
 
         data = await self._request(
             "GET",
             f"/v3/accounts/{self.account_id}/pricing",
-            params={"instruments": ",".join(normalized)},
+            params={"instruments": ",".join(oanda_symbols)},
         )
 
         result = {}
         for price in data["prices"]:
-            result[price["instrument"]] = Tick(
-                symbol=price["instrument"],
+            oanda_sym = price["instrument"]
+            # Use the original app symbol (e.g., US500 instead of SPX500_USD)
+            app_symbol = symbol_mapping.get(oanda_sym, oanda_sym)
+
+            result[app_symbol] = Tick(
+                symbol=app_symbol,  # Use app symbol format
                 bid=Decimal(price["bids"][0]["price"]),
                 ask=Decimal(price["asks"][0]["price"]),
                 timestamp=datetime.fromisoformat(
@@ -579,12 +637,18 @@ class OANDABroker(BaseBroker):
 
         return result
 
-    async def stream_prices(self, symbols: List[str]) -> AsyncIterator[Tick]:
+    async def stream_prices(self, symbols: list[str]) -> AsyncIterator[Tick]:
         """Stream real-time prices using OANDA's streaming API."""
-        normalized = [self.normalize_symbol(s) for s in symbols]
+        # Create mapping from OANDA symbol to original app symbol
+        symbol_mapping = {}
+        oanda_symbols = []
+        for s in symbols:
+            oanda_sym = self.normalize_symbol(s)
+            oanda_symbols.append(oanda_sym)
+            symbol_mapping[oanda_sym] = s
 
         url = f"{self.stream_url}/v3/accounts/{self.account_id}/pricing/stream"
-        params = {"instruments": ",".join(normalized)}
+        params = {"instruments": ",".join(oanda_symbols)}
 
         async with httpx.AsyncClient(
             headers=self._get_headers(),
@@ -599,8 +663,10 @@ class OANDABroker(BaseBroker):
                         data = json.loads(line)
 
                         if data.get("type") == "PRICE":
+                            oanda_sym = data["instrument"]
+                            app_symbol = symbol_mapping.get(oanda_sym, oanda_sym)
                             yield Tick(
-                                symbol=data["instrument"],
+                                symbol=app_symbol,  # Use app symbol format
                                 bid=Decimal(data["bids"][0]["price"]),
                                 ask=Decimal(data["asks"][0]["price"]),
                                 timestamp=datetime.fromisoformat(
@@ -615,14 +681,14 @@ class OANDABroker(BaseBroker):
         symbol: str,
         timeframe: str,
         count: int = 100,
-        from_time: Optional[datetime] = None,
-        to_time: Optional[datetime] = None,
-    ) -> List[Candle]:
+        from_time: datetime | None = None,
+        to_time: datetime | None = None,
+    ) -> list[Candle]:
         """Get historical candle data."""
         symbol = self.normalize_symbol(symbol)
         granularity = self._convert_timeframe(timeframe)
 
-        params: Dict = {
+        params: dict = {
             "granularity": granularity,
             "count": min(count, 5000),  # OANDA max
         }
@@ -662,12 +728,34 @@ class OANDABroker(BaseBroker):
     # ==================== Utility Methods ====================
 
     def normalize_symbol(self, symbol: str) -> str:
-        """Convert symbol to OANDA format (e.g., EUR/USD -> EUR_USD)."""
-        return symbol.replace("/", "_").upper()
+        """
+        Convert symbol to OANDA format.
+
+        Uses SYMBOL_MAP for known mappings (indices, commodities, etc.)
+        Falls back to simple underscore replacement for forex pairs.
+        """
+        # First normalize the input
+        normalized = symbol.replace("/", "_").upper()
+
+        # Check if we have a specific mapping for this symbol
+        if normalized in self.SYMBOL_MAP:
+            return self.SYMBOL_MAP[normalized]
+
+        # Default: return as-is (forex pairs like EUR_USD work directly)
+        return normalized
 
     def denormalize_symbol(self, symbol: str) -> str:
-        """Convert OANDA symbol to standard format (e.g., EUR_USD -> EUR/USD)."""
-        return symbol.replace("_", "/")
+        """
+        Convert OANDA symbol to app format.
+
+        Uses REVERSE_SYMBOL_MAP for known mappings.
+        """
+        # Check reverse mapping first
+        if symbol in self.REVERSE_SYMBOL_MAP:
+            return self.REVERSE_SYMBOL_MAP[symbol]
+
+        # Default: return as-is
+        return symbol
 
     def _convert_order_type(self, order_type: OrderType) -> str:
         """Convert order type to OANDA format."""

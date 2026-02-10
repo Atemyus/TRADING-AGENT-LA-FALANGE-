@@ -4,27 +4,25 @@ Chart Analysis API - Analyzes TradingView chart screenshots with AI Vision.
 Returns: direction, confidence, SL, TP, BE (Break Even), TS (Trailing Stop)
 """
 
-from typing import List, Dict, Optional
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from src.engines.ai.vision_analyzer import get_vision_analyzer
-import re
-
 
 router = APIRouter(prefix="/ai", tags=["Chart Analysis"])
 
 
 class ChartAnalysisRequest(BaseModel):
     symbol: str
-    timeframes: List[str] = ["1H"]
+    timeframes: list[str] = ["1H"]
     chart_image: str  # Base64
     request_sl_tp_be_ts: bool = True
 
 
 class MultiTimeframeRequest(BaseModel):
     symbol: str
-    chart_images: Dict[str, str]  # timeframe -> base64
+    chart_images: dict[str, str]  # timeframe -> base64
     request_sl_tp_be_ts: bool = True
 
 
@@ -37,16 +35,16 @@ class TrailingStopConfig(BaseModel):
 class AnalysisResponse(BaseModel):
     direction: str
     confidence: float
-    entry_price: Optional[float]
-    stop_loss: Optional[float]
-    take_profit: Optional[List[float]]
-    break_even_trigger: Optional[float]
-    trailing_stop: Optional[TrailingStopConfig]
-    risk_reward_ratio: Optional[float]
+    entry_price: float | None
+    stop_loss: float | None
+    take_profit: list[float] | None
+    break_even_trigger: float | None
+    trailing_stop: TrailingStopConfig | None
+    risk_reward_ratio: float | None
     reasoning: str
-    patterns_detected: List[str]
-    models_used: List[str]
-    consensus_votes: Dict[str, str]
+    patterns_detected: list[str]
+    models_used: list[str]
+    consensus_votes: dict[str, str]
 
 
 VISION_PROMPT = """Analyze this TradingView chart for {symbol} ({timeframes}).
@@ -80,7 +78,7 @@ Be PRECISE with price levels - read them from the chart axis.
 """
 
 
-def parse_response(raw: str) -> Dict:
+def parse_response(raw: str) -> dict:
     result = {
         "direction": "HOLD",
         "confidence": 50,

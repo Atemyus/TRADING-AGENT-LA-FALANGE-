@@ -4,13 +4,11 @@ Market Data Routes
 Endpoints for real-time market data, technical analysis, and price information.
 """
 
-from decimal import Decimal
-from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from src.services.market_data_service import get_market_data_service, SYMBOL_MAPPINGS
+from src.services.market_data_service import SYMBOL_MAPPINGS, get_market_data_service
 from src.services.technical_analysis_service import get_technical_analysis_service
 
 router = APIRouter()
@@ -23,12 +21,12 @@ class PriceResponse(BaseModel):
     """Current price response."""
     symbol: str
     price: float
-    bid: Optional[float] = None
-    ask: Optional[float] = None
-    spread: Optional[float] = None
-    daily_high: Optional[float] = None
-    daily_low: Optional[float] = None
-    daily_change_percent: Optional[float] = None
+    bid: float | None = None
+    ask: float | None = None
+    spread: float | None = None
+    daily_high: float | None = None
+    daily_low: float | None = None
+    daily_change_percent: float | None = None
     source: str
     timestamp: str
 
@@ -46,33 +44,33 @@ class CandleResponse(BaseModel):
 class IndicatorsResponse(BaseModel):
     """Technical indicators response."""
     # Trend
-    ema_9: Optional[float] = None
-    ema_21: Optional[float] = None
-    ema_50: Optional[float] = None
-    ema_200: Optional[float] = None
-    sma_20: Optional[float] = None
-    sma_50: Optional[float] = None
-    sma_200: Optional[float] = None
+    ema_9: float | None = None
+    ema_21: float | None = None
+    ema_50: float | None = None
+    ema_200: float | None = None
+    sma_20: float | None = None
+    sma_50: float | None = None
+    sma_200: float | None = None
 
     # Momentum
-    rsi_14: Optional[float] = None
-    rsi_7: Optional[float] = None
-    stoch_k: Optional[float] = None
-    stoch_d: Optional[float] = None
-    macd: Optional[float] = None
-    macd_signal: Optional[float] = None
-    macd_histogram: Optional[float] = None
+    rsi_14: float | None = None
+    rsi_7: float | None = None
+    stoch_k: float | None = None
+    stoch_d: float | None = None
+    macd: float | None = None
+    macd_signal: float | None = None
+    macd_histogram: float | None = None
 
     # Volatility
-    atr_14: Optional[float] = None
-    bb_upper: Optional[float] = None
-    bb_middle: Optional[float] = None
-    bb_lower: Optional[float] = None
+    atr_14: float | None = None
+    bb_upper: float | None = None
+    bb_middle: float | None = None
+    bb_lower: float | None = None
 
     # Trend Strength
-    adx: Optional[float] = None
-    plus_di: Optional[float] = None
-    minus_di: Optional[float] = None
+    adx: float | None = None
+    plus_di: float | None = None
+    minus_di: float | None = None
 
 
 class ZoneResponse(BaseModel):
@@ -91,16 +89,16 @@ class SMCResponse(BaseModel):
     trend: str
     trend_strength: float
     institutional_bias: str
-    last_structure: Optional[str] = None
-    order_blocks: List[ZoneResponse]
-    fair_value_gaps: List[ZoneResponse]
-    supply_zones: List[ZoneResponse]
-    demand_zones: List[ZoneResponse]
-    liquidity_pools: List[ZoneResponse]
-    support_levels: List[float]
-    resistance_levels: List[float]
-    pivot_points: Dict[str, float]
-    retail_trap_warning: Optional[str] = None
+    last_structure: str | None = None
+    order_blocks: list[ZoneResponse]
+    fair_value_gaps: list[ZoneResponse]
+    supply_zones: list[ZoneResponse]
+    demand_zones: list[ZoneResponse]
+    liquidity_pools: list[ZoneResponse]
+    support_levels: list[float]
+    resistance_levels: list[float]
+    pivot_points: dict[str, float]
+    retail_trap_warning: str | None = None
 
 
 class FullAnalysisResponse(BaseModel):
@@ -111,8 +109,8 @@ class FullAnalysisResponse(BaseModel):
     timestamp: str
     indicators: IndicatorsResponse
     smc: SMCResponse
-    candle_patterns: List[str]
-    mtf_trend: Dict[str, str]
+    candle_patterns: list[str]
+    mtf_trend: dict[str, str]
     mtf_bias: str
 
 
@@ -445,6 +443,89 @@ async def get_full_analysis(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to perform analysis: {str(e)}")
+
+
+@router.get("/debug/streaming-status")
+async def get_streaming_status():
+    """
+    Debug endpoint to check price streaming status.
+    Shows broker connection, data source, and cached prices.
+    """
+    import os
+
+    from src.engines.trading.broker_factory import BrokerFactory
+    from src.services.price_streaming_service import get_price_streaming_service
+
+    try:
+        # Get price streaming service status
+        price_service = await get_price_streaming_service()
+
+        # Get broker info
+        broker_type = os.environ.get("BROKER_TYPE", "none")
+        broker_configured = BrokerFactory.is_configured()
+
+        # Get cached prices
+        cached_prices = price_service.get_all_prices()
+        price_summary = {
+            symbol: {
+                "bid": str(tick.bid),
+                "ask": str(tick.ask),
+                "mid": str(tick.mid),
+            }
+            for symbol, tick in list(cached_prices.items())[:10]  # First 10 only
+        }
+
+        return {
+            "broker_type": broker_type,
+            "broker_configured": broker_configured,
+            "broker_connected": price_service.is_broker_connected,
+            "data_source": price_service.data_source,
+            "simulation_disabled": price_service.simulation_disabled,
+            "streaming_active": price_service._streaming,
+            "subscribed_symbols_count": len(price_service._subscribers),
+            "subscribed_symbols": list(price_service._subscribers.keys())[:20],
+            "available_symbols": list(price_service.available_symbols)[:20],
+            "failed_symbols": list(price_service.failed_symbols)[:20],
+            "cached_prices_count": len(cached_prices),
+            "sample_prices": price_summary,
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "broker_type": os.environ.get("BROKER_TYPE", "none"),
+        }
+
+
+@router.get("/available-symbols")
+async def get_available_symbols():
+    """
+    Get symbols that are available from the broker (real prices).
+    Also returns symbols that failed (simulated).
+    """
+    from src.services.price_streaming_service import get_price_streaming_service
+
+    try:
+        price_service = await get_price_streaming_service()
+
+        available = list(price_service.available_symbols)
+        failed = list(price_service.failed_symbols)
+
+        return {
+            "broker_connected": price_service.is_broker_connected,
+            "data_source": price_service.data_source,
+            "simulation_disabled": price_service.simulation_disabled,
+            "available_symbols": sorted(available),
+            "available_count": len(available),
+            "failed_symbols": sorted(failed),
+            "failed_count": len(failed),
+            "total_requested": len(available) + len(failed),
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "available_symbols": [],
+            "failed_symbols": [],
+        }
 
 
 def _get_symbol_category(symbol: str) -> str:

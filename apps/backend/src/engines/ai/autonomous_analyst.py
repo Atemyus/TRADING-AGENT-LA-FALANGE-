@@ -10,43 +10,45 @@ This system:
 """
 
 import asyncio
-from typing import Optional, List, Dict, Any
+import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-import json
+from typing import Any
 
 import httpx
 
 from src.core.config import settings
 from src.services.chart_generator_service import (
-    ChartGeneratorService,
     ChartConfig,
-    IndicatorConfig,
-    INDICATOR_PRESETS,
+    ChartGeneratorService,
     get_chart_generator_service,
 )
-from src.services.market_data_service import get_market_data_service, MarketDataService
-from src.services.technical_analysis_service import get_technical_analysis_service, TechnicalAnalysisService
+from src.services.market_data_service import MarketDataService, get_market_data_service
+from src.services.technical_analysis_service import (
+    TechnicalAnalysisService,
+    get_technical_analysis_service,
+)
 
 
 class AIModel(str, Enum):
     """Available AI models for autonomous analysis."""
-    CHATGPT_5_2 = "openai/gpt-5-2-chat-latest"
+    # AIML API model IDs (updated 2026-01-27)
+    CHATGPT_5_2 = "openai/gpt-5-2"
     GEMINI_3_PRO = "google/gemini-3-pro-preview"
-    DEEPSEEK_V3_2 = "deepseek/deepseek-non-thinking-v3.2-exp"
-    GLM_4_5 = "zhipu/glm-4.5-air"
     GROK_4_1 = "x-ai/grok-4-1-fast-reasoning"
-    QWEN_MAX = "qwen-max"
+    QWEN3_VL = "alibaba/qwen3-vl-32b-instruct"  # Vision-Language model
+    LLAMA_4_SCOUT = "meta-llama/llama-4-scout"  # Text analysis
+    ERNIE_4_5_VL = "baidu/ernie-4.5-vl-424b-a47b"  # Vision-Language model
 
 
 MODEL_DISPLAY_NAMES = {
     AIModel.CHATGPT_5_2: "ChatGPT 5.2",
-    AIModel.GEMINI_3_PRO: "Gemini 3 Pro Preview",
-    AIModel.DEEPSEEK_V3_2: "DeepSeek V3.2",
-    AIModel.GLM_4_5: "GLM 4.5 Air",
+    AIModel.GEMINI_3_PRO: "Gemini 3 Pro",
     AIModel.GROK_4_1: "Grok 4.1 Fast",
-    AIModel.QWEN_MAX: "Qwen Max",
+    AIModel.QWEN3_VL: "Qwen3 VL",
+    AIModel.LLAMA_4_SCOUT: "Llama 4 Scout",
+    AIModel.ERNIE_4_5_VL: "ERNIE 4.5 VL",
 }
 
 
@@ -61,34 +63,34 @@ class AutonomousAnalysisResult:
     confidence: float  # 0-100
 
     # Trade parameters
-    entry_price: Optional[float] = None
-    stop_loss: Optional[float] = None
-    take_profit: List[float] = field(default_factory=list)
-    risk_reward: Optional[float] = None
+    entry_price: float | None = None
+    stop_loss: float | None = None
+    take_profit: list[float] = field(default_factory=list)
+    risk_reward: float | None = None
 
     # Advanced trade management
-    break_even_trigger: Optional[float] = None  # Price at which to move SL to entry
-    trailing_stop_pips: Optional[float] = None  # Trailing stop distance in pips
-    partial_tp_percent: Optional[float] = None  # Percentage to close at TP1 (e.g., 50%)
+    break_even_trigger: float | None = None  # Price at which to move SL to entry
+    trailing_stop_pips: float | None = None  # Trailing stop distance in pips
+    partial_tp_percent: float | None = None  # Percentage to close at TP1 (e.g., 50%)
 
     # AI's chosen analysis approach
-    indicators_used: List[str] = field(default_factory=list)
+    indicators_used: list[str] = field(default_factory=list)
     analysis_style: str = ""  # "momentum", "smc", "trend", etc.
 
     # Detailed analysis
-    market_structure: Optional[str] = None
-    trend_analysis: Dict[str, str] = field(default_factory=dict)
-    smc_analysis: Optional[str] = None
-    indicator_readings: Dict[str, str] = field(default_factory=dict)
-    patterns_found: List[str] = field(default_factory=list)
-    key_levels: Dict[str, List[float]] = field(default_factory=dict)
+    market_structure: str | None = None
+    trend_analysis: dict[str, str] = field(default_factory=dict)
+    smc_analysis: str | None = None
+    indicator_readings: dict[str, str] = field(default_factory=dict)
+    patterns_found: list[str] = field(default_factory=list)
+    key_levels: dict[str, list[float]] = field(default_factory=dict)
 
     # Full reasoning
     reasoning: str = ""
 
     # Metadata
     latency_ms: int = 0
-    error: Optional[str] = None
+    error: str | None = None
 
 
 # System prompt that gives AI full autonomy
@@ -102,6 +104,7 @@ You have FULL FREEDOM to choose:
 1. **Your Trading Style**: Scalping, Day Trading, Swing Trading, Position Trading
 2. **Your Analysis Method**: Technical Analysis, Smart Money Concepts (SMC), Price Action, Indicator-Based, or ANY combination
 3. **Which Indicators to Focus On**: You can use any visible indicators or request mental calculations
+4. **Advanced Tools**: Fibonacci, Pitchfork, Pivot Points (Standard, Fibonacci, Camarilla, Woodie)
 
 ## AVAILABLE TOOLS & DATA
 
@@ -110,9 +113,28 @@ You have FULL FREEDOM to choose:
 
 ### Pre-Calculated Indicators:
 {indicators}
+- VWAP (Volume Weighted Average Price)
+- EMA (9, 21, 50, 200)
+- RSI (7, 14)
+- MACD, Stochastic, ADX, ATR
+- Bollinger Bands
 
 ### Smart Money Concepts (SMC) Analysis:
 {smc_data}
+- Order Blocks (OB)
+- Fair Value Gaps (FVG)
+- Liquidity Pools
+- Market Structure (BOS/CHoCH)
+- Smart Money Traps (Inducement) - Bull Traps, Bear Traps, Stop Hunts
+
+### Fibonacci Levels:
+Automatically calculated retracement (23.6%, 38.2%, 50%, 61.8%, 78.6%) and extension levels (127.2%, 161.8%, 200%, 261.8%)
+
+### Pivot Points:
+- Standard (PP, R1-R3, S1-S3)
+- Fibonacci Pivots
+- Camarilla Pivots
+- Woodie Pivots
 
 ### Chart Image:
 The chart shows {chart_description}
@@ -184,6 +206,7 @@ IMPORTANT:
 - Express YOUR unique perspective
 - If you see no trade, say HOLD with reasoning
 - Reference specific data points from the provided information
+- SCRIVI TUTTO IN ITALIANO: Tutta l'analisi, il reasoning, le osservazioni e le descrizioni devono essere scritte ESCLUSIVAMENTE in lingua italiana. Non usare inglese.
 """
 
 
@@ -219,6 +242,7 @@ class AutonomousAnalyst:
         symbol: str,
         timeframe: str = "15m",
         chart_preset: str = "complete",
+        prefetched_data: Any | None = None,
     ) -> AutonomousAnalysisResult:
         """
         Run autonomous analysis with a single AI model.
@@ -235,19 +259,22 @@ class AutonomousAnalyst:
         display_name = MODEL_DISPLAY_NAMES.get(model, model.value)
 
         if not self.api_key:
+            print(f"[AutonomousAnalyst] ⚠️ AIML API KEY NOT SET - No real API call for {model.value}. Set AIML_API_KEY env variable.")
             return AutonomousAnalysisResult(
                 model=model.value,
                 model_display_name=display_name,
                 direction="HOLD",
                 confidence=0,
-                error="AIML API key not configured"
+                error="⚠️ AIML API KEY NON CONFIGURATA - Nessuna chiamata API reale. Configura AIML_API_KEY nelle variabili d'ambiente."
             )
 
         start_time = datetime.now()
 
         try:
-            # 1. Fetch market data
-            market_data = await self.market_data.get_market_data(symbol, timeframe, 100)
+            # 1. Fetch market data (use prefetched if available to avoid rate limits)
+            market_data = prefetched_data
+            if market_data is None:
+                market_data = await self.market_data.get_market_data(symbol, timeframe, 100)
 
             if not market_data or not market_data.candles:
                 return AutonomousAnalysisResult(
@@ -360,14 +387,27 @@ class AutonomousAnalyst:
         self,
         symbol: str,
         timeframe: str = "15m",
-        models: Optional[List[AIModel]] = None,
-    ) -> List[AutonomousAnalysisResult]:
+        models: list[AIModel] | None = None,
+    ) -> list[AutonomousAnalysisResult]:
         """
         Run autonomous analysis with all AI models in parallel.
         Each model independently decides its analysis approach.
         """
+        await self.initialize()
+
         if models is None:
             models = list(AIModel)
+
+        # Pre-fetch market data UNA SOLA VOLTA per evitare rate limiting Yahoo (429)
+        prefetched_data = None
+        try:
+            prefetched_data = await self.market_data.get_market_data(symbol, timeframe, 100)
+            if prefetched_data and prefetched_data.candles:
+                print(f"[AutonomousAnalyst] Pre-fetched {len(prefetched_data.candles)} candles for {symbol}/{timeframe}")
+            else:
+                print(f"[AutonomousAnalyst] ⚠️ No candle data for {symbol}/{timeframe}")
+        except Exception as e:
+            print(f"[AutonomousAnalyst] ⚠️ Failed to pre-fetch market data for {symbol}: {e}")
 
         # Each model gets a different chart preset for diverse perspectives
         presets = ["momentum", "trend", "smc", "complete", "volatility", "smc"]
@@ -377,7 +417,8 @@ class AutonomousAnalyst:
                 model,
                 symbol,
                 timeframe,
-                presets[i % len(presets)]
+                presets[i % len(presets)],
+                prefetched_data=prefetched_data,
             )
             for i, model in enumerate(models)
         ]
@@ -402,8 +443,8 @@ class AutonomousAnalyst:
 
     def calculate_consensus(
         self,
-        results: List[AutonomousAnalysisResult]
-    ) -> Dict[str, Any]:
+        results: list[AutonomousAnalysisResult]
+    ) -> dict[str, Any]:
         """
         Calculate consensus from autonomous AI analyses.
         Respects each AI's independent analysis while finding common ground.
@@ -591,6 +632,31 @@ class AutonomousAnalyst:
             for zone in smc.supply_demand[:3]:
                 lines.append(f"  {zone.type.upper()}: {zone.zone_low:.5f} - {zone.zone_high:.5f}")
 
+        # Fibonacci Levels
+        if hasattr(smc, 'fibonacci') and smc.fibonacci:
+            fib = smc.fibonacci
+            lines.append("\nFibonacci Levels:")
+            lines.append(f"  Swing: {fib.swing_low:.5f} → {fib.swing_high:.5f} ({fib.direction})")
+            lines.append(f"  Retracements: 38.2%={fib.retracement_382:.5f}, 50%={fib.retracement_500:.5f}, 61.8%={fib.retracement_618:.5f}")
+            lines.append(f"  Extensions: 127.2%={fib.extension_1272:.5f}, 161.8%={fib.extension_1618:.5f}")
+
+        # Smart Money Traps
+        if hasattr(smc, 'smart_money_traps') and smc.smart_money_traps:
+            lines.append("\nSmart Money Traps (Inducement):")
+            for trap in smc.smart_money_traps[:3]:
+                lines.append(f"  {trap.trap_type.upper()}: {trap.price_level:.5f} - {trap.description}")
+
+        # Pivot Points
+        if hasattr(smc, 'pivot_points') and smc.pivot_points:
+            lines.append("\nPivot Points:")
+            pp = smc.pivot_points
+            if 'PP' in pp:
+                lines.append(f"  Standard: PP={pp.get('PP', 0):.5f}, R1={pp.get('R1', 0):.5f}, S1={pp.get('S1', 0):.5f}")
+            if 'Fib_PP' in pp:
+                lines.append(f"  Fibonacci: PP={pp.get('Fib_PP', 0):.5f}, R1={pp.get('Fib_R1', 0):.5f}, S1={pp.get('Fib_S1', 0):.5f}")
+            if 'Cam_R3' in pp:
+                lines.append(f"  Camarilla: R3={pp.get('Cam_R3', 0):.5f}, S3={pp.get('Cam_S3', 0):.5f}")
+
         return "\n".join(lines) if lines else "No SMC analysis available"
 
     def _parse_response(
@@ -690,7 +756,7 @@ class AutonomousAnalyst:
 
 
 # Singleton instance
-_autonomous_analyst: Optional[AutonomousAnalyst] = None
+_autonomous_analyst: AutonomousAnalyst | None = None
 
 
 def get_autonomous_analyst() -> AutonomousAnalyst:

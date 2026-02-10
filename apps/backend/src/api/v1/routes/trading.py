@@ -3,12 +3,11 @@ Trading routes - Order management and execution.
 """
 
 from decimal import Decimal
-from typing import Optional, List
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
-from src.engines.trading.base_broker import OrderSide, OrderType, TimeInForce, OrderRequest
+from src.engines.trading.base_broker import OrderRequest, OrderSide, OrderType, TimeInForce
 from src.engines.trading.broker_factory import NoBrokerConfiguredError
 from src.services.trading_service import get_trading_service
 
@@ -34,9 +33,9 @@ class OrderCreate(BaseModel):
     side: OrderSide = Field(..., description="Order side: buy or sell")
     order_type: OrderType = Field(default=OrderType.MARKET)
     size: Decimal = Field(..., gt=0, description="Order size")
-    price: Optional[Decimal] = Field(None, description="Limit price")
-    stop_loss: Optional[Decimal] = Field(None, description="Stop loss price")
-    take_profit: Optional[Decimal] = Field(None, description="Take profit price")
+    price: Decimal | None = Field(None, description="Limit price")
+    stop_loss: Decimal | None = Field(None, description="Stop loss price")
+    take_profit: Decimal | None = Field(None, description="Take profit price")
     time_in_force: TimeInForce = Field(default=TimeInForce.GTC)
     leverage: int = Field(default=1, ge=1, le=100)
 
@@ -44,18 +43,18 @@ class OrderCreate(BaseModel):
 class OrderResponse(BaseModel):
     """Order response."""
     success: bool
-    order_id: Optional[str] = None
+    order_id: str | None = None
     symbol: str
     side: str
     order_type: str
     status: str
     size: str
     filled_size: str
-    price: Optional[str] = None
-    average_fill_price: Optional[str] = None
+    price: str | None = None
+    average_fill_price: str | None = None
     commission: str = "0"
     message: str = ""
-    risk_warnings: List[str] = []
+    risk_warnings: list[str] = []
 
     class Config:
         from_attributes = True
@@ -63,7 +62,7 @@ class OrderResponse(BaseModel):
 
 class ClosePositionRequest(BaseModel):
     """Request to close a position."""
-    size: Optional[Decimal] = Field(None, description="Size to close (None = close all)")
+    size: Decimal | None = Field(None, description="Size to close (None = close all)")
 
 
 class PriceResponse(BaseModel):
@@ -126,7 +125,7 @@ async def create_order(order: OrderCreate):
 
 
 @router.get("/orders")
-async def get_orders(symbol: Optional[str] = None):
+async def get_orders(symbol: str | None = None):
     """Get list of pending orders with optional symbol filter."""
     service = await get_trading_service()
     orders = await service.get_open_orders(symbol)
@@ -166,7 +165,7 @@ async def cancel_order(order_id: str):
 
 
 @router.post("/close/{symbol}")
-async def close_position(symbol: str, request: Optional[ClosePositionRequest] = None):
+async def close_position(symbol: str, request: ClosePositionRequest | None = None):
     """
     Close a position.
 

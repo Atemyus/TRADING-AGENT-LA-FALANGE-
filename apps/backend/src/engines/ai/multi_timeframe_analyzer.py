@@ -9,16 +9,15 @@ This analyzer:
 """
 
 import asyncio
-from typing import Optional, List, Dict, Any
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from typing import Any
 
-from src.engines.ai.chart_vision import get_chart_vision_service, ChartVisionService
-from src.engines.ai.vision_analyzer import get_vision_analyzer, VisionAnalyzer, VisionAnalysisResult
+from src.engines.ai.chart_vision import ChartVisionService, get_chart_vision_service
 from src.engines.ai.consensus_engine import ConsensusEngine
+from src.engines.ai.vision_analyzer import VisionAnalyzer, get_vision_analyzer
 from src.services.ai_service import AIService
-from src.core.config import settings
 
 
 class AnalysisMode(str, Enum):
@@ -35,10 +34,10 @@ class TimeframeAnalysis:
     timeframe: str
     direction: str
     confidence: float
-    indicators: Dict[str, Any]
-    patterns: List[str]
-    support_levels: List[float]
-    resistance_levels: List[float]
+    indicators: dict[str, Any]
+    patterns: list[str]
+    support_levels: list[float]
+    resistance_levels: list[float]
 
 
 @dataclass
@@ -53,18 +52,18 @@ class MultiTimeframeResult:
     final_confidence: float
 
     # Trade parameters
-    entry_price: Optional[float] = None
-    stop_loss: Optional[float] = None
-    take_profit: Optional[List[float]] = None
-    position_size_percent: Optional[float] = None
-    risk_reward_ratio: Optional[float] = None
+    entry_price: float | None = None
+    stop_loss: float | None = None
+    take_profit: list[float] | None = None
+    position_size_percent: float | None = None
+    risk_reward_ratio: float | None = None
 
     # Per-timeframe analysis
-    timeframe_analyses: Dict[str, TimeframeAnalysis] = field(default_factory=dict)
+    timeframe_analyses: dict[str, TimeframeAnalysis] = field(default_factory=dict)
 
     # Individual model votes
-    text_model_votes: List[Dict[str, Any]] = field(default_factory=list)
-    vision_model_votes: List[Dict[str, Any]] = field(default_factory=list)
+    text_model_votes: list[dict[str, Any]] = field(default_factory=list)
+    vision_model_votes: list[dict[str, Any]] = field(default_factory=list)
 
     # Confluence score (how aligned are the timeframes)
     confluence_score: float = 0.0
@@ -72,7 +71,7 @@ class MultiTimeframeResult:
     # Metadata
     total_models_used: int = 0
     total_latency_ms: int = 0
-    errors: List[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
 
 
 class MultiTimeframeAnalyzer:
@@ -133,7 +132,7 @@ class MultiTimeframeAnalyzer:
         self,
         symbol: str,
         mode: AnalysisMode = AnalysisMode.STANDARD,
-        current_price: Optional[float] = None,
+        current_price: float | None = None,
     ) -> MultiTimeframeResult:
         """
         Run complete multi-timeframe analysis.
@@ -229,8 +228,8 @@ class MultiTimeframeAnalyzer:
         self,
         symbol: str,
         timeframe: str,
-        models: List[str]
-    ) -> Dict[str, Any]:
+        models: list[str]
+    ) -> dict[str, Any]:
         """Run text-based AI analysis for a single timeframe."""
         try:
             # Use existing AI service for text analysis
@@ -259,9 +258,9 @@ class MultiTimeframeAnalyzer:
     async def _run_vision_analysis(
         self,
         symbol: str,
-        timeframes: List[str],
+        timeframes: list[str],
         max_models: int = 6
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Run vision-based AI analysis across multiple timeframes."""
         if not self.chart_service or not self.vision_analyzer:
             return {"votes": []}
@@ -306,7 +305,7 @@ class MultiTimeframeAnalyzer:
         except Exception as e:
             return {"votes": [], "error": str(e)}
 
-    def _calculate_consensus(self, votes: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _calculate_consensus(self, votes: list[dict[str, Any]]) -> dict[str, Any]:
         """Calculate consensus from all votes."""
         if not votes:
             return {"direction": "HOLD", "confidence": 0}
@@ -363,7 +362,7 @@ class MultiTimeframeAnalyzer:
             "vote_breakdown": direction_counts,
         }
 
-    def _calculate_confluence(self, timeframe_analyses: Dict[str, TimeframeAnalysis]) -> float:
+    def _calculate_confluence(self, timeframe_analyses: dict[str, TimeframeAnalysis]) -> float:
         """
         Calculate confluence score based on timeframe alignment.
 
@@ -389,7 +388,7 @@ class MultiTimeframeAnalyzer:
     def _calculate_position_size(
         self,
         confidence: float,
-        risk_reward: Optional[float] = None,
+        risk_reward: float | None = None,
         max_risk_percent: float = 2.0
     ) -> float:
         """
@@ -411,7 +410,7 @@ class MultiTimeframeAnalyzer:
 
 
 # Singleton instance
-_mtf_analyzer: Optional[MultiTimeframeAnalyzer] = None
+_mtf_analyzer: MultiTimeframeAnalyzer | None = None
 
 
 def get_multi_timeframe_analyzer() -> MultiTimeframeAnalyzer:

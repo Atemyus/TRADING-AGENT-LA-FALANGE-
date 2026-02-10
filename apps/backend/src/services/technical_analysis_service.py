@@ -9,21 +9,22 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
-import pandas as pd
+from typing import Any
+
 import numpy as np
+import pandas as pd
 
 try:
     import ta
     from ta.momentum import RSIIndicator, StochasticOscillator
-    from ta.trend import MACD, EMAIndicator, SMAIndicator, ADXIndicator
-    from ta.volatility import BollingerBands, AverageTrueRange
+    from ta.trend import MACD, ADXIndicator, EMAIndicator, SMAIndicator
+    from ta.volatility import AverageTrueRange, BollingerBands
     from ta.volume import VolumeWeightedAveragePrice
     HAS_TA = True
 except ImportError:
     HAS_TA = False
 
-from src.services.market_data_service import MarketData, OHLCV
+from src.services.market_data_service import MarketData
 
 
 class ZoneType(str, Enum):
@@ -75,7 +76,7 @@ class PriceZone:
     def mid_price(self) -> Decimal:
         return (self.price_high + self.price_low) / 2
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "type": self.zone_type.value,
             "price_high": float(self.price_high),
@@ -97,7 +98,7 @@ class StructurePoint:
     timestamp: datetime
     confirmed: bool = True
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "type": self.structure_type.value,
             "price": float(self.price),
@@ -110,42 +111,105 @@ class StructurePoint:
 class TechnicalIndicators:
     """Collection of technical indicators."""
     # Trend
-    ema_9: Optional[float] = None
-    ema_21: Optional[float] = None
-    ema_50: Optional[float] = None
-    ema_200: Optional[float] = None
-    sma_20: Optional[float] = None
-    sma_50: Optional[float] = None
-    sma_200: Optional[float] = None
+    ema_9: float | None = None
+    ema_21: float | None = None
+    ema_50: float | None = None
+    ema_200: float | None = None
+    sma_20: float | None = None
+    sma_50: float | None = None
+    sma_200: float | None = None
 
     # Momentum
-    rsi_14: Optional[float] = None
-    rsi_7: Optional[float] = None
-    stoch_k: Optional[float] = None
-    stoch_d: Optional[float] = None
-    macd: Optional[float] = None
-    macd_signal: Optional[float] = None
-    macd_histogram: Optional[float] = None
+    rsi_14: float | None = None
+    rsi_7: float | None = None
+    stoch_k: float | None = None
+    stoch_d: float | None = None
+    macd: float | None = None
+    macd_signal: float | None = None
+    macd_histogram: float | None = None
 
     # Volatility
-    atr_14: Optional[float] = None
-    bb_upper: Optional[float] = None
-    bb_middle: Optional[float] = None
-    bb_lower: Optional[float] = None
-    bb_width: Optional[float] = None
+    atr_14: float | None = None
+    bb_upper: float | None = None
+    bb_middle: float | None = None
+    bb_lower: float | None = None
+    bb_width: float | None = None
 
     # Trend Strength
-    adx: Optional[float] = None
-    plus_di: Optional[float] = None
-    minus_di: Optional[float] = None
+    adx: float | None = None
+    plus_di: float | None = None
+    minus_di: float | None = None
 
     # Volume
-    vwap: Optional[float] = None
-    volume_sma: Optional[float] = None
-    volume_ratio: Optional[float] = None  # Current vs average
+    vwap: float | None = None
+    volume_sma: float | None = None
+    volume_ratio: float | None = None  # Current vs average
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {k: v for k, v in self.__dict__.items() if v is not None}
+
+
+@dataclass
+class FibonacciLevels:
+    """Fibonacci retracement and extension levels."""
+    # Swing points used
+    swing_high: Decimal
+    swing_low: Decimal
+    direction: str  # "bullish" (low to high) or "bearish" (high to low)
+
+    # Retracement levels (pullback targets)
+    retracement_236: Decimal = Decimal("0")
+    retracement_382: Decimal = Decimal("0")
+    retracement_500: Decimal = Decimal("0")
+    retracement_618: Decimal = Decimal("0")
+    retracement_786: Decimal = Decimal("0")
+
+    # Extension levels (continuation targets)
+    extension_1000: Decimal = Decimal("0")  # 100% = swing size
+    extension_1272: Decimal = Decimal("0")
+    extension_1618: Decimal = Decimal("0")
+    extension_2000: Decimal = Decimal("0")
+    extension_2618: Decimal = Decimal("0")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "swing_high": float(self.swing_high),
+            "swing_low": float(self.swing_low),
+            "direction": self.direction,
+            "retracement": {
+                "23.6%": float(self.retracement_236),
+                "38.2%": float(self.retracement_382),
+                "50.0%": float(self.retracement_500),
+                "61.8%": float(self.retracement_618),
+                "78.6%": float(self.retracement_786),
+            },
+            "extension": {
+                "100%": float(self.extension_1000),
+                "127.2%": float(self.extension_1272),
+                "161.8%": float(self.extension_1618),
+                "200%": float(self.extension_2000),
+                "261.8%": float(self.extension_2618),
+            }
+        }
+
+
+@dataclass
+class SmartMoneyTrap:
+    """Smart Money Trap (Inducement) detection."""
+    trap_type: str  # "bull_trap", "bear_trap", "stop_hunt_high", "stop_hunt_low"
+    price_level: Decimal
+    description: str
+    strength: float  # 0-100 confidence
+    timestamp: datetime
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "type": self.trap_type,
+            "price": float(self.price_level),
+            "description": self.description,
+            "strength": self.strength,
+            "timestamp": self.timestamp.isoformat(),
+        }
 
 
 @dataclass
@@ -156,26 +220,32 @@ class SMCAnalysis:
     trend_strength: float = 0.0  # 0-100
 
     # Structure
-    structure_points: List[StructurePoint] = field(default_factory=list)
-    last_structure: Optional[MarketStructure] = None
+    structure_points: list[StructurePoint] = field(default_factory=list)
+    last_structure: MarketStructure | None = None
 
     # Zones
-    order_blocks: List[PriceZone] = field(default_factory=list)
-    fair_value_gaps: List[PriceZone] = field(default_factory=list)
-    supply_zones: List[PriceZone] = field(default_factory=list)
-    demand_zones: List[PriceZone] = field(default_factory=list)
-    liquidity_pools: List[PriceZone] = field(default_factory=list)
+    order_blocks: list[PriceZone] = field(default_factory=list)
+    fair_value_gaps: list[PriceZone] = field(default_factory=list)
+    supply_zones: list[PriceZone] = field(default_factory=list)
+    demand_zones: list[PriceZone] = field(default_factory=list)
+    liquidity_pools: list[PriceZone] = field(default_factory=list)
 
     # Key Levels
-    support_levels: List[Decimal] = field(default_factory=list)
-    resistance_levels: List[Decimal] = field(default_factory=list)
-    pivot_points: Dict[str, Decimal] = field(default_factory=dict)
+    support_levels: list[Decimal] = field(default_factory=list)
+    resistance_levels: list[Decimal] = field(default_factory=list)
+    pivot_points: dict[str, Decimal] = field(default_factory=dict)
+
+    # Fibonacci levels
+    fibonacci: FibonacciLevels | None = None
+
+    # Smart Money Traps (Inducement)
+    smart_money_traps: list[SmartMoneyTrap] = field(default_factory=list)
 
     # Bias
     institutional_bias: str = "neutral"  # bullish, bearish, neutral
-    retail_trap_warning: Optional[str] = None
+    retail_trap_warning: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "trend": self.trend.value,
             "trend_strength": self.trend_strength,
@@ -189,6 +259,8 @@ class SMCAnalysis:
             "support_levels": [float(s) for s in self.support_levels],
             "resistance_levels": [float(r) for r in self.resistance_levels],
             "pivot_points": {k: float(v) for k, v in self.pivot_points.items()},
+            "fibonacci": self.fibonacci.to_dict() if self.fibonacci else None,
+            "smart_money_traps": [smt.to_dict() for smt in self.smart_money_traps],
             "institutional_bias": self.institutional_bias,
             "retail_trap_warning": self.retail_trap_warning,
         }
@@ -204,16 +276,16 @@ class FullAnalysis:
 
     # Basic
     indicators: TechnicalIndicators
-    candle_patterns: List[str] = field(default_factory=list)
+    candle_patterns: list[str] = field(default_factory=list)
 
     # SMC
     smc: SMCAnalysis = field(default_factory=SMCAnalysis)
 
     # Multi-timeframe
-    mtf_trend: Dict[str, TrendDirection] = field(default_factory=dict)
+    mtf_trend: dict[str, TrendDirection] = field(default_factory=dict)
     mtf_bias: str = "neutral"  # Confluence of multiple timeframes
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "symbol": self.symbol,
             "timeframe": self.timeframe,
@@ -353,8 +425,56 @@ class FullAnalysis:
         if self.smc.pivot_points:
             lines.append("")
             lines.append("Pivot Points:")
-            for name, price in self.smc.pivot_points.items():
-                lines.append(f"  {name}: {price:.5f}")
+            # Group pivots by type
+            standard = {k: v for k, v in self.smc.pivot_points.items() if not k.startswith(('Fib_', 'Cam_', 'Wood_'))}
+            fib = {k: v for k, v in self.smc.pivot_points.items() if k.startswith('Fib_')}
+            cam = {k: v for k, v in self.smc.pivot_points.items() if k.startswith('Cam_')}
+            wood = {k: v for k, v in self.smc.pivot_points.items() if k.startswith('Wood_')}
+
+            if standard:
+                lines.append("  Standard:")
+                for name, price in standard.items():
+                    lines.append(f"    {name}: {price:.5f}")
+            if fib:
+                lines.append("  Fibonacci:")
+                for name, price in fib.items():
+                    lines.append(f"    {name.replace('Fib_', '')}: {price:.5f}")
+            if cam:
+                lines.append("  Camarilla:")
+                for name, price in cam.items():
+                    lines.append(f"    {name.replace('Cam_', '')}: {price:.5f}")
+            if wood:
+                lines.append("  Woodie:")
+                for name, price in wood.items():
+                    lines.append(f"    {name.replace('Wood_', '')}: {price:.5f}")
+
+        # Fibonacci Retracement/Extension
+        if self.smc.fibonacci:
+            lines.append("")
+            lines.append("--- FIBONACCI LEVELS ---")
+            fib = self.smc.fibonacci
+            lines.append(f"Swing: {fib.swing_low:.5f} → {fib.swing_high:.5f} ({fib.direction.upper()})")
+            lines.append("Retracements:")
+            lines.append(f"  23.6%: {fib.retracement_236:.5f}")
+            lines.append(f"  38.2%: {fib.retracement_382:.5f}")
+            lines.append(f"  50.0%: {fib.retracement_500:.5f}")
+            lines.append(f"  61.8%: {fib.retracement_618:.5f} (Golden Ratio)")
+            lines.append(f"  78.6%: {fib.retracement_786:.5f}")
+            lines.append("Extensions:")
+            lines.append(f"  127.2%: {fib.extension_1272:.5f}")
+            lines.append(f"  161.8%: {fib.extension_1618:.5f} (Golden Extension)")
+            lines.append(f"  200%: {fib.extension_2000:.5f}")
+            lines.append(f"  261.8%: {fib.extension_2618:.5f}")
+
+        # Smart Money Traps (Inducement)
+        if self.smc.smart_money_traps:
+            lines.append("")
+            lines.append("--- SMART MONEY TRAPS (INDUCEMENT) ---")
+            for trap in self.smc.smart_money_traps:
+                emoji = "🐂" if "bull" in trap.trap_type else "🐻" if "bear" in trap.trap_type else "🎯"
+                lines.append(f"  {emoji} {trap.trap_type.upper()}: {trap.price_level:.5f}")
+                lines.append(f"      {trap.description}")
+                lines.append(f"      Forza: {trap.strength:.0f}%")
 
         # MTF
         if self.mtf_trend:
@@ -497,6 +617,12 @@ class TechnicalAnalysisService:
                 if indicators.volume_sma and indicators.volume_sma > 0:
                     indicators.volume_ratio = float(volume.iloc[-1] / indicators.volume_sma)
 
+                # VWAP calculation
+                if len(df) >= 1:
+                    typical_price = (high + low + close) / 3
+                    vwap = (typical_price * volume).cumsum() / volume.cumsum()
+                    indicators.vwap = float(vwap.iloc[-1]) if not pd.isna(vwap.iloc[-1]) else None
+
         except Exception as e:
             print(f"Error calculating indicators: {e}")
 
@@ -538,8 +664,14 @@ class TechnicalAnalysisService:
             # Calculate support/resistance
             smc.support_levels, smc.resistance_levels = self._find_sr_levels(df, current_price)
 
-            # Calculate pivot points
-            smc.pivot_points = self._calculate_pivots(df)
+            # Calculate pivot points (all types: standard, fibonacci, camarilla, woodie)
+            smc.pivot_points = self._calculate_pivots(df, "all")
+
+            # Calculate Fibonacci levels
+            smc.fibonacci = self._calculate_fibonacci(df)
+
+            # Detect Smart Money Traps (Inducement)
+            smc.smart_money_traps = self._detect_smart_money_traps(df, current_price)
 
             # Determine institutional bias
             smc.institutional_bias = self._determine_bias(smc, current_price)
@@ -552,7 +684,7 @@ class TechnicalAnalysisService:
 
         return smc
 
-    def _detect_trend(self, df: pd.DataFrame) -> Tuple[TrendDirection, float]:
+    def _detect_trend(self, df: pd.DataFrame) -> tuple[TrendDirection, float]:
         """Detect market trend and strength."""
         if len(df) < 20:
             return TrendDirection.RANGING, 0.0
@@ -596,7 +728,7 @@ class TechnicalAnalysisService:
         else:
             return TrendDirection.RANGING, max(0, 50 - strength)
 
-    def _find_structure_points(self, df: pd.DataFrame, lookback: int = 5) -> List[StructurePoint]:
+    def _find_structure_points(self, df: pd.DataFrame, lookback: int = 5) -> list[StructurePoint]:
         """Find swing highs and lows (market structure)."""
         points = []
         high = df['high'].values
@@ -641,7 +773,7 @@ class TechnicalAnalysisService:
 
         return points
 
-    def _find_order_blocks(self, df: pd.DataFrame, current_price: Decimal) -> List[PriceZone]:
+    def _find_order_blocks(self, df: pd.DataFrame, current_price: Decimal) -> list[PriceZone]:
         """Find Order Blocks - last candle before a strong move."""
         blocks = []
         open_prices = df['open'].values
@@ -686,7 +818,7 @@ class TechnicalAnalysisService:
         # Keep only recent, unbroken blocks
         return [b for b in blocks if not b.broken][-5:]
 
-    def _find_fvg(self, df: pd.DataFrame, current_price: Decimal) -> List[PriceZone]:
+    def _find_fvg(self, df: pd.DataFrame, current_price: Decimal) -> list[PriceZone]:
         """Find Fair Value Gaps (Imbalances)."""
         gaps = []
         high_prices = df['high'].values
@@ -724,7 +856,7 @@ class TechnicalAnalysisService:
 
         return [g for g in gaps if not g.broken][-5:]
 
-    def _find_supply_demand(self, df: pd.DataFrame, current_price: Decimal) -> Tuple[List[PriceZone], List[PriceZone]]:
+    def _find_supply_demand(self, df: pd.DataFrame, current_price: Decimal) -> tuple[list[PriceZone], list[PriceZone]]:
         """Find Supply and Demand zones."""
         supply = []
         demand = []
@@ -772,7 +904,7 @@ class TechnicalAnalysisService:
 
         return supply[-3:], demand[-3:]
 
-    def _find_liquidity_pools(self, df: pd.DataFrame, current_price: Decimal) -> List[PriceZone]:
+    def _find_liquidity_pools(self, df: pd.DataFrame, current_price: Decimal) -> list[PriceZone]:
         """Find liquidity pools (equal highs/lows, stop hunt levels)."""
         pools = []
         high_prices = df['high'].values
@@ -807,7 +939,7 @@ class TechnicalAnalysisService:
 
         return pools[-4:]
 
-    def _find_sr_levels(self, df: pd.DataFrame, current_price: Decimal) -> Tuple[List[Decimal], List[Decimal]]:
+    def _find_sr_levels(self, df: pd.DataFrame, current_price: Decimal) -> tuple[list[Decimal], list[Decimal]]:
         """Find support and resistance levels."""
         high_prices = df['high'].values
         low_prices = df['low'].values
@@ -835,8 +967,14 @@ class TechnicalAnalysisService:
 
         return support, resistance
 
-    def _calculate_pivots(self, df: pd.DataFrame) -> Dict[str, Decimal]:
-        """Calculate pivot points."""
+    def _calculate_pivots(self, df: pd.DataFrame, pivot_type: str = "all") -> dict[str, Decimal]:
+        """
+        Calculate pivot points with multiple methods.
+
+        Args:
+            df: OHLCV DataFrame
+            pivot_type: "standard", "fibonacci", "camarilla", "woodie", or "all"
+        """
         if len(df) < 2:
             return {}
 
@@ -844,16 +982,224 @@ class TechnicalAnalysisService:
         high = df['high'].iloc[-2] if len(df) > 1 else df['high'].iloc[-1]
         low = df['low'].iloc[-2] if len(df) > 1 else df['low'].iloc[-1]
         close = df['close'].iloc[-2] if len(df) > 1 else df['close'].iloc[-1]
+        open_price = df['open'].iloc[-1]  # Current open for Woodie
 
-        pivot = (high + low + close) / 3
+        pivots = {}
 
-        return {
-            "PP": Decimal(str(pivot)),
-            "R1": Decimal(str(2 * pivot - low)),
-            "R2": Decimal(str(pivot + (high - low))),
-            "S1": Decimal(str(2 * pivot - high)),
-            "S2": Decimal(str(pivot - (high - low))),
-        }
+        # Standard Pivot Points
+        if pivot_type in ["standard", "all"]:
+            pivot = (high + low + close) / 3
+            pivots["PP"] = Decimal(str(round(pivot, 5)))
+            pivots["R1"] = Decimal(str(round(2 * pivot - low, 5)))
+            pivots["R2"] = Decimal(str(round(pivot + (high - low), 5)))
+            pivots["R3"] = Decimal(str(round(high + 2 * (pivot - low), 5)))
+            pivots["S1"] = Decimal(str(round(2 * pivot - high, 5)))
+            pivots["S2"] = Decimal(str(round(pivot - (high - low), 5)))
+            pivots["S3"] = Decimal(str(round(low - 2 * (high - pivot), 5)))
+
+        # Fibonacci Pivot Points
+        if pivot_type in ["fibonacci", "all"]:
+            pivot = (high + low + close) / 3
+            range_hl = high - low
+            pivots["Fib_PP"] = Decimal(str(round(pivot, 5)))
+            pivots["Fib_R1"] = Decimal(str(round(pivot + 0.382 * range_hl, 5)))
+            pivots["Fib_R2"] = Decimal(str(round(pivot + 0.618 * range_hl, 5)))
+            pivots["Fib_R3"] = Decimal(str(round(pivot + 1.000 * range_hl, 5)))
+            pivots["Fib_S1"] = Decimal(str(round(pivot - 0.382 * range_hl, 5)))
+            pivots["Fib_S2"] = Decimal(str(round(pivot - 0.618 * range_hl, 5)))
+            pivots["Fib_S3"] = Decimal(str(round(pivot - 1.000 * range_hl, 5)))
+
+        # Camarilla Pivot Points
+        if pivot_type in ["camarilla", "all"]:
+            range_hl = high - low
+            pivots["Cam_R1"] = Decimal(str(round(close + range_hl * 1.1 / 12, 5)))
+            pivots["Cam_R2"] = Decimal(str(round(close + range_hl * 1.1 / 6, 5)))
+            pivots["Cam_R3"] = Decimal(str(round(close + range_hl * 1.1 / 4, 5)))
+            pivots["Cam_R4"] = Decimal(str(round(close + range_hl * 1.1 / 2, 5)))
+            pivots["Cam_S1"] = Decimal(str(round(close - range_hl * 1.1 / 12, 5)))
+            pivots["Cam_S2"] = Decimal(str(round(close - range_hl * 1.1 / 6, 5)))
+            pivots["Cam_S3"] = Decimal(str(round(close - range_hl * 1.1 / 4, 5)))
+            pivots["Cam_S4"] = Decimal(str(round(close - range_hl * 1.1 / 2, 5)))
+
+        # Woodie Pivot Points
+        if pivot_type in ["woodie", "all"]:
+            pivot = (high + low + 2 * open_price) / 4
+            pivots["Wood_PP"] = Decimal(str(round(pivot, 5)))
+            pivots["Wood_R1"] = Decimal(str(round(2 * pivot - low, 5)))
+            pivots["Wood_R2"] = Decimal(str(round(pivot + high - low, 5)))
+            pivots["Wood_S1"] = Decimal(str(round(2 * pivot - high, 5)))
+            pivots["Wood_S2"] = Decimal(str(round(pivot - high + low, 5)))
+
+        return pivots
+
+    def _calculate_fibonacci(self, df: pd.DataFrame, lookback: int = 50) -> FibonacciLevels | None:
+        """
+        Calculate Fibonacci retracement and extension levels.
+
+        Finds the most significant swing high and swing low in the lookback period
+        and calculates Fibonacci levels based on them.
+        """
+        if len(df) < lookback:
+            lookback = len(df)
+        if lookback < 10:
+            return None
+
+        recent_df = df.iloc[-lookback:]
+        high_prices = recent_df['high'].values
+        low_prices = recent_df['low'].values
+        close_prices = recent_df['close'].values
+
+        # Find swing high and swing low
+        swing_high_idx = np.argmax(high_prices)
+        swing_low_idx = np.argmin(low_prices)
+
+        swing_high = Decimal(str(high_prices[swing_high_idx]))
+        swing_low = Decimal(str(low_prices[swing_low_idx]))
+
+        # Determine direction (which came first)
+        if swing_low_idx < swing_high_idx:
+            # Low came first = bullish move (retracing down)
+            direction = "bullish"
+        else:
+            # High came first = bearish move (retracing up)
+            direction = "bearish"
+
+        # Calculate range
+        range_size = swing_high - swing_low
+
+        if range_size == 0:
+            return None
+
+        # Calculate Fibonacci levels
+        fib = FibonacciLevels(
+            swing_high=swing_high,
+            swing_low=swing_low,
+            direction=direction,
+        )
+
+        if direction == "bullish":
+            # Retracements from high going down
+            fib.retracement_236 = swing_high - range_size * Decimal("0.236")
+            fib.retracement_382 = swing_high - range_size * Decimal("0.382")
+            fib.retracement_500 = swing_high - range_size * Decimal("0.500")
+            fib.retracement_618 = swing_high - range_size * Decimal("0.618")
+            fib.retracement_786 = swing_high - range_size * Decimal("0.786")
+
+            # Extensions above swing high
+            fib.extension_1000 = swing_high
+            fib.extension_1272 = swing_high + range_size * Decimal("0.272")
+            fib.extension_1618 = swing_high + range_size * Decimal("0.618")
+            fib.extension_2000 = swing_high + range_size
+            fib.extension_2618 = swing_high + range_size * Decimal("1.618")
+        else:
+            # Retracements from low going up
+            fib.retracement_236 = swing_low + range_size * Decimal("0.236")
+            fib.retracement_382 = swing_low + range_size * Decimal("0.382")
+            fib.retracement_500 = swing_low + range_size * Decimal("0.500")
+            fib.retracement_618 = swing_low + range_size * Decimal("0.618")
+            fib.retracement_786 = swing_low + range_size * Decimal("0.786")
+
+            # Extensions below swing low
+            fib.extension_1000 = swing_low
+            fib.extension_1272 = swing_low - range_size * Decimal("0.272")
+            fib.extension_1618 = swing_low - range_size * Decimal("0.618")
+            fib.extension_2000 = swing_low - range_size
+            fib.extension_2618 = swing_low - range_size * Decimal("1.618")
+
+        return fib
+
+    def _detect_smart_money_traps(self, df: pd.DataFrame, current_price: Decimal) -> list[SmartMoneyTrap]:
+        """
+        Detect Smart Money Traps (Inducement/Stop Hunts).
+
+        These are price movements designed to trigger retail stop losses
+        before reversing in the intended direction.
+
+        Types:
+        - Bull Trap: False breakout above resistance
+        - Bear Trap: False breakdown below support
+        - Stop Hunt High: Quick spike to take out buy stops
+        - Stop Hunt Low: Quick spike to take out sell stops
+        """
+        traps = []
+
+        if len(df) < 20:
+            return traps
+
+        high_prices = df['high'].values
+        low_prices = df['low'].values
+        close_prices = df['close'].values
+        open_prices = df['open'].values
+        timestamps = df.index.tolist()
+
+        # Calculate ATR for significance threshold
+        atr = (df['high'] - df['low']).rolling(14).mean().values
+
+        # Look for traps in recent candles
+        for i in range(-10, -1):
+            try:
+                if pd.isna(atr[i]) or atr[i] == 0:
+                    continue
+
+                # Bull Trap: Spike above recent highs then closes back below
+                recent_high = np.max(high_prices[i-10:i])
+                if high_prices[i] > recent_high and close_prices[i] < recent_high:
+                    # Check if next candle confirms (closes even lower)
+                    if i + 1 < len(close_prices) and close_prices[i+1] < close_prices[i]:
+                        trap_strength = min(100, 50 + (high_prices[i] - recent_high) / atr[i] * 20)
+                        traps.append(SmartMoneyTrap(
+                            trap_type="bull_trap",
+                            price_level=Decimal(str(high_prices[i])),
+                            description=f"Falsa rottura sopra {recent_high:.5f}, prezzo rientrato. Possibile trappola per i compratori.",
+                            strength=float(trap_strength),
+                            timestamp=timestamps[i] if isinstance(timestamps[i], datetime) else datetime.now(),
+                        ))
+
+                # Bear Trap: Spike below recent lows then closes back above
+                recent_low = np.min(low_prices[i-10:i])
+                if low_prices[i] < recent_low and close_prices[i] > recent_low:
+                    # Check if next candle confirms (closes even higher)
+                    if i + 1 < len(close_prices) and close_prices[i+1] > close_prices[i]:
+                        trap_strength = min(100, 50 + (recent_low - low_prices[i]) / atr[i] * 20)
+                        traps.append(SmartMoneyTrap(
+                            trap_type="bear_trap",
+                            price_level=Decimal(str(low_prices[i])),
+                            description=f"Falsa rottura sotto {recent_low:.5f}, prezzo rientrato. Possibile trappola per i venditori.",
+                            strength=float(trap_strength),
+                            timestamp=timestamps[i] if isinstance(timestamps[i], datetime) else datetime.now(),
+                        ))
+
+                # Stop Hunt High: Long upper wick (>60% of candle) after ranging
+                candle_range = high_prices[i] - low_prices[i]
+                if candle_range > 0:
+                    upper_wick = high_prices[i] - max(open_prices[i], close_prices[i])
+                    lower_wick = min(open_prices[i], close_prices[i]) - low_prices[i]
+
+                    if upper_wick > 0.6 * candle_range and upper_wick > atr[i] * 0.5:
+                        traps.append(SmartMoneyTrap(
+                            trap_type="stop_hunt_high",
+                            price_level=Decimal(str(high_prices[i])),
+                            description=f"Caccia agli stop sopra {high_prices[i]:.5f}. Lunga ombra superiore indica rigetto.",
+                            strength=float(min(100, 40 + upper_wick / candle_range * 60)),
+                            timestamp=timestamps[i] if isinstance(timestamps[i], datetime) else datetime.now(),
+                        ))
+
+                    # Stop Hunt Low: Long lower wick (>60% of candle)
+                    if lower_wick > 0.6 * candle_range and lower_wick > atr[i] * 0.5:
+                        traps.append(SmartMoneyTrap(
+                            trap_type="stop_hunt_low",
+                            price_level=Decimal(str(low_prices[i])),
+                            description=f"Caccia agli stop sotto {low_prices[i]:.5f}. Lunga ombra inferiore indica rigetto.",
+                            strength=float(min(100, 40 + lower_wick / candle_range * 60)),
+                            timestamp=timestamps[i] if isinstance(timestamps[i], datetime) else datetime.now(),
+                        ))
+
+            except (IndexError, ValueError):
+                continue
+
+        # Keep only the most significant traps (top 5 by strength)
+        traps.sort(key=lambda x: x.strength, reverse=True)
+        return traps[:5]
 
     def _determine_bias(self, smc: SMCAnalysis, current_price: Decimal) -> str:
         """Determine institutional bias based on SMC."""
@@ -885,7 +1231,7 @@ class TechnicalAnalysisService:
             return "bearish"
         return "neutral"
 
-    def _check_retail_trap(self, smc: SMCAnalysis, df: pd.DataFrame, current_price: Decimal) -> Optional[str]:
+    def _check_retail_trap(self, smc: SMCAnalysis, df: pd.DataFrame, current_price: Decimal) -> str | None:
         """Check for potential retail traps."""
         # Check if price is near liquidity that could be swept
         for lp in smc.liquidity_pools:
@@ -904,7 +1250,7 @@ class TechnicalAnalysisService:
         self,
         market_data: MarketData,
         include_mtf: bool = False,
-        mtf_data: Optional[Dict[str, MarketData]] = None,
+        mtf_data: dict[str, MarketData] | None = None,
     ) -> FullAnalysis:
         """
         Perform complete technical analysis.
@@ -956,7 +1302,7 @@ class TechnicalAnalysisService:
             mtf_bias=mtf_bias,
         )
 
-    def _detect_candle_patterns(self, df: pd.DataFrame) -> List[str]:
+    def _detect_candle_patterns(self, df: pd.DataFrame) -> list[str]:
         """Detect common candlestick patterns."""
         patterns = []
 
@@ -1017,7 +1363,7 @@ class TechnicalAnalysisService:
 
 
 # Singleton
-_ta_service: Optional[TechnicalAnalysisService] = None
+_ta_service: TechnicalAnalysisService | None = None
 
 
 def get_technical_analysis_service() -> TechnicalAnalysisService:

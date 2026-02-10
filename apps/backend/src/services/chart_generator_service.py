@@ -10,27 +10,26 @@ This service generates professional trading charts with:
 Each AI model can request specific indicators for their analysis.
 """
 
-import io
 import base64
-from typing import List, Dict, Any, Optional, Tuple
+import io
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from decimal import Decimal
-import asyncio
-
-import numpy as np
-import pandas as pd
+from datetime import datetime
+from typing import Any
 
 # Chart generation with matplotlib
 import matplotlib
+import pandas as pd
+
 matplotlib.use('Agg')  # Non-interactive backend
-import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
-from mplfinance.original_flavor import candlestick_ohlc
 
 from src.services.market_data_service import MarketDataService, get_market_data_service
-from src.services.technical_analysis_service import TechnicalAnalysisService, get_technical_analysis_service
+from src.services.technical_analysis_service import (
+    TechnicalAnalysisService,
+    get_technical_analysis_service,
+)
 
 
 @dataclass
@@ -38,7 +37,7 @@ class IndicatorConfig:
     """Configuration for an indicator to display on chart."""
     name: str
     enabled: bool = True
-    params: Dict[str, Any] = field(default_factory=dict)
+    params: dict[str, Any] = field(default_factory=dict)
     color: str = "#00ff88"
     panel: str = "main"  # "main", "rsi", "macd", "volume"
 
@@ -54,7 +53,7 @@ class ChartConfig:
     theme: str = "dark"
 
     # Indicators to display
-    indicators: List[IndicatorConfig] = field(default_factory=list)
+    indicators: list[IndicatorConfig] = field(default_factory=list)
 
     # SMC annotations
     show_order_blocks: bool = True
@@ -148,8 +147,8 @@ class ChartGeneratorService:
     async def generate_chart(
         self,
         config: ChartConfig,
-        indicator_preset: Optional[str] = None,
-    ) -> Tuple[str, Dict[str, Any]]:
+        indicator_preset: str | None = None,
+    ) -> tuple[str, dict[str, Any]]:
         """
         Generate a chart image with specified configuration.
 
@@ -275,7 +274,7 @@ class ChartGeneratorService:
         symbol: str,
         timeframe: str = "15m",
         bars: int = 100,
-    ) -> Dict[str, Tuple[str, Dict[str, Any]]]:
+    ) -> dict[str, tuple[str, dict[str, Any]]]:
         """
         Generate multiple chart images with different indicator sets.
         This allows each AI to see charts with different perspectives.
@@ -305,7 +304,7 @@ class ChartGeneratorService:
 
         return results
 
-    def _get_panel_layout(self, config: ChartConfig) -> List[str]:
+    def _get_panel_layout(self, config: ChartConfig) -> list[str]:
         """Determine which panels are needed based on indicators."""
         panels = ["main"]
 
@@ -318,7 +317,7 @@ class ChartGeneratorService:
 
         return panels
 
-    def _candles_to_dataframe(self, candles: List) -> pd.DataFrame:
+    def _candles_to_dataframe(self, candles: list) -> pd.DataFrame:
         """Convert candles to DataFrame."""
         data = []
         for c in candles:
@@ -336,7 +335,7 @@ class ChartGeneratorService:
         df.set_index('timestamp', inplace=True)
         return df
 
-    def _draw_candlesticks(self, ax, df: pd.DataFrame, theme: Dict):
+    def _draw_candlesticks(self, ax, df: pd.DataFrame, theme: dict):
         """Draw candlestick chart."""
         for idx, (timestamp, row) in enumerate(df.iterrows()):
             color = theme["candle_up"] if row['close'] >= row['open'] else theme["candle_down"]
@@ -361,11 +360,11 @@ class ChartGeneratorService:
 
     def _draw_indicators(
         self,
-        panel_axes: Dict[str, plt.Axes],
+        panel_axes: dict[str, plt.Axes],
         df: pd.DataFrame,
-        indicators: List[IndicatorConfig],
+        indicators: list[IndicatorConfig],
         analysis,
-        theme: Dict
+        theme: dict
     ):
         """Draw indicators on appropriate panels."""
         main_ax = panel_axes.get("main")
@@ -443,7 +442,7 @@ class ChartGeneratorService:
             main_ax.legend(loc='upper left', facecolor=theme["bg"],
                           edgecolor=theme["grid"], labelcolor=theme["text"])
 
-    def _draw_smc(self, ax, df: pd.DataFrame, smc_analysis, config: ChartConfig, theme: Dict):
+    def _draw_smc(self, ax, df: pd.DataFrame, smc_analysis, config: ChartConfig, theme: dict):
         """Draw Smart Money Concepts on the chart."""
         if not smc_analysis:
             return
@@ -515,7 +514,7 @@ class ChartGeneratorService:
                     fontsize=7
                 )
 
-    def _draw_structure(self, ax, df: pd.DataFrame, smc_analysis, theme: Dict):
+    def _draw_structure(self, ax, df: pd.DataFrame, smc_analysis, theme: dict):
         """Draw market structure (BOS/CHoCH) on the chart."""
         if not smc_analysis or not hasattr(smc_analysis, 'structure'):
             return
@@ -535,7 +534,7 @@ class ChartGeneratorService:
                            xy=(len(df) - 10, sl.price),
                            color='#3498db', fontsize=8)
 
-    def _draw_sr_levels(self, ax, df: pd.DataFrame, smc_analysis, theme: Dict):
+    def _draw_sr_levels(self, ax, df: pd.DataFrame, smc_analysis, theme: dict):
         """Draw support and resistance levels."""
         if not smc_analysis:
             return
@@ -556,7 +555,7 @@ class ChartGeneratorService:
                         label='Supply Zone'
                     )
 
-    def _draw_volume(self, ax, df: pd.DataFrame, theme: Dict):
+    def _draw_volume(self, ax, df: pd.DataFrame, theme: dict):
         """Draw volume bars."""
         colors = [
             theme["volume_up"] if df['close'].iloc[i] >= df['open'].iloc[i]
@@ -569,7 +568,7 @@ class ChartGeneratorService:
 
 
 # Singleton instance
-_chart_generator: Optional[ChartGeneratorService] = None
+_chart_generator: ChartGeneratorService | None = None
 
 
 def get_chart_generator_service() -> ChartGeneratorService:
