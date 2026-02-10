@@ -95,9 +95,9 @@ export default function LoginPage() {
               <Image
                 src="/images/logo.png"
                 alt="Prometheus AI Trading"
-                width={280}
-                height={84}
-                className="h-20 w-auto mix-blend-screen"
+                width={380}
+                height={114}
+                className="h-28 w-auto mix-blend-screen"
                 priority
               />
               <div className="absolute -inset-4 bg-primary-500/15 rounded-2xl blur-xl animate-pulse -z-10" />

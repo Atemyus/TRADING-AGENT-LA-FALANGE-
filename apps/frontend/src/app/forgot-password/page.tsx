@@ -68,9 +68,9 @@ export default function ForgotPasswordPage() {
             <Image
               src="/images/logo.png"
               alt="Prometheus AI Trading"
-              width={150}
-              height={45}
-              className="h-8 w-auto hidden sm:block mix-blend-screen"
+              width={200}
+              height={60}
+              className="h-12 w-auto hidden sm:block mix-blend-screen"
             />
           </Link>
           <MusicPlayer size="md" showLabel={false} />
@@ -91,9 +91,9 @@ export default function ForgotPasswordPage() {
               <Image
                 src="/images/logo.png"
                 alt="Prometheus AI Trading"
-                width={240}
-                height={72}
-                className="h-16 w-auto mix-blend-screen"
+                width={340}
+                height={102}
+                className="h-24 w-auto mix-blend-screen"
                 priority
               />
               <div className="absolute -inset-4 bg-imperial-500/15 rounded-2xl blur-xl animate-pulse -z-10" />

@@ -33,9 +33,9 @@ export default function LandingPage() {
               <Image
                 src="/images/logo.png"
                 alt="Prometheus AI Trading"
-                width={200}
-                height={60}
-                className="h-12 w-auto mix-blend-screen"
+                width={280}
+                height={84}
+                className="h-16 w-auto mix-blend-screen"
                 priority
               />
               <div className="absolute -inset-2 bg-primary-500/10 rounded-lg blur-xl opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -184,9 +184,9 @@ export default function LandingPage() {
               <Image
                 src="/images/logo.png"
                 alt="Prometheus AI Trading"
-                width={500}
-                height={150}
-                className="w-auto h-32 md:h-40 mix-blend-screen"
+                width={700}
+                height={210}
+                className="w-auto h-48 md:h-56 mix-blend-screen"
                 priority
               />
               <div className="absolute inset-0 bg-primary-500/20 blur-3xl rounded-full animate-pulse -z-10" />
@@ -492,9 +492,9 @@ export default function LandingPage() {
             <Image
               src="/images/logo.png"
               alt="Prometheus AI Trading"
-              width={150}
-              height={45}
-              className="h-8 w-auto mix-blend-screen"
+              width={200}
+              height={60}
+              className="h-12 w-auto mix-blend-screen"
             />
             <span className="text-dark-500">·</span>
             <span className="text-dark-500 text-sm">v2.0.0</span>
