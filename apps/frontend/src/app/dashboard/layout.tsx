@@ -2,6 +2,7 @@
 
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard,
@@ -136,20 +137,17 @@ export default function DashboardLayout({
         <div className="relative z-10 flex flex-col h-full">
           {/* Logo */}
           <div className="p-6 border-b border-dark-800/50">
-            <Link href="/" className="flex items-center gap-4 group">
+            <Link href="/" className="block group">
               <div className="relative">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-imperial-600 flex items-center justify-center group-hover:scale-105 transition-transform">
-                  <Flame className="w-6 h-6 text-dark-950 animate-pulse" />
-                </div>
-                <div className="absolute -inset-1 bg-gradient-to-br from-primary-500/20 to-imperial-500/20 rounded-xl blur-md opacity-0 group-hover:opacity-100 transition-opacity" />
-                {/* Fire glow effect */}
-                <div className="absolute -inset-2 bg-primary-500/10 rounded-xl blur-lg animate-pulse-slow" />
-              </div>
-              <div>
-                <h1 className="font-imperial text-xl font-bold text-gradient-gold tracking-wide">
-                  PROMETHEUS
-                </h1>
-                <p className="text-xs text-dark-500 tracking-wider">BRINGER OF FIRE</p>
+                <Image
+                  src="/images/logo.svg"
+                  alt="Prometheus AI Trading"
+                  width={220}
+                  height={66}
+                  className="h-14 w-auto group-hover:scale-105 transition-transform"
+                  priority
+                />
+                <div className="absolute -inset-2 bg-primary-500/10 rounded-xl blur-lg opacity-0 group-hover:opacity-100 transition-opacity" />
               </div>
             </Link>
           </div>

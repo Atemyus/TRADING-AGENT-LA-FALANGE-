@@ -2,6 +2,7 @@
 
 import { motion } from 'framer-motion'
 import Link from 'next/link'
+import Image from 'next/image'
 import {
   Flame,
   Cpu,
@@ -27,16 +28,18 @@ export default function LandingPage() {
       <header className="fixed top-0 left-0 right-0 z-50 px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-3 group">
+          <Link href="/" className="flex items-center group">
             <div className="relative">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary-500 to-imperial-600 flex items-center justify-center">
-                <Flame className="w-5 h-5 text-dark-950" />
-              </div>
-              <div className="absolute -inset-1 bg-primary-500/20 rounded-lg blur-md opacity-0 group-hover:opacity-100 transition-opacity" />
+              <Image
+                src="/images/logo.svg"
+                alt="Prometheus AI Trading"
+                width={200}
+                height={60}
+                className="h-12 w-auto"
+                priority
+              />
+              <div className="absolute -inset-2 bg-primary-500/10 rounded-lg blur-xl opacity-0 group-hover:opacity-100 transition-opacity" />
             </div>
-            <span className="font-imperial text-xl font-bold text-gradient-gold tracking-wide hidden sm:block">
-              PROMETHEUS
-            </span>
           </Link>
 
           {/* Right side - Music & Auth */}
@@ -170,30 +173,27 @@ export default function LandingPage() {
             </span>
           </motion.div>
 
-          {/* Prometheus Fire Icon - with epic glow effect */}
+          {/* Logo Image */}
           <motion.div
             initial={{ opacity: 0, scale: 0.5 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.8, delay: 0.1 }}
-            className="mb-6"
+            className="mb-6 relative"
           >
             <div className="relative inline-block fire-glow">
-              <Flame className="w-24 h-24 text-primary-400 torch-glow" />
-              <div className="absolute inset-0 w-24 h-24 bg-primary-500/40 blur-3xl rounded-full animate-pulse" />
+              <Image
+                src="/images/logo.svg"
+                alt="Prometheus AI Trading"
+                width={500}
+                height={150}
+                className="w-auto h-32 md:h-40"
+                priority
+              />
+              <div className="absolute inset-0 bg-primary-500/20 blur-3xl rounded-full animate-pulse -z-10" />
               {/* Ember particles effect */}
               <div className="absolute -inset-4 ember-particles" />
             </div>
           </motion.div>
-
-          {/* Title */}
-          <motion.h1
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.2 }}
-            className="font-imperial text-7xl md:text-9xl font-bold mb-2 tracking-wider"
-          >
-            <span className="text-gradient-gold text-fire">PROMETHEUS</span>
-          </motion.h1>
 
           {/* Epic Subtitle */}
           <motion.div
@@ -489,8 +489,13 @@ export default function LandingPage() {
       <footer className="py-8 px-4 border-t border-dark-800/50">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <Flame className="w-5 h-5 text-primary-400" />
-            <span className="font-imperial text-lg text-gradient-gold">PROMETHEUS</span>
+            <Image
+              src="/images/logo.svg"
+              alt="Prometheus AI Trading"
+              width={150}
+              height={45}
+              className="h-8 w-auto"
+            />
             <span className="text-dark-500">·</span>
             <span className="text-dark-500 text-sm">v2.0.0</span>
           </div>

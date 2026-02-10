@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
+import Image from 'next/image'
 import {
   Flame,
   Lock,
@@ -140,7 +141,13 @@ export default function ResetPasswordPage() {
             <div className="p-2 rounded-lg bg-dark-800/50 border border-primary-500/20 hover:border-primary-500/40 transition-all">
               <ArrowLeft size={20} className="text-dark-300" />
             </div>
-            <span className="text-dark-400 hidden sm:block">Back to login</span>
+            <Image
+              src="/images/logo.svg"
+              alt="Prometheus AI Trading"
+              width={150}
+              height={45}
+              className="h-8 w-auto hidden sm:block"
+            />
           </Link>
           <MusicPlayer size="md" showLabel={false} />
         </div>

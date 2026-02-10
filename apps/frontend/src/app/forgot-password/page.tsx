@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
+import Image from 'next/image'
 import {
   Flame,
   Mail,
@@ -64,7 +65,13 @@ export default function ForgotPasswordPage() {
             <div className="p-2 rounded-lg bg-dark-800/50 border border-primary-500/20 hover:border-primary-500/40 transition-all">
               <ArrowLeft size={20} className="text-dark-300" />
             </div>
-            <span className="text-dark-400 hidden sm:block">Back to login</span>
+            <Image
+              src="/images/logo.svg"
+              alt="Prometheus AI Trading"
+              width={150}
+              height={45}
+              className="h-8 w-auto hidden sm:block"
+            />
           </Link>
           <MusicPlayer size="md" showLabel={false} />
         </div>
@@ -81,14 +88,19 @@ export default function ForgotPasswordPage() {
           {/* Logo */}
           <div className="text-center mb-8">
             <div className="relative inline-block mb-4">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-imperial-500 to-primary-600 flex items-center justify-center">
-                <Flame className="w-8 h-8 text-white" />
-              </div>
-              <div className="absolute -inset-2 bg-imperial-500/20 rounded-2xl blur-xl animate-pulse" />
+              <Image
+                src="/images/logo.svg"
+                alt="Prometheus AI Trading"
+                width={240}
+                height={72}
+                className="h-16 w-auto"
+                priority
+              />
+              <div className="absolute -inset-4 bg-imperial-500/15 rounded-2xl blur-xl animate-pulse -z-10" />
             </div>
-            <h1 className="font-imperial text-2xl font-bold text-gradient-imperial tracking-wide">
+            <h2 className="font-imperial text-xl font-bold text-gradient-imperial tracking-wide mt-4">
               FORGOT PASSWORD
-            </h1>
+            </h2>
             <p className="text-dark-400 mt-2">
               Enter your email to receive a reset link
             </p>

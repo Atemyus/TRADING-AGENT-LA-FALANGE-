@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import {
   Flame,
@@ -143,14 +144,16 @@ export default function RegisterPage() {
           {/* Logo */}
           <div className="text-center mb-8">
             <div className="relative inline-block mb-4">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-imperial-500 to-primary-600 flex items-center justify-center">
-                <Flame className="w-8 h-8 text-white" />
-              </div>
-              <div className="absolute -inset-2 bg-imperial-500/20 rounded-2xl blur-xl animate-pulse" />
+              <Image
+                src="/images/logo.svg"
+                alt="Prometheus AI Trading"
+                width={280}
+                height={84}
+                className="h-20 w-auto"
+                priority
+              />
+              <div className="absolute -inset-4 bg-imperial-500/15 rounded-2xl blur-xl animate-pulse -z-10" />
             </div>
-            <h1 className="font-imperial text-3xl font-bold text-gradient-imperial tracking-wide">
-              JOIN THE TITANS
-            </h1>
             <p className="text-dark-400 mt-2">Receive the gift of market fire</p>
           </div>
 
