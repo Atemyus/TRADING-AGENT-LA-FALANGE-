@@ -21,6 +21,113 @@ class LicenseStatus(StrEnum):
     PENDING = "pending"
 
 
+class WhopOrderStatus(StrEnum):
+    """Whop order status enum."""
+    PENDING = "pending"
+    COMPLETED = "completed"
+    REFUNDED = "refunded"
+    FAILED = "failed"
+
+
+class WhopProduct(Base):
+    """
+    Whop product mapping to license configuration.
+    Maps Whop product IDs to license settings.
+    """
+    __tablename__ = "whop_products"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+
+    # Whop product identification
+    whop_product_id: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
+    whop_plan_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    # Product info
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    price: Mapped[float] = mapped_column(Float, default=0.0)
+    currency: Mapped[str] = mapped_column(String(10), default="EUR")
+
+    # License configuration for this product
+    license_duration_days: Mapped[int] = mapped_column(Integer, default=30)  # How long the license lasts
+    license_max_uses: Mapped[int] = mapped_column(Integer, default=1)  # Max uses per license
+    license_name_template: Mapped[str] = mapped_column(String(255), default="Whop License - {product_name}")
+
+    # Status
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    # Relationships
+    orders: Mapped[list["WhopOrder"]] = relationship("WhopOrder", back_populates="product")
+
+    def __repr__(self) -> str:
+        return f"<WhopProduct(id={self.id}, name={self.name}, whop_id={self.whop_product_id})>"
+
+
+class WhopOrder(Base):
+    """
+    Whop order record.
+    Stores all orders received from Whop webhooks.
+    """
+    __tablename__ = "whop_orders"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+
+    # Whop transaction identification
+    whop_order_id: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
+    whop_membership_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    whop_user_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    # Customer info
+    customer_email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    customer_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    customer_username: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Product info
+    product_id: Mapped[int | None] = mapped_column(ForeignKey("whop_products.id"), nullable=True)
+    product: Mapped["WhopProduct | None"] = relationship("WhopProduct", back_populates="orders")
+    product_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    plan_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Payment info
+    amount: Mapped[float] = mapped_column(Float, default=0.0)
+    currency: Mapped[str] = mapped_column(String(10), default="EUR")
+    payment_method: Mapped[str | None] = mapped_column(String(50), nullable=True)  # card, paypal, crypto, etc.
+
+    # Status
+    status: Mapped[str] = mapped_column(String(20), default=WhopOrderStatus.PENDING)
+
+    # License created from this order
+    license_id: Mapped[int | None] = mapped_column(ForeignKey("licenses.id"), nullable=True)
+    license: Mapped["License | None"] = relationship("License")
+    license_created: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Raw webhook data (for debugging)
+    raw_webhook_data: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Timestamps
+    whop_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    # Notes from admin
+    admin_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    def __repr__(self) -> str:
+        return f"<WhopOrder(id={self.id}, whop_id={self.whop_order_id}, email={self.customer_email}, status={self.status})>"
+
+
 class License(Base):
     """
     License model for access control.

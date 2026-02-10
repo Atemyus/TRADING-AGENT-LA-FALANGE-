@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from src.api.v1.routes.auth import get_current_user
 from src.core.database import get_db
-from src.core.models import License, LicenseStatus, User
+from src.core.models import License, LicenseStatus, User, WhopOrder, WhopOrderStatus, WhopProduct
 
 router = APIRouter()
 
@@ -660,3 +660,523 @@ async def delete_user(
     await db.flush()
 
     return MessageResponse(message="User deleted successfully")
+
+
+# ============================================================================
+# Whop Order Models
+# ============================================================================
+
+class WhopOrderResponse(BaseModel):
+    """Whop order response."""
+    id: int
+    whop_order_id: str
+    whop_membership_id: str | None
+    whop_user_id: str | None
+    customer_email: str
+    customer_name: str | None
+    customer_username: str | None
+    product_name: str
+    plan_name: str | None
+    amount: float
+    currency: str
+    payment_method: str | None
+    status: str
+    license_id: int | None
+    license_key: str | None = None
+    license_created: bool
+    whop_created_at: datetime | None
+    created_at: datetime
+    admin_notes: str | None
+
+    class Config:
+        from_attributes = True
+
+
+class WhopProductResponse(BaseModel):
+    """Whop product response."""
+    id: int
+    whop_product_id: str
+    whop_plan_id: str | None
+    name: str
+    description: str | None
+    price: float
+    currency: str
+    license_duration_days: int
+    license_max_uses: int
+    license_name_template: str
+    is_active: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class WhopProductCreate(BaseModel):
+    """Create Whop product mapping."""
+    whop_product_id: str = Field(..., min_length=1, max_length=100)
+    whop_plan_id: str | None = None
+    name: str = Field(..., min_length=1, max_length=255)
+    description: str | None = None
+    price: float = Field(0.0, ge=0)
+    currency: str = Field("EUR", max_length=10)
+    license_duration_days: int = Field(30, ge=1, le=3650)
+    license_max_uses: int = Field(1, ge=1, le=1000)
+    license_name_template: str = Field("Whop License - {product_name}", max_length=255)
+
+
+class WhopProductUpdate(BaseModel):
+    """Update Whop product mapping."""
+    name: str | None = None
+    description: str | None = None
+    price: float | None = None
+    currency: str | None = None
+    license_duration_days: int | None = Field(None, ge=1, le=3650)
+    license_max_uses: int | None = Field(None, ge=1, le=1000)
+    license_name_template: str | None = None
+    is_active: bool | None = None
+
+
+class WhopStatsResponse(BaseModel):
+    """Whop statistics response."""
+    total_orders: int
+    completed_orders: int
+    pending_orders: int
+    refunded_orders: int
+    failed_orders: int
+    total_revenue: float
+    total_products: int
+    licenses_created: int
+
+
+class WhopOrderUpdateNotes(BaseModel):
+    """Update order notes."""
+    admin_notes: str | None
+
+
+# ============================================================================
+# Whop Order Routes
+# ============================================================================
+
+@router.get("/whop/stats", response_model=WhopStatsResponse)
+async def get_whop_stats(
+    admin: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get Whop order statistics."""
+    total_orders = await db.scalar(select(func.count(WhopOrder.id)))
+    completed_orders = await db.scalar(
+        select(func.count(WhopOrder.id)).where(WhopOrder.status == WhopOrderStatus.COMPLETED)
+    )
+    pending_orders = await db.scalar(
+        select(func.count(WhopOrder.id)).where(WhopOrder.status == WhopOrderStatus.PENDING)
+    )
+    refunded_orders = await db.scalar(
+        select(func.count(WhopOrder.id)).where(WhopOrder.status == WhopOrderStatus.REFUNDED)
+    )
+    failed_orders = await db.scalar(
+        select(func.count(WhopOrder.id)).where(WhopOrder.status == WhopOrderStatus.FAILED)
+    )
+
+    # Calculate total revenue from completed orders
+    total_revenue_result = await db.scalar(
+        select(func.sum(WhopOrder.amount)).where(WhopOrder.status == WhopOrderStatus.COMPLETED)
+    )
+    total_revenue = total_revenue_result or 0.0
+
+    total_products = await db.scalar(select(func.count(WhopProduct.id)))
+    licenses_created = await db.scalar(
+        select(func.count(WhopOrder.id)).where(WhopOrder.license_created == True)  # noqa: E712
+    )
+
+    return WhopStatsResponse(
+        total_orders=total_orders or 0,
+        completed_orders=completed_orders or 0,
+        pending_orders=pending_orders or 0,
+        refunded_orders=refunded_orders or 0,
+        failed_orders=failed_orders or 0,
+        total_revenue=total_revenue,
+        total_products=total_products or 0,
+        licenses_created=licenses_created or 0,
+    )
+
+
+@router.get("/whop/orders", response_model=list[WhopOrderResponse])
+async def list_whop_orders(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    status_filter: WhopOrderStatus | None = None,
+    admin: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """List all Whop orders."""
+    query = select(WhopOrder).options(selectinload(WhopOrder.license))
+
+    if status_filter:
+        query = query.where(WhopOrder.status == status_filter)
+
+    query = query.order_by(WhopOrder.created_at.desc()).offset(skip).limit(limit)
+    result = await db.execute(query)
+    orders = result.scalars().all()
+
+    return [
+        WhopOrderResponse(
+            id=order.id,
+            whop_order_id=order.whop_order_id,
+            whop_membership_id=order.whop_membership_id,
+            whop_user_id=order.whop_user_id,
+            customer_email=order.customer_email,
+            customer_name=order.customer_name,
+            customer_username=order.customer_username,
+            product_name=order.product_name,
+            plan_name=order.plan_name,
+            amount=order.amount,
+            currency=order.currency,
+            payment_method=order.payment_method,
+            status=order.status,
+            license_id=order.license_id,
+            license_key=order.license.key if order.license else None,
+            license_created=order.license_created,
+            whop_created_at=order.whop_created_at,
+            created_at=order.created_at,
+            admin_notes=order.admin_notes,
+        )
+        for order in orders
+    ]
+
+
+@router.get("/whop/orders/{order_id}", response_model=WhopOrderResponse)
+async def get_whop_order(
+    order_id: int,
+    admin: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get a specific Whop order."""
+    result = await db.execute(
+        select(WhopOrder)
+        .options(selectinload(WhopOrder.license))
+        .where(WhopOrder.id == order_id)
+    )
+    order = result.scalar_one_or_none()
+
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
+        )
+
+    return WhopOrderResponse(
+        id=order.id,
+        whop_order_id=order.whop_order_id,
+        whop_membership_id=order.whop_membership_id,
+        whop_user_id=order.whop_user_id,
+        customer_email=order.customer_email,
+        customer_name=order.customer_name,
+        customer_username=order.customer_username,
+        product_name=order.product_name,
+        plan_name=order.plan_name,
+        amount=order.amount,
+        currency=order.currency,
+        payment_method=order.payment_method,
+        status=order.status,
+        license_id=order.license_id,
+        license_key=order.license.key if order.license else None,
+        license_created=order.license_created,
+        whop_created_at=order.whop_created_at,
+        created_at=order.created_at,
+        admin_notes=order.admin_notes,
+    )
+
+
+@router.put("/whop/orders/{order_id}/notes", response_model=WhopOrderResponse)
+async def update_whop_order_notes(
+    order_id: int,
+    data: WhopOrderUpdateNotes,
+    admin: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Update admin notes for an order."""
+    result = await db.execute(
+        select(WhopOrder)
+        .options(selectinload(WhopOrder.license))
+        .where(WhopOrder.id == order_id)
+    )
+    order = result.scalar_one_or_none()
+
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
+        )
+
+    order.admin_notes = data.admin_notes
+    await db.flush()
+    await db.refresh(order)
+
+    return WhopOrderResponse(
+        id=order.id,
+        whop_order_id=order.whop_order_id,
+        whop_membership_id=order.whop_membership_id,
+        whop_user_id=order.whop_user_id,
+        customer_email=order.customer_email,
+        customer_name=order.customer_name,
+        customer_username=order.customer_username,
+        product_name=order.product_name,
+        plan_name=order.plan_name,
+        amount=order.amount,
+        currency=order.currency,
+        payment_method=order.payment_method,
+        status=order.status,
+        license_id=order.license_id,
+        license_key=order.license.key if order.license else None,
+        license_created=order.license_created,
+        whop_created_at=order.whop_created_at,
+        created_at=order.created_at,
+        admin_notes=order.admin_notes,
+    )
+
+
+@router.post("/whop/orders/{order_id}/create-license", response_model=WhopOrderResponse)
+async def create_license_for_order(
+    order_id: int,
+    admin: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Manually create a license for an order (if not already created)."""
+    result = await db.execute(
+        select(WhopOrder)
+        .options(selectinload(WhopOrder.license), selectinload(WhopOrder.product))
+        .where(WhopOrder.id == order_id)
+    )
+    order = result.scalar_one_or_none()
+
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
+        )
+
+    if order.license_created:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="License already created for this order"
+        )
+
+    # Create license
+    product = order.product
+    if product:
+        duration_days = product.license_duration_days
+        max_uses = product.license_max_uses
+        name = product.license_name_template.format(
+            product_name=product.name,
+            customer_email=order.customer_email,
+            order_id=order.whop_order_id
+        )
+    else:
+        duration_days = 30
+        max_uses = 1
+        name = f"Whop License - {order.product_name}"
+
+    license = License(
+        key=License.generate_key(prefix="WHOP"),
+        name=name,
+        description=f"Manually created for Whop order {order.whop_order_id}",
+        max_uses=max_uses,
+        expires_at=datetime.now(UTC) + timedelta(days=duration_days),
+        status=LicenseStatus.ACTIVE,
+        is_active=True,
+        created_by=admin.id,
+    )
+
+    db.add(license)
+    await db.flush()
+    await db.refresh(license)
+
+    order.license_id = license.id
+    order.license_created = True
+    await db.flush()
+    await db.refresh(order)
+
+    return WhopOrderResponse(
+        id=order.id,
+        whop_order_id=order.whop_order_id,
+        whop_membership_id=order.whop_membership_id,
+        whop_user_id=order.whop_user_id,
+        customer_email=order.customer_email,
+        customer_name=order.customer_name,
+        customer_username=order.customer_username,
+        product_name=order.product_name,
+        plan_name=order.plan_name,
+        amount=order.amount,
+        currency=order.currency,
+        payment_method=order.payment_method,
+        status=order.status,
+        license_id=order.license_id,
+        license_key=license.key,
+        license_created=order.license_created,
+        whop_created_at=order.whop_created_at,
+        created_at=order.created_at,
+        admin_notes=order.admin_notes,
+    )
+
+
+# ============================================================================
+# Whop Product Routes
+# ============================================================================
+
+@router.get("/whop/products", response_model=list[WhopProductResponse])
+async def list_whop_products(
+    admin: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """List all Whop product mappings."""
+    result = await db.execute(
+        select(WhopProduct).order_by(WhopProduct.created_at.desc())
+    )
+    products = result.scalars().all()
+
+    return [
+        WhopProductResponse(
+            id=p.id,
+            whop_product_id=p.whop_product_id,
+            whop_plan_id=p.whop_plan_id,
+            name=p.name,
+            description=p.description,
+            price=p.price,
+            currency=p.currency,
+            license_duration_days=p.license_duration_days,
+            license_max_uses=p.license_max_uses,
+            license_name_template=p.license_name_template,
+            is_active=p.is_active,
+            created_at=p.created_at,
+        )
+        for p in products
+    ]
+
+
+@router.post("/whop/products", response_model=WhopProductResponse, status_code=status.HTTP_201_CREATED)
+async def create_whop_product(
+    data: WhopProductCreate,
+    admin: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Create a new Whop product mapping."""
+    # Check if product ID already exists
+    existing = await db.execute(
+        select(WhopProduct).where(WhopProduct.whop_product_id == data.whop_product_id)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Product with this Whop ID already exists"
+        )
+
+    product = WhopProduct(
+        whop_product_id=data.whop_product_id,
+        whop_plan_id=data.whop_plan_id,
+        name=data.name,
+        description=data.description,
+        price=data.price,
+        currency=data.currency,
+        license_duration_days=data.license_duration_days,
+        license_max_uses=data.license_max_uses,
+        license_name_template=data.license_name_template,
+        is_active=True,
+    )
+
+    db.add(product)
+    await db.flush()
+    await db.refresh(product)
+
+    return WhopProductResponse(
+        id=product.id,
+        whop_product_id=product.whop_product_id,
+        whop_plan_id=product.whop_plan_id,
+        name=product.name,
+        description=product.description,
+        price=product.price,
+        currency=product.currency,
+        license_duration_days=product.license_duration_days,
+        license_max_uses=product.license_max_uses,
+        license_name_template=product.license_name_template,
+        is_active=product.is_active,
+        created_at=product.created_at,
+    )
+
+
+@router.put("/whop/products/{product_id}", response_model=WhopProductResponse)
+async def update_whop_product(
+    product_id: int,
+    data: WhopProductUpdate,
+    admin: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Update a Whop product mapping."""
+    result = await db.execute(
+        select(WhopProduct).where(WhopProduct.id == product_id)
+    )
+    product = result.scalar_one_or_none()
+
+    if not product:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product not found"
+        )
+
+    if data.name is not None:
+        product.name = data.name
+    if data.description is not None:
+        product.description = data.description
+    if data.price is not None:
+        product.price = data.price
+    if data.currency is not None:
+        product.currency = data.currency
+    if data.license_duration_days is not None:
+        product.license_duration_days = data.license_duration_days
+    if data.license_max_uses is not None:
+        product.license_max_uses = data.license_max_uses
+    if data.license_name_template is not None:
+        product.license_name_template = data.license_name_template
+    if data.is_active is not None:
+        product.is_active = data.is_active
+
+    await db.flush()
+    await db.refresh(product)
+
+    return WhopProductResponse(
+        id=product.id,
+        whop_product_id=product.whop_product_id,
+        whop_plan_id=product.whop_plan_id,
+        name=product.name,
+        description=product.description,
+        price=product.price,
+        currency=product.currency,
+        license_duration_days=product.license_duration_days,
+        license_max_uses=product.license_max_uses,
+        license_name_template=product.license_name_template,
+        is_active=product.is_active,
+        created_at=product.created_at,
+    )
+
+
+@router.delete("/whop/products/{product_id}", response_model=MessageResponse)
+async def delete_whop_product(
+    product_id: int,
+    admin: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete a Whop product mapping."""
+    result = await db.execute(
+        select(WhopProduct).where(WhopProduct.id == product_id)
+    )
+    product = result.scalar_one_or_none()
+
+    if not product:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product not found"
+        )
+
+    await db.delete(product)
+    await db.flush()
+
+    return MessageResponse(message="Product deleted successfully")

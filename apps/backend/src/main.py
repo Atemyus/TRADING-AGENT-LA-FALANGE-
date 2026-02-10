@@ -20,6 +20,7 @@ from src.api.v1.routes import (
     positions,
     trading,
     websocket,
+    whop,
 )
 from src.api.v1.routes import settings as settings_routes
 from src.core.config import settings
@@ -97,6 +98,7 @@ app.include_router(settings_routes.router, prefix="/api/v1/settings", tags=["Set
 app.include_router(market.router, prefix="/api/v1/market", tags=["Market Data"])
 app.include_router(brokers.router, prefix="/api/v1", tags=["Broker Accounts"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
+app.include_router(whop.router, prefix="/api/v1/whop", tags=["Whop Integration"])
 
 
 @app.get("/health")
