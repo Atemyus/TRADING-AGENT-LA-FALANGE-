@@ -17,6 +17,7 @@ import {
   TrendingDown,
   Flame,
   ChevronRight,
+  Shield,
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { analyticsApi } from '@/lib/api'
@@ -180,6 +181,27 @@ export default function DashboardLayout({
                 )
               })}
             </ul>
+
+            {/* Admin Section - Only for superusers */}
+            {user?.is_superuser && (
+              <>
+                <p className="px-4 py-2 mt-6 text-xs font-semibold text-imperial-400 uppercase tracking-widest">
+                  Admin
+                </p>
+                <ul className="space-y-1 mt-2">
+                  <li>
+                    <Link
+                      href="/admin"
+                      className="nav-link relative group"
+                    >
+                      <Shield size={20} className="text-imperial-400" />
+                      <span className="font-medium flex-1 text-imperial-300">Admin Panel</span>
+                      <ChevronRight size={16} className="text-imperial-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </Link>
+                  </li>
+                </ul>
+              </>
+            )}
           </nav>
 
           {/* Status indicator */}

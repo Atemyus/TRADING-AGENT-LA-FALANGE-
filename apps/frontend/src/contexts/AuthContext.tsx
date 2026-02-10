@@ -13,6 +13,7 @@ interface User {
   avatar_url: string | null
   is_active: boolean
   is_verified: boolean
+  is_superuser: boolean
   created_at: string
 }
 
@@ -31,6 +32,7 @@ interface RegisterData {
   username: string
   password: string
   full_name?: string
+  license_key: string
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -176,6 +178,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         username: registerData.username,
         password: registerData.password,
         full_name: registerData.full_name || null,
+        license_key: registerData.license_key,
       }),
     })
 

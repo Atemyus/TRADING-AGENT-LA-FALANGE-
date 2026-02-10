@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.v1.routes import (
+    admin,
     ai,
     analytics,
     auth,
@@ -95,6 +96,7 @@ app.include_router(chart_analysis.router, prefix="/api/v1", tags=["Chart Analysi
 app.include_router(settings_routes.router, prefix="/api/v1/settings", tags=["Settings"])
 app.include_router(market.router, prefix="/api/v1/market", tags=["Market Data"])
 app.include_router(brokers.router, prefix="/api/v1", tags=["Broker Accounts"])
+app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
 
 
 @app.get("/health")
