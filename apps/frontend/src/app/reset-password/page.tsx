@@ -143,7 +143,7 @@ function ResetPasswordContent() {
               <ArrowLeft size={20} className="text-dark-300" />
             </div>
             <Image
-              src="/images/logo.svg"
+              src="/images/logo.png"
               alt="Prometheus AI Trading"
               width={150}
               height={45}

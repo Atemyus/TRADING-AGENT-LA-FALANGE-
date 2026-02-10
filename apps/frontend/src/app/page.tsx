@@ -31,7 +31,7 @@ export default function LandingPage() {
           <Link href="/" className="flex items-center group">
             <div className="relative">
               <Image
-                src="/images/logo.svg"
+                src="/images/logo.png"
                 alt="Prometheus AI Trading"
                 width={200}
                 height={60}
@@ -182,7 +182,7 @@ export default function LandingPage() {
           >
             <div className="relative inline-block fire-glow">
               <Image
-                src="/images/logo.svg"
+                src="/images/logo.png"
                 alt="Prometheus AI Trading"
                 width={500}
                 height={150}
@@ -490,7 +490,7 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <Image
-              src="/images/logo.svg"
+              src="/images/logo.png"
               alt="Prometheus AI Trading"
               width={150}
               height={45}

@@ -66,7 +66,7 @@ export default function ForgotPasswordPage() {
               <ArrowLeft size={20} className="text-dark-300" />
             </div>
             <Image
-              src="/images/logo.svg"
+              src="/images/logo.png"
               alt="Prometheus AI Trading"
               width={150}
               height={45}
@@ -89,7 +89,7 @@ export default function ForgotPasswordPage() {
           <div className="text-center mb-8">
             <div className="relative inline-block mb-4">
               <Image
-                src="/images/logo.svg"
+                src="/images/logo.png"
                 alt="Prometheus AI Trading"
                 width={240}
                 height={72}

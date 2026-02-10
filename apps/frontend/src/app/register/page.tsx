@@ -145,7 +145,7 @@ export default function RegisterPage() {
           <div className="text-center mb-8">
             <div className="relative inline-block mb-4">
               <Image
-                src="/images/logo.svg"
+                src="/images/logo.png"
                 alt="Prometheus AI Trading"
                 width={280}
                 height={84}

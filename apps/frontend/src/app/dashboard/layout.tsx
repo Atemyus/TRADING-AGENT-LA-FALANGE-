@@ -140,7 +140,7 @@ export default function DashboardLayout({
             <Link href="/" className="block group">
               <div className="relative">
                 <Image
-                  src="/images/logo.svg"
+                  src="/images/logo.png"
                   alt="Prometheus AI Trading"
                   width={220}
                   height={66}
