@@ -248,16 +248,35 @@ class AutoTrader:
         # Forex standard: 1 pip = 0.0001
         return 0.0001
 
-    def _calculate_pip_info(self, symbol: str, current_price: float, sl_distance: float) -> tuple:
+    def _calculate_pip_info(self, symbol: str, current_price: float, sl_distance: float, broker_spec: Optional[Dict[str, Any]] = None) -> tuple:
         """
         Calcola la distanza SL in pips e il valore di 1 pip per 1 lotto standard.
         Restituisce (sl_pips, pip_value_per_lot).
+
+        Se broker_spec è fornito (da broker.get_symbol_specification()), usa i valori reali
+        del broker per calcolare il pip value corretto.
         """
         sym = symbol.upper().replace("/", "").replace("_", "")
         pip_size = self._get_pip_size(symbol)
         sl_pips = sl_distance / pip_size
 
-        # Valore pip per 1 lotto standard
+        # Se abbiamo le specifiche dal broker, usiamo tickValue per calcolo preciso
+        if broker_spec:
+            tick_value = broker_spec.get("tickValue")
+            tick_size = broker_spec.get("tickSize")
+            contract_size = broker_spec.get("contractSize")
+
+            if tick_value and tick_size and tick_size > 0:
+                # pip_value = tickValue * (pipSize / tickSize)
+                # Questo ci dà il valore di 1 pip per 1 lotto
+                pip_value = tick_value * (pip_size / tick_size)
+                self._log_analysis(symbol, "info", f"📊 Broker spec: tickValue={tick_value}, tickSize={tick_size}, contractSize={contract_size} → pip_value=${pip_value:.2f}/lotto")
+                return (sl_pips, pip_value)
+
+        # Fallback: valori stimati per tipo di strumento
+        # NOTA: I valori per gli indici CFD dipendono MOLTO dal broker
+        # La maggior parte dei broker MT usa contract size elevati (10-100)
+
         if "XAU" in sym or "GOLD" in sym:
             # Oro: 1 lotto = 100 oz, 1 pip ($0.10) × 100 oz = $10 per pip/lotto
             pip_value = 10.0
@@ -268,25 +287,37 @@ class AutoTrader:
             # Petrolio: 1 lotto = 1000 barili, 1 pip ($0.01) × 1000 = $10 per pip/lotto
             pip_value = 10.0
         elif any(idx in sym for idx in ["US30", "US500", "NAS100", "DE40", "UK100", "JP225", "FR40", "EU50"]):
-            # Indici: 1 lotto = 1 contratto, 1 punto = $1 (varia, usiamo approssimazione)
+            # INDICI CFD: La maggior parte dei broker MetaTrader usa contract size alti
+            # Tipicamente: 1 punto = $1-$10 per 0.01 lotti → $100-$1000 per 1 lotto
+            # Usiamo valori conservativi basati su broker comuni (IC Markets, Pepperstone, etc.)
             if "US30" in sym:
-                pip_value = 1.0  # $1 per punto per contratto
-            elif "US500" in sym or "NAS100" in sym:
-                pip_value = 1.0
-            elif "DE40" in sym or "EU50" in sym or "FR40" in sym:
-                pip_value = 1.0  # €1 per punto ≈ $1
+                # DJ30: tipicamente $5-$10 per punto per 1 lotto
+                pip_value = 5.0
+            elif "NAS100" in sym:
+                # NAS100: tipicamente $1-$2 per punto per 0.1 lotti → $10-$20 per 1 lotto
+                pip_value = 10.0
+            elif "US500" in sym:
+                # S&P500: tipicamente $10-$50 per punto per 1 lotto
+                pip_value = 10.0
+            elif "DE40" in sym:
+                # DAX: tipicamente €25 per punto per 1 lotto
+                pip_value = 25.0
+            elif "EU50" in sym or "FR40" in sym:
+                pip_value = 10.0
             elif "UK100" in sym:
-                pip_value = 1.0  # £1 per punto ≈ $1.25
+                # FTSE: tipicamente £10 per punto per 1 lotto
+                pip_value = 12.0
+            elif "JP225" in sym:
+                # Nikkei: tipicamente ¥100 per punto → ~$0.7 per 1 lotto
+                pip_value = 5.0
             else:
-                pip_value = 1.0
+                pip_value = 10.0
         elif "JPY" in sym:
             # JPY pairs: 1 pip (0.01) × 100,000 unità / prezzo ≈ $6.7 (varia)
             pip_value = (0.01 * 100000) / current_price if current_price > 0 else 6.7
         else:
             # Forex standard (EUR/USD, GBP/USD, ecc.):
             # 1 pip (0.0001) × 100,000 unità = $10 per pip/lotto (coppie con USD come quote)
-            # Per coppie come EUR/GBP dove USD non è quote, sarebbe diverso
-            # Ma la maggior parte dei broker converte automaticamente in USD
             pip_value = 10.0
 
         return (sl_pips, pip_value)
@@ -902,8 +933,18 @@ class AutoTrader:
                 self._log_analysis(symbol, "error", f"❌ Trade annullato: distanza SL = 0 (prezzo={current_price}, SL={stop_loss})")
                 return
 
+            # Recupera specifiche simbolo dal broker per calcolo pip value preciso
+            broker_spec = None
+            try:
+                if hasattr(self.broker, 'get_symbol_specification'):
+                    broker_spec = await self.broker.get_symbol_specification(symbol)
+                    if broker_spec:
+                        self._log_analysis(symbol, "info", f"📋 Specifiche broker: contractSize={broker_spec.get('contractSize')}, tickValue={broker_spec.get('tickValue')}, tickSize={broker_spec.get('tickSize')}")
+            except Exception as spec_err:
+                self._log_analysis(symbol, "info", f"⚠️ Specifiche broker non disponibili: {spec_err}")
+
             # Calcola distanza SL in pips e valore pip per 1 lotto standard
-            sl_pips, pip_value = self._calculate_pip_info(symbol, current_price, sl_distance)
+            sl_pips, pip_value = self._calculate_pip_info(symbol, current_price, sl_distance, broker_spec)
 
             self._log_analysis(symbol, "info", f"📐 SL distanza: {sl_pips:.1f} pips | Valore pip/lotto: ${pip_value:.2f} | Rischio max: ${risk_amount:.2f}")
 
@@ -939,6 +980,14 @@ class AutoTrader:
                 self._log_analysis(symbol, "info", f"✅ SL/TP ricalcolati — SL: {stop_loss} ({sl_pips:.1f} pips) | TP: {take_profit} | Size: {lot_size} lotti")
             else:
                 lot_size = max(MIN_LOT, lot_size)
+
+            # ====== CONTROLLO SICUREZZA: Limita lot size massima ======
+            # Se il pip_value calcolato è sbagliato (es. tickValue non disponibile dal broker),
+            # la size potrebbe essere assurdamente alta. Limitiamo per sicurezza.
+            MAX_LOT_SIZE = 5.0  # Max 5 lotti per trade (sicurezza)
+            if lot_size > MAX_LOT_SIZE:
+                self._log_analysis(symbol, "error", f"⚠️ Size calcolata ({lot_size}) troppo alta! Limitata a {MAX_LOT_SIZE} lotti (possibile errore pip_value)")
+                lot_size = MAX_LOT_SIZE
 
             # Calcolo rischio effettivo
             actual_risk = lot_size * sl_pips * pip_value
