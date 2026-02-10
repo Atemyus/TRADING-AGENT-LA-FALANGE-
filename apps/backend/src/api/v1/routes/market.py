@@ -447,6 +447,88 @@ async def get_full_analysis(
         raise HTTPException(status_code=500, detail=f"Failed to perform analysis: {str(e)}")
 
 
+@router.get("/debug/streaming-status")
+async def get_streaming_status():
+    """
+    Debug endpoint to check price streaming status.
+    Shows broker connection, data source, and cached prices.
+    """
+    from src.services.price_streaming_service import get_price_streaming_service
+    from src.engines.trading.broker_factory import BrokerFactory
+    import os
+
+    try:
+        # Get price streaming service status
+        price_service = await get_price_streaming_service()
+
+        # Get broker info
+        broker_type = os.environ.get("BROKER_TYPE", "none")
+        broker_configured = BrokerFactory.is_configured()
+
+        # Get cached prices
+        cached_prices = price_service.get_all_prices()
+        price_summary = {
+            symbol: {
+                "bid": str(tick.bid),
+                "ask": str(tick.ask),
+                "mid": str(tick.mid),
+            }
+            for symbol, tick in list(cached_prices.items())[:10]  # First 10 only
+        }
+
+        return {
+            "broker_type": broker_type,
+            "broker_configured": broker_configured,
+            "broker_connected": price_service.is_broker_connected,
+            "data_source": price_service.data_source,
+            "simulation_disabled": price_service.simulation_disabled,
+            "streaming_active": price_service._streaming,
+            "subscribed_symbols_count": len(price_service._subscribers),
+            "subscribed_symbols": list(price_service._subscribers.keys())[:20],
+            "available_symbols": list(price_service.available_symbols)[:20],
+            "failed_symbols": list(price_service.failed_symbols)[:20],
+            "cached_prices_count": len(cached_prices),
+            "sample_prices": price_summary,
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "broker_type": os.environ.get("BROKER_TYPE", "none"),
+        }
+
+
+@router.get("/available-symbols")
+async def get_available_symbols():
+    """
+    Get symbols that are available from the broker (real prices).
+    Also returns symbols that failed (simulated).
+    """
+    from src.services.price_streaming_service import get_price_streaming_service
+
+    try:
+        price_service = await get_price_streaming_service()
+
+        available = list(price_service.available_symbols)
+        failed = list(price_service.failed_symbols)
+
+        return {
+            "broker_connected": price_service.is_broker_connected,
+            "data_source": price_service.data_source,
+            "simulation_disabled": price_service.simulation_disabled,
+            "available_symbols": sorted(available),
+            "available_count": len(available),
+            "failed_symbols": sorted(failed),
+            "failed_count": len(failed),
+            "total_requested": len(available) + len(failed),
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "available_symbols": [],
+            "failed_symbols": [],
+        }
+
+
 def _get_symbol_category(symbol: str) -> str:
     """Get category for a symbol."""
     if symbol.endswith("_USD") and len(symbol) == 7:

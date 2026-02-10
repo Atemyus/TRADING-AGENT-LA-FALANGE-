@@ -49,6 +49,7 @@ class BrokerSettings(BaseModel):
 
 class AIProviderSettings(BaseModel):
     aiml_api_key: Optional[str] = None
+    nvidia_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None
     anthropic_api_key: Optional[str] = None
     google_api_key: Optional[str] = None
@@ -171,6 +172,8 @@ def apply_settings_to_env(settings: AllSettings) -> None:
     # AI settings
     if ai.aiml_api_key:
         os.environ["AIML_API_KEY"] = ai.aiml_api_key
+    if ai.nvidia_api_key:
+        os.environ["NVIDIA_API_KEY"] = ai.nvidia_api_key
     if ai.openai_api_key:
         os.environ["OPENAI_API_KEY"] = ai.openai_api_key
     if ai.anthropic_api_key:
@@ -237,6 +240,8 @@ async def get_settings(db: AsyncSession = Depends(get_db)):
         response["broker"]["alpaca_secret_key"] = mask_key(response["broker"]["alpaca_secret_key"])
     if response["ai"]["aiml_api_key"]:
         response["ai"]["aiml_api_key"] = mask_key(response["ai"]["aiml_api_key"])
+    if response["ai"]["nvidia_api_key"]:
+        response["ai"]["nvidia_api_key"] = mask_key(response["ai"]["nvidia_api_key"])
     if response["ai"]["openai_api_key"]:
         response["ai"]["openai_api_key"] = mask_key(response["ai"]["openai_api_key"])
     if response["ai"]["anthropic_api_key"]:
@@ -282,6 +287,9 @@ async def update_all_settings(
     # Preserve masked AI keys
     new_settings.ai.aiml_api_key = preserve_if_masked(
         new_settings.ai.aiml_api_key, existing.ai.aiml_api_key
+    )
+    new_settings.ai.nvidia_api_key = preserve_if_masked(
+        new_settings.ai.nvidia_api_key, existing.ai.nvidia_api_key
     )
     new_settings.ai.openai_api_key = preserve_if_masked(
         new_settings.ai.openai_api_key, existing.ai.openai_api_key
@@ -346,6 +354,7 @@ async def update_ai_settings(
     existing_ai = settings.ai
 
     ai.aiml_api_key = preserve_if_masked(ai.aiml_api_key, existing_ai.aiml_api_key)
+    ai.nvidia_api_key = preserve_if_masked(ai.nvidia_api_key, existing_ai.nvidia_api_key)
     ai.openai_api_key = preserve_if_masked(ai.openai_api_key, existing_ai.openai_api_key)
     ai.anthropic_api_key = preserve_if_masked(ai.anthropic_api_key, existing_ai.anthropic_api_key)
     ai.google_api_key = preserve_if_masked(ai.google_api_key, existing_ai.google_api_key)

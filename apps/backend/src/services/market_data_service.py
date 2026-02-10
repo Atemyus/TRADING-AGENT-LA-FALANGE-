@@ -145,10 +145,21 @@ class MarketDataService:
         self._cache: Dict[str, Tuple[MarketData, datetime]] = {}
         self._cache_ttl = timedelta(seconds=30)  # Cache for 30 seconds
 
+    def _normalize_symbol(self, symbol: str) -> str:
+        """Normalize symbol to internal underscore format (EUR/USD -> EUR_USD)."""
+        normalized = symbol.replace("/", "_")
+        return normalized
+
     def _get_yahoo_symbol(self, symbol: str) -> str:
         """Convert internal symbol to Yahoo Finance format."""
+        normalized = self._normalize_symbol(symbol)
+        if normalized in SYMBOL_MAPPINGS:
+            return SYMBOL_MAPPINGS[normalized]["yahoo"]
         if symbol in SYMBOL_MAPPINGS:
             return SYMBOL_MAPPINGS[symbol]["yahoo"]
+        # Try common forex pattern: EUR/USD -> EURUSD=X
+        if "/" in symbol:
+            return symbol.replace("/", "") + "=X"
         return symbol
 
     def _get_cache_key(self, symbol: str, timeframe: str) -> str:
@@ -197,13 +208,29 @@ class MarketDataService:
                 print(f"Twelve Data fetch failed: {e}")
 
         if data is None:
-            # Fallback to Yahoo Finance
-            try:
-                data = await self._fetch_yahoo(symbol, timeframe, bars)
-            except Exception as e:
-                print(f"Yahoo Finance fetch failed: {e}")
-                # Return empty data with static price
-                data = self._get_fallback_data(symbol, timeframe)
+            # Fallback to Yahoo Finance - con retry per 429 rate limit
+            yahoo_sym = self._get_yahoo_symbol(symbol)
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    if attempt > 0:
+                        wait_time = 2 ** attempt  # 2s, 4s
+                        print(f"[MarketData] Retry {attempt+1}/{max_retries} per {symbol} dopo {wait_time}s...")
+                        await asyncio.sleep(wait_time)
+                    print(f"[MarketData] Fetching {symbol} from Yahoo Finance (yahoo_symbol={yahoo_sym}, timeframe={timeframe})")
+                    data = await self._fetch_yahoo(symbol, timeframe, bars)
+                    if data and data.candles:
+                        print(f"[MarketData] Got {len(data.candles)} candles for {symbol} from Yahoo")
+                    else:
+                        print(f"[MarketData] Yahoo returned no candles for {symbol}")
+                    break  # Successo, esci dal retry loop
+                except Exception as e:
+                    error_msg = str(e)
+                    print(f"[MarketData] Yahoo Finance fetch failed for {symbol} (attempt {attempt+1}): {e}")
+                    if "429" in error_msg and attempt < max_retries - 1:
+                        continue  # Ritenta
+                    # Ultimo tentativo fallito o errore non-429
+                    data = self._get_fallback_data(symbol, timeframe)
 
         # Cache the result
         self._cache[cache_key] = (data, datetime.utcnow())
@@ -304,7 +331,8 @@ class MarketDataService:
         if not self.twelve_data_api_key:
             raise ValueError("Twelve Data API key not configured")
 
-        twelve_symbol = SYMBOL_MAPPINGS.get(symbol, {}).get("twelve", symbol)
+        normalized = self._normalize_symbol(symbol)
+        twelve_symbol = SYMBOL_MAPPINGS.get(normalized, SYMBOL_MAPPINGS.get(symbol, {})).get("twelve", symbol)
 
         url = "https://api.twelvedata.com/time_series"
         params = {
@@ -381,7 +409,8 @@ class MarketDataService:
             "ETH_USD": Decimal("2650"),
         }
 
-        price = fallback_prices.get(symbol, Decimal("1.0"))
+        normalized = self._normalize_symbol(symbol)
+        price = fallback_prices.get(normalized, fallback_prices.get(symbol, Decimal("1.0")))
 
         return MarketData(
             symbol=symbol,

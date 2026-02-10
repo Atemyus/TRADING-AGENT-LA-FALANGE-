@@ -121,15 +121,15 @@ class OrderRequest:
 class OrderResult:
     """Result of an order execution."""
     order_id: str
-    client_order_id: Optional[str]
-    symbol: str
-    side: OrderSide
-    order_type: OrderType
-    status: OrderStatus
-    size: Decimal
-    filled_size: Decimal
-    price: Optional[Decimal]
-    average_fill_price: Optional[Decimal]
+    client_order_id: Optional[str] = None
+    symbol: str = ""
+    side: OrderSide = OrderSide.BUY
+    order_type: OrderType = OrderType.MARKET
+    status: OrderStatus = OrderStatus.PENDING
+    size: Decimal = Decimal("0")
+    filled_size: Decimal = Decimal("0")
+    price: Optional[Decimal] = None
+    average_fill_price: Optional[Decimal] = None
     commission: Decimal = Decimal("0")
     created_at: datetime = field(default_factory=datetime.utcnow)
     filled_at: Optional[datetime] = None

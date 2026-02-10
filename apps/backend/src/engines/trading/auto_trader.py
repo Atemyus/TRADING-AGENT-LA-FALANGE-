@@ -11,7 +11,7 @@ This bot:
 """
 
 import asyncio
-from typing import Optional, List, Dict, Any, Callable
+from typing import Optional, List, Dict, Any, Callable, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
@@ -41,6 +41,13 @@ except ImportError:
 from src.engines.trading.broker_factory import BrokerFactory
 from src.engines.trading.base_broker import BaseBroker, OrderRequest, OrderType, OrderSide
 from src.core.config import settings
+from src.services.economic_calendar_service import (
+    EconomicCalendarService,
+    NewsFilterConfig,
+    get_economic_calendar_service,
+    EconomicEvent,
+    NewsImpact,
+)
 
 
 class BotStatus(str, Enum):
@@ -90,14 +97,16 @@ class BotConfig:
     analysis_mode: AnalysisMode = AnalysisMode.PREMIUM
     analysis_interval_seconds: int = 300  # 5 minutes
 
-    # Autonomous Analysis - Each AI chooses its own indicators and strategy
-    use_autonomous_analysis: bool = True  # Use chart vision with AI autonomy
-    autonomous_timeframe: str = "15m"     # Timeframe for autonomous analysis
-
-    # TradingView AI Agent - Full browser control
-    use_tradingview_agent: bool = False   # Use real TradingView with browser automation
+    # TradingView AI Agent - UNICO motore di analisi
+    # Usa Playwright per aprire TradingView.com reale e fare screenshot
+    # Ogni AI analizza i grafici reali e dà il suo verdetto
     tradingview_headless: bool = True     # Run browser in headless mode
     tradingview_max_indicators: int = 3   # Max indicators (3=Basic, 5=Essential, 10=Plus, 25=Premium)
+
+    # AI Models - abilita/disabilita singoli modelli
+    enabled_models: List[str] = field(default_factory=lambda: [
+        "chatgpt", "gemini", "grok", "qwen", "llama", "ernie", "kimi", "mistral"
+    ])
 
     # Entry requirements
     min_confidence: float = 70.0  # Minimum consensus confidence to enter
@@ -115,9 +124,33 @@ class BotConfig:
     trading_end_hour: int = 21    # Stop trading at 21 UTC
     trade_on_weekends: bool = False
 
+    # News Filter - Avoid trading during high-impact economic events
+    news_filter_enabled: bool = True
+    news_filter_high_impact: bool = True   # Filter high impact news
+    news_filter_medium_impact: bool = True  # Filter medium impact news
+    news_filter_low_impact: bool = False    # Filter low impact news (usually False)
+    news_minutes_before: int = 30  # Don't trade X minutes before news
+    news_minutes_after: int = 30   # Don't trade X minutes after news
+
     # Notifications
     telegram_enabled: bool = False
     discord_enabled: bool = False
+
+    # Broker credentials (optional - for multi-broker support)
+    # If set, these override environment variables
+    broker_type: Optional[str] = None
+    metaapi_token: Optional[str] = None
+    metaapi_account_id: Optional[str] = None
+
+
+@dataclass
+class AnalysisLogEntry:
+    """Log entry for AI analysis activity."""
+    timestamp: datetime
+    symbol: str
+    log_type: str  # "info", "analysis", "trade", "skip", "error", "news"
+    message: str
+    details: Optional[Dict[str, Any]] = None
 
 
 @dataclass
@@ -132,6 +165,7 @@ class BotState:
     open_positions: List[TradeRecord] = field(default_factory=list)
     trade_history: List[TradeRecord] = field(default_factory=list)
     errors: List[Dict[str, Any]] = field(default_factory=list)
+    analysis_logs: List[AnalysisLogEntry] = field(default_factory=list)  # AI reasoning logs
 
 
 class AutoTrader:
@@ -153,13 +187,140 @@ class AutoTrader:
         self.autonomous_analyst: Optional[AutonomousAnalyst] = None
         self.tradingview_agent: Optional[TradingViewAIAgent] = None
         self.broker: Optional[BaseBroker] = None
+        self.calendar_service: Optional[EconomicCalendarService] = None
         self._task: Optional[asyncio.Task] = None
         self._stop_event = asyncio.Event()
         self._callbacks: List[Callable] = []
+        self._last_news_refresh: Optional[datetime] = None
 
     def configure(self, config: BotConfig):
         """Update bot configuration."""
         self.config = config
+
+    def _log_analysis(self, symbol: str, log_type: str, message: str, details: Optional[Dict[str, Any]] = None):
+        """Add an analysis log entry visible from the frontend."""
+        entry = AnalysisLogEntry(
+            timestamp=datetime.utcnow(),
+            symbol=symbol,
+            log_type=log_type,
+            message=message,
+            details=details,
+        )
+        self.state.analysis_logs.append(entry)
+        # Keep last 500 entries
+        if len(self.state.analysis_logs) > 500:
+            self.state.analysis_logs = self.state.analysis_logs[-500:]
+
+    def _get_price_decimals(self, symbol: str) -> int:
+        """Restituisce il numero di decimali corretto per il prezzo dello strumento."""
+        sym = symbol.upper().replace("/", "").replace("_", "")
+        if "JPY" in sym:
+            return 3  # Es: 153.581
+        if "XAU" in sym or "GOLD" in sym:
+            return 2  # Es: 2650.50
+        if any(idx in sym for idx in ["US30", "US500", "NAS100", "DE40", "UK100", "JP225", "FR40", "EU50"]):
+            return 1  # Es: 42150.5
+        return 5  # Forex standard: Es: 1.08542
+
+    def _round_price(self, symbol: str, price: float) -> float:
+        """Arrotonda il prezzo al numero di decimali corretto per lo strumento."""
+        return round(price, self._get_price_decimals(symbol))
+
+    def _get_pip_size(self, symbol: str) -> float:
+        """Restituisce la dimensione di 1 pip per lo strumento."""
+        sym = symbol.upper().replace("/", "").replace("_", "")
+
+        # JPY pairs: 1 pip = 0.01
+        if "JPY" in sym:
+            return 0.01
+        # Oro: 1 pip = 0.10 ($)
+        if "XAU" in sym or "GOLD" in sym:
+            return 0.10
+        # Argento: 1 pip = 0.01
+        if "XAG" in sym or "SILVER" in sym:
+            return 0.01
+        # Indici: 1 pip = 1.0 punto
+        if any(idx in sym for idx in ["US30", "US500", "NAS100", "DE40", "UK100", "JP225", "FR40", "EU50"]):
+            return 1.0
+        # Petrolio: 1 pip = 0.01
+        if any(oil in sym for oil in ["WTI", "BRENT", "OIL", "USOIL", "UKOIL"]):
+            return 0.01
+        # Forex standard: 1 pip = 0.0001
+        return 0.0001
+
+    def _calculate_pip_info(self, symbol: str, current_price: float, sl_distance: float, broker_spec: Optional[Dict[str, Any]] = None) -> tuple:
+        """
+        Calcola la distanza SL in pips e il valore di 1 pip per 1 lotto standard.
+        Restituisce (sl_pips, pip_value_per_lot).
+
+        Se broker_spec è fornito (da broker.get_symbol_specification()), usa i valori reali
+        del broker per calcolare il pip value corretto.
+        """
+        sym = symbol.upper().replace("/", "").replace("_", "")
+        pip_size = self._get_pip_size(symbol)
+        sl_pips = sl_distance / pip_size
+
+        # Se abbiamo le specifiche dal broker, usiamo tickValue per calcolo preciso
+        if broker_spec:
+            tick_value = broker_spec.get("tickValue")
+            tick_size = broker_spec.get("tickSize")
+            contract_size = broker_spec.get("contractSize")
+
+            if tick_value and tick_size and tick_size > 0:
+                # pip_value = tickValue * (pipSize / tickSize)
+                # Questo ci dà il valore di 1 pip per 1 lotto
+                pip_value = tick_value * (pip_size / tick_size)
+                self._log_analysis(symbol, "info", f"📊 Broker spec: tickValue={tick_value}, tickSize={tick_size}, contractSize={contract_size} → pip_value=${pip_value:.2f}/lotto")
+                return (sl_pips, pip_value)
+
+        # Fallback: valori stimati per tipo di strumento
+        # NOTA: I valori per gli indici CFD dipendono MOLTO dal broker
+        # La maggior parte dei broker MT usa contract size elevati (10-100)
+
+        if "XAU" in sym or "GOLD" in sym:
+            # Oro: 1 lotto = 100 oz, 1 pip ($0.10) × 100 oz = $10 per pip/lotto
+            pip_value = 10.0
+        elif "XAG" in sym or "SILVER" in sym:
+            # Argento: 1 lotto = 5000 oz, 1 pip ($0.01) × 5000 oz = $50 per pip/lotto
+            pip_value = 50.0
+        elif any(oil in sym for oil in ["WTI", "BRENT", "OIL", "USOIL", "UKOIL"]):
+            # Petrolio: 1 lotto = 1000 barili, 1 pip ($0.01) × 1000 = $10 per pip/lotto
+            pip_value = 10.0
+        elif any(idx in sym for idx in ["US30", "US500", "NAS100", "DE40", "UK100", "JP225", "FR40", "EU50"]):
+            # INDICI CFD: La maggior parte dei broker MetaTrader usa contract size alti
+            # Tipicamente: 1 punto = $1-$10 per 0.01 lotti → $100-$1000 per 1 lotto
+            # Usiamo valori conservativi basati su broker comuni (IC Markets, Pepperstone, etc.)
+            if "US30" in sym:
+                # DJ30: tipicamente $5-$10 per punto per 1 lotto
+                pip_value = 5.0
+            elif "NAS100" in sym:
+                # NAS100: tipicamente $1-$2 per punto per 0.1 lotti → $10-$20 per 1 lotto
+                pip_value = 10.0
+            elif "US500" in sym:
+                # S&P500: tipicamente $10-$50 per punto per 1 lotto
+                pip_value = 10.0
+            elif "DE40" in sym:
+                # DAX: tipicamente €25 per punto per 1 lotto
+                pip_value = 25.0
+            elif "EU50" in sym or "FR40" in sym:
+                pip_value = 10.0
+            elif "UK100" in sym:
+                # FTSE: tipicamente £10 per punto per 1 lotto
+                pip_value = 12.0
+            elif "JP225" in sym:
+                # Nikkei: tipicamente ¥100 per punto → ~$0.7 per 1 lotto
+                pip_value = 5.0
+            else:
+                pip_value = 10.0
+        elif "JPY" in sym:
+            # JPY pairs: 1 pip (0.01) × 100,000 unità / prezzo ≈ $6.7 (varia)
+            pip_value = (0.01 * 100000) / current_price if current_price > 0 else 6.7
+        else:
+            # Forex standard (EUR/USD, GBP/USD, ecc.):
+            # 1 pip (0.0001) × 100,000 unità = $10 per pip/lotto (coppie con USD come quote)
+            pip_value = 10.0
+
+        return (sl_pips, pip_value)
 
     def add_callback(self, callback: Callable):
         """Add a callback for trade notifications."""
@@ -175,40 +336,90 @@ class AutoTrader:
         self.state.errors = []
 
         try:
-            # Initialize analyzer (standard multi-timeframe)
+            print("[AutoTrader] Starting bot initialization...")
+
+            # Initialize analyzer (standard multi-timeframe - kept for potential future use)
+            print("[AutoTrader] Initializing multi-timeframe analyzer...")
             self.analyzer = get_multi_timeframe_analyzer()
             await self.analyzer.initialize()
+            print("[AutoTrader] Multi-timeframe analyzer ready")
 
-            # Initialize autonomous analyst (chart vision with AI freedom)
-            if self.config.use_autonomous_analysis:
-                self.autonomous_analyst = get_autonomous_analyst()
-                await self.autonomous_analyst.initialize()
+            # Initialize TradingView Agent - UNICO motore di analisi
+            print("[AutoTrader] Initializing TradingView Agent (Playwright browser)...")
+            self._log_analysis("SYSTEM", "info", "🌐 Avvio TradingView Agent con browser Playwright...")
 
-            # Initialize TradingView agent (full browser control)
-            if self.config.use_tradingview_agent and TRADINGVIEW_AGENT_AVAILABLE:
-                self.tradingview_agent = await get_tradingview_agent(
-                    headless=self.config.tradingview_headless,
-                    max_indicators=self.config.tradingview_max_indicators
-                )
+            if not TRADINGVIEW_AGENT_AVAILABLE:
+                error_msg = "❌ Playwright non disponibile. Installa con: pip install playwright && playwright install chromium"
+                self._log_analysis("SYSTEM", "error", error_msg)
+                print(f"[AutoTrader] FATAL: {error_msg}")
+                raise RuntimeError(error_msg)
+
+            self.tradingview_agent = await get_tradingview_agent(
+                headless=self.config.tradingview_headless,
+                max_indicators=self.config.tradingview_max_indicators
+            )
+            self._log_analysis("SYSTEM", "info", "✅ TradingView Agent pronto - analisi su dati reali TradingView")
+            print("[AutoTrader] TradingView Agent ready")
 
             # Initialize broker
-            self.broker = await BrokerFactory.create_broker()
+            print("[AutoTrader] Initializing broker connection...")
+            # Use config credentials if available (multi-broker support)
+            # Otherwise fall back to environment variables
+            if self.config.metaapi_token and self.config.metaapi_account_id:
+                print(f"[AutoTrader] Using broker credentials from config (account: ...{self.config.metaapi_account_id[-4:] if self.config.metaapi_account_id else 'N/A'})")
+                self.broker = BrokerFactory.create(
+                    broker_type=self.config.broker_type or "metatrader",
+                    access_token=self.config.metaapi_token,
+                    account_id=self.config.metaapi_account_id,
+                )
+            else:
+                print("[AutoTrader] Using broker credentials from environment variables")
+                self.broker = BrokerFactory.create()
             await self.broker.connect()
+            print("[AutoTrader] Broker connected")
+
+            # Initialize economic calendar service (news filter)
+            if self.config.news_filter_enabled:
+                print("[AutoTrader] Initializing news filter...")
+                self.calendar_service = get_economic_calendar_service()
+                self.calendar_service.configure(NewsFilterConfig(
+                    enabled=self.config.news_filter_enabled,
+                    filter_high_impact=self.config.news_filter_high_impact,
+                    filter_medium_impact=self.config.news_filter_medium_impact,
+                    filter_low_impact=self.config.news_filter_low_impact,
+                    minutes_before=self.config.news_minutes_before,
+                    minutes_after=self.config.news_minutes_after,
+                ))
+                try:
+                    await self.calendar_service.fetch_events()
+                    print(f"[AutoTrader] News filter enabled: {self.config.news_minutes_before}min before, {self.config.news_minutes_after}min after")
+                except Exception as news_err:
+                    # Non-critical error - continue without news filter
+                    print(f"[AutoTrader] Warning: Could not fetch news events: {news_err}")
+
+            # Check API key configuration and warn in logs
+            if not settings.AIML_API_KEY:
+                warning_msg = "⚠️ AIML_API_KEY NON CONFIGURATA! Le analisi AI NON faranno chiamate API reali. I crediti API non scaleranno. Configura AIML_API_KEY nelle variabili d'ambiente."
+                print(f"[AutoTrader] {warning_msg}")
+                self._log_analysis("SYSTEM", "error", warning_msg)
+            else:
+                key_preview = settings.AIML_API_KEY[:8] + "..." if len(settings.AIML_API_KEY) > 8 else "***"
+                self._log_analysis("SYSTEM", "info", f"✅ AIML API Key configurata ({key_preview}) - Le chiamate AI saranno reali")
+                print(f"[AutoTrader] AIML API key configured: {key_preview}")
 
             # Start main loop
+            print("[AutoTrader] Starting main trading loop...")
             self._stop_event.clear()
             self._task = asyncio.create_task(self._main_loop())
             self.state.status = BotStatus.RUNNING
 
-            if self.config.use_tradingview_agent and TRADINGVIEW_AGENT_AVAILABLE:
-                analysis_type = "TradingView AI Agent"
-            elif self.config.use_autonomous_analysis:
-                analysis_type = "Autonomous Vision"
-            else:
-                analysis_type = "Standard"
-            await self._notify(f"🤖 Bot started ({analysis_type} Analysis). Monitoring: {', '.join(self.config.symbols)}")
+            await self._notify(f"🤖 Bot started (TradingView AI Agent). Monitoring: {', '.join(self.config.symbols)}")
+            print(f"[AutoTrader] Bot started successfully with TradingView AI Agent")
 
         except Exception as e:
+            import traceback
+            print(f"[AutoTrader] ERROR during start: {str(e)}")
+            print(f"[AutoTrader] Full traceback:\n{traceback.format_exc()}")
             self.state.status = BotStatus.ERROR
             self.state.errors.append({
                 "timestamp": datetime.utcnow().isoformat(),
@@ -252,8 +463,8 @@ class AutoTrader:
                 "min_confidence": self.config.min_confidence,
                 "risk_per_trade": self.config.risk_per_trade_percent,
                 "max_positions": self.config.max_open_positions,
-                "autonomous_analysis": self.config.use_autonomous_analysis,
-                "autonomous_timeframe": self.config.autonomous_timeframe if self.config.use_autonomous_analysis else None,
+                "analysis_engine": "TradingView AI Agent",
+                "enabled_models": self.config.enabled_models,
             },
             "statistics": {
                 "analyses_today": self.state.analyses_today,
@@ -273,6 +484,16 @@ class AutoTrader:
                 for p in self.state.open_positions
             ],
             "recent_errors": self.state.errors[-5:],
+            "analysis_logs": [
+                {
+                    "timestamp": log.timestamp.isoformat(),
+                    "symbol": log.symbol,
+                    "type": log.log_type,
+                    "message": log.message,
+                    "details": log.details,
+                }
+                for log in self.state.analysis_logs[-30:]  # Last 30 entries
+            ],
         }
 
     async def _main_loop(self):
@@ -309,11 +530,69 @@ class AutoTrader:
                 await asyncio.sleep(60)  # Wait before retrying
 
     async def _manage_open_positions(self):
-        """Manage open positions: Break Even, Trailing Stop, Partial TP."""
+        """Manage open positions: sync with broker, Break Even, Trailing Stop."""
+        # ====== SYNC: rimuovi posizioni chiuse dal broker ======
+        try:
+            broker_positions = await self.broker.get_positions()
+            broker_symbols = {p.symbol for p in broker_positions}
+            # Also map symbols without suffix (e.g., EURUSDm -> EURUSD)
+            broker_symbols_clean = set()
+            for s in broker_symbols:
+                broker_symbols_clean.add(s)
+                # Remove common broker suffixes
+                for suffix in ('m', '.a', '.b', '.c', '.i', '.e', '_SB', '.pro', '.raw'):
+                    if s.endswith(suffix):
+                        broker_symbols_clean.add(s[:-len(suffix)])
+
+            closed_trades = []
+            for trade in self.state.open_positions:
+                # Normalize trade symbol for comparison
+                trade_symbol_variants = {trade.symbol}
+                normalized = trade.symbol.replace("_", "").replace("/", "")
+                trade_symbol_variants.add(normalized)
+
+                # Check if any variant exists in broker positions
+                is_still_open = bool(trade_symbol_variants & broker_symbols_clean)
+
+                if not is_still_open:
+                    # Position closed by broker (SL/TP hit or manual close)
+                    trade.status = "closed"
+                    trade.exit_timestamp = datetime.utcnow()
+
+                    # Try to get final P&L from current price
+                    try:
+                        tick = await self.broker.get_current_price(trade.symbol)
+                        exit_price = float(tick.mid)
+                        trade.exit_price = exit_price
+                        if trade.direction == "LONG":
+                            trade.profit_loss = (exit_price - trade.entry_price) * trade.units
+                        else:
+                            trade.profit_loss = (trade.entry_price - exit_price) * trade.units
+                    except Exception:
+                        trade.exit_price = None
+                        trade.profit_loss = None
+
+                    closed_trades.append(trade)
+                    self.state.trade_history.append(trade)
+                    self._log_analysis(trade.symbol, "trade",
+                        f"📕 Posizione CHIUSA (rilevata dal broker) | P&L: {trade.profit_loss or 'N/A'}")
+
+            # Remove closed trades from open_positions
+            if closed_trades:
+                self.state.open_positions = [
+                    t for t in self.state.open_positions if t not in closed_trades
+                ]
+                self._log_analysis("ALL", "info",
+                    f"🔄 Sync broker: {len(closed_trades)} posizioni chiuse rimosse, {len(self.state.open_positions)} ancora aperte")
+
+        except Exception as e:
+            print(f"[AutoTrader] Error syncing positions with broker: {e}")
+
+        # ====== Gestione posizioni aperte: BE, Trailing Stop ======
         for trade in self.state.open_positions:
             try:
-                price = await self.broker.get_price(trade.symbol)
-                current_price = (price["bid"] + price["ask"]) / 2
+                tick = await self.broker.get_current_price(trade.symbol)
+                current_price = float(tick.mid)
 
                 # Check Break Even
                 if trade.break_even_trigger and not trade.is_break_even:
@@ -324,10 +603,11 @@ class AutoTrader:
                         should_move_be = True
 
                     if should_move_be:
-                        # Move SL to entry price
-                        await self.broker.modify_order(
-                            order_id=trade.id,
-                            stop_loss=trade.entry_price
+                        # Move SL to entry price using modify_position
+                        from decimal import Decimal
+                        await self.broker.modify_position(
+                            symbol=trade.symbol,
+                            stop_loss=Decimal(str(trade.entry_price))
                         )
                         trade.stop_loss = trade.entry_price
                         trade.is_break_even = True
@@ -335,8 +615,8 @@ class AutoTrader:
 
                 # Check Trailing Stop
                 if trade.trailing_stop_pips and trade.is_break_even:
-                    pip_value = 0.0001 if "JPY" not in trade.symbol else 0.01
-                    trail_distance = trade.trailing_stop_pips * pip_value
+                    pip_size = self._get_pip_size(trade.symbol)
+                    trail_distance = trade.trailing_stop_pips * pip_size
 
                     new_sl = None
                     if trade.direction == "LONG":
@@ -349,9 +629,10 @@ class AutoTrader:
                             new_sl = potential_sl
 
                     if new_sl:
-                        await self.broker.modify_order(
-                            order_id=trade.id,
-                            stop_loss=new_sl
+                        from decimal import Decimal
+                        await self.broker.modify_position(
+                            symbol=trade.symbol,
+                            stop_loss=Decimal(str(new_sl))
                         )
                         trade.stop_loss = new_sl
                         trade.current_trailing_sl = new_sl
@@ -364,68 +645,121 @@ class AutoTrader:
                     "error": f"Position management failed: {str(e)}"
                 })
 
+    async def _refresh_news_calendar(self):
+        """Refresh economic calendar periodically."""
+        if not self.calendar_service:
+            return
+
+        now = datetime.utcnow()
+        # Refresh every hour
+        if self._last_news_refresh is None or (now - self._last_news_refresh).total_seconds() > 3600:
+            await self.calendar_service.fetch_events()
+            self._last_news_refresh = now
+            print("[AutoTrader] Economic calendar refreshed")
+
+    def _is_news_blocked(self, symbol: str) -> Tuple[bool, Optional[EconomicEvent]]:
+        """
+        Check if trading is blocked due to upcoming/recent news.
+
+        Returns:
+            Tuple of (is_blocked, causing_event)
+        """
+        if not self.config.news_filter_enabled or not self.calendar_service:
+            return False, None
+
+        return self.calendar_service.should_avoid_trading(symbol)
+
+    def _normalize_symbol(self, symbol: str) -> str:
+        """Normalizza simbolo da formato UI (EUR/USD) a formato interno (EUR_USD)."""
+        return symbol.replace("/", "_")
+
     async def _analyze_and_trade(self):
         """Analyze all symbols and execute trades if conditions met."""
         # First manage existing positions (BE, Trailing Stop)
         await self._manage_open_positions()
 
-        for symbol in self.config.symbols:
+        # Refresh news calendar periodically
+        await self._refresh_news_calendar()
+
+        # Normalizza simboli da formato UI (EUR/USD) a formato interno (EUR_USD)
+        # Il formato interno corrisponde alle chiavi di SYMBOL_ALIASES del broker
+        symbols = [self._normalize_symbol(s) for s in self.config.symbols]
+
+        self._log_analysis("ALL", "info", f"Inizio ciclo analisi per {len(symbols)} asset: {', '.join(symbols)}")
+
+        for symbol in symbols:
             try:
                 # Skip if max positions reached
                 if len(self.state.open_positions) >= self.config.max_open_positions:
+                    self._log_analysis(symbol, "skip", f"Max posizioni raggiunte ({self.config.max_open_positions})")
                     continue
 
                 # Skip if already have position in this symbol
                 if any(p.symbol == symbol for p in self.state.open_positions):
+                    self._log_analysis(symbol, "skip", "Posizione già aperta su questo asset")
                     continue
 
-                # Use TradingView AI Agent (full browser control with multi-timeframe)
-                if self.config.use_tradingview_agent and self.tradingview_agent:
-                    # Convert symbol format (EUR/USD -> EURUSD)
-                    tv_symbol = symbol.replace("/", "")
-                    # Get mode as lowercase string (e.g., AnalysisMode.PREMIUM -> "premium")
-                    mode_str = self.config.analysis_mode.value.lower()
+                # NEWS FILTER: Skip if blocked by upcoming/recent news
+                news_blocked, blocking_event = self._is_news_blocked(symbol)
+                if news_blocked and blocking_event:
+                    self._log_analysis(symbol, "news", f"Bloccato per news: {blocking_event.title} ({blocking_event.currency}, {blocking_event.impact.value})")
+                    print(f"[AutoTrader] ⚠️ Skipping {symbol} due to news: {blocking_event.title} ({blocking_event.currency}, {blocking_event.impact.value})")
+                    continue
 
-                    # Run multi-timeframe analysis on TradingView
-                    # Each AI will change timeframes directly on TradingView.com
-                    consensus = await self.tradingview_agent.analyze_with_mode(
-                        symbol=tv_symbol,
-                        mode=mode_str
-                    )
-                    results = consensus.get("all_results", [])
+                self._log_analysis(symbol, "info", f"Avvio analisi AI per {symbol}...")
 
-                    # Check if trade conditions are met (including TF alignment)
-                    if self._should_enter_tradingview_trade(consensus):
-                        await self._execute_tradingview_trade(symbol, consensus, results)
+                # TradingView AI Agent - UNICO motore di analisi
+                tv_symbol = symbol.replace("/", "").replace("_", "")
+                mode_str = self.config.analysis_mode.value.lower()
 
-                # Use Autonomous Analysis (each AI chooses its own indicators/strategy)
-                elif self.config.use_autonomous_analysis and self.autonomous_analyst:
-                    results = await self.autonomous_analyst.analyze_all_models(
-                        symbol=symbol,
-                        timeframe=self.config.autonomous_timeframe
-                    )
-                    consensus = self.autonomous_analyst.calculate_consensus(results)
+                self._log_analysis(symbol, "analysis", f"TradingView Agent: analisi {mode_str} su {tv_symbol}")
 
-                    # Check if trade conditions are met
-                    if self._should_enter_autonomous_trade(consensus):
-                        await self._execute_autonomous_trade(symbol, consensus, results)
+                consensus = await self.tradingview_agent.analyze_with_mode(
+                    symbol=tv_symbol,
+                    mode=mode_str,
+                    enabled_models=self.config.enabled_models
+                )
+                results = consensus.get("all_results", [])
+
+                # Log ogni risultato di ciascun modello AI
+                for r in results:
+                    model_name = getattr(r, 'model_display_name', getattr(r, 'model', 'Unknown'))
+                    direction = getattr(r, 'direction', 'N/A')
+                    confidence = getattr(r, 'confidence', 0)
+                    error = getattr(r, 'error', None)
+                    reasoning = getattr(r, 'reasoning', '')
+                    display_msg = f"[{model_name}] {direction} ({confidence:.0f}%): {error or reasoning}"
+                    log_type = "error" if error else "analysis"
+                    self._log_analysis(symbol, log_type, display_msg, {
+                        "model": model_name,
+                        "direction": direction,
+                        "confidence": confidence,
+                        "error": error,
+                        "reasoning": reasoning,
+                    })
+
+                self._log_analysis(symbol, "analysis", f"Consenso: {consensus.get('direction', 'N/A')} - Confidence: {consensus.get('confidence', 0):.1f}% - Modelli: {consensus.get('models_agree', 0)}/{consensus.get('total_models', 0)}", {
+                    "direction": consensus.get("direction"),
+                    "confidence": consensus.get("confidence", 0),
+                    "models_agree": consensus.get("models_agree", 0),
+                })
+
+                if self._should_enter_tradingview_trade(consensus):
+                    self._log_analysis(symbol, "trade", f"TRADE: {consensus.get('direction')} {symbol} @ confidence {consensus.get('confidence', 0):.1f}%")
+                    await self._execute_tradingview_trade(symbol, consensus, results)
                 else:
-                    # Standard multi-timeframe analysis
-                    result = await self.analyzer.analyze(
-                        symbol=symbol,
-                        mode=self.config.analysis_mode
-                    )
-
-                    # Check if trade conditions are met
-                    if self._should_enter_trade(result):
-                        await self._execute_trade(result)
+                    self._log_analysis(symbol, "skip", f"Condizioni non soddisfatte (min confidence: {self.config.min_confidence}%)")
 
             except Exception as e:
+                self._log_analysis(symbol, "error", f"Errore: {str(e)}")
                 self.state.errors.append({
                     "timestamp": datetime.utcnow().isoformat(),
                     "symbol": symbol,
                     "error": str(e)
                 })
+
+            # Pausa tra i simboli per evitare rate limit Yahoo Finance
+            await asyncio.sleep(2)
 
     def _should_enter_trade(self, result: MultiTimeframeResult) -> bool:
         """Check if analysis result meets trading criteria."""
@@ -476,58 +810,257 @@ class AutoTrader:
     ):
         """Execute a trade based on TradingView AI agent consensus."""
         try:
-            # Get current price
-            price = await self.broker.get_price(symbol)
-            current_price = (price["bid"] + price["ask"]) / 2
+            from decimal import Decimal
+            import traceback
 
-            # Calculate position size
-            account_info = await self.broker.get_account_info()
-            account_balance = account_info.get("balance", 10000)
+            direction = consensus.get("direction", "HOLD")
+            self._log_analysis(symbol, "trade", f"📋 Esecuzione trade {direction} su {symbol}...")
 
-            risk_amount = account_balance * (self.config.risk_per_trade_percent / 100)
-            sl_distance = abs(current_price - consensus["stop_loss"])
+            # Verifica che stop_loss e take_profit siano presenti
+            stop_loss = consensus.get("stop_loss")
+            take_profit = consensus.get("take_profit")
 
-            if sl_distance == 0:
+            if stop_loss is None or take_profit is None:
+                self._log_analysis(symbol, "error", f"❌ Trade annullato: SL={stop_loss}, TP={take_profit} — mancano SL/TP nel consenso")
                 return
 
-            units = risk_amount / sl_distance
-            side = OrderSide.BUY if consensus["direction"] == "LONG" else OrderSide.SELL
+            stop_loss = float(stop_loss)
+            take_profit = float(take_profit)
+
+            # Get current price
+            self._log_analysis(symbol, "info", f"Recupero prezzo corrente per {symbol}...")
+            tick = await self.broker.get_current_price(symbol)
+            current_price = float(tick.mid)
+            self._log_analysis(symbol, "info", f"Prezzo corrente: {current_price}")
+
+            # ====== VALIDAZIONE SL/TP rispetto alla direzione ======
+            MIN_RR_RATIO = 2.0  # Min Risk:Reward ratio (1:2) — TP almeno 2x la distanza SL
+            MAX_RR_RATIO = 3.0  # Max Risk:Reward ratio (1:3) — TP non oltre 3x la distanza SL
+
+            # ====== VALIDAZIONE DISTANZA MASSIMA SL (protezione da valori AI assurdi) ======
+            # Percentuale UNIFORME per TUTTI gli asset - stesso comportamento su tutti i broker
+            # NOTA: 0.5% è ottimale per day trading (SL raggiungibili in sessione)
+            # US30 @ 49000 → 245 pips | US500 @ 6850 → 34 pips | EUR_USD @ 1.08 → 54 pips
+            MAX_SL_PERCENT = 0.5  # Max 0.5% di distanza SL per tutti gli asset (indici, forex, oro, etc.)
+
+            max_sl_distance = current_price * (MAX_SL_PERCENT / 100)
+
+            # Round SL/TP from AI to correct decimals for this instrument
+            _rp = lambda p: self._round_price(symbol, p)
+            stop_loss = _rp(stop_loss)
+            take_profit = _rp(take_profit)
+
+            if direction == "LONG":
+                # LONG: SL deve essere SOTTO il prezzo, TP deve essere SOPRA
+                if stop_loss >= current_price:
+                    self._log_analysis(symbol, "error", f"⚠️ SL ({stop_loss}) >= prezzo ({current_price}) per LONG — SL invertito/invalido, correggo...")
+                    stop_loss = _rp(current_price - max_sl_distance)
+                    self._log_analysis(symbol, "info", f"SL corretto a: {stop_loss} ({MAX_SL_PERCENT}% sotto prezzo)")
+
+                sl_dist = current_price - stop_loss
+
+                # Controllo distanza massima SL (protezione da valori AI assurdi)
+                if sl_dist > max_sl_distance:
+                    old_sl = stop_loss
+                    stop_loss = _rp(current_price - max_sl_distance)
+                    sl_dist = max_sl_distance
+                    self._log_analysis(symbol, "error", f"⚠️ SL troppo lontano ({old_sl}, {((current_price - old_sl) / current_price * 100):.1f}%) → corretto a {stop_loss} ({MAX_SL_PERCENT}%)")
+
+                if take_profit <= current_price:
+                    self._log_analysis(symbol, "error", f"⚠️ TP ({take_profit}) <= prezzo ({current_price}) per LONG — TP invertito/invalido, correggo...")
+                    take_profit = _rp(current_price + (sl_dist * MIN_RR_RATIO))
+                    self._log_analysis(symbol, "info", f"TP corretto a: {take_profit} (R:R 1:{MIN_RR_RATIO})")
+                else:
+                    tp_dist = take_profit - current_price
+                    actual_rr = tp_dist / sl_dist if sl_dist > 0 else 0
+
+                    # Enforce minimum R:R — se TP troppo vicino, spostalo a MIN_RR_RATIO
+                    if actual_rr < MIN_RR_RATIO:
+                        old_tp = take_profit
+                        take_profit = _rp(current_price + (sl_dist * MIN_RR_RATIO))
+                        self._log_analysis(symbol, "info", f"📏 TP troppo vicino ({old_tp}, R:R 1:{actual_rr:.1f}) → spostato a {take_profit} (R:R 1:{MIN_RR_RATIO})")
+
+                    # Cap TP: se il TP è troppo lontano (oltre MAX_RR_RATIO x SL), limitalo
+                    elif actual_rr > MAX_RR_RATIO:
+                        old_tp = take_profit
+                        take_profit = _rp(current_price + (sl_dist * MAX_RR_RATIO))
+                        self._log_analysis(symbol, "info", f"📏 TP troppo lontano ({old_tp}, R:R 1:{actual_rr:.1f}) → cappato a {take_profit} (R:R 1:{MAX_RR_RATIO})")
+
+            elif direction == "SHORT":
+                # SHORT: SL deve essere SOPRA il prezzo, TP deve essere SOTTO
+                if stop_loss <= current_price:
+                    self._log_analysis(symbol, "error", f"⚠️ SL ({stop_loss}) <= prezzo ({current_price}) per SHORT — SL invertito/invalido, correggo...")
+                    stop_loss = _rp(current_price + max_sl_distance)
+                    self._log_analysis(symbol, "info", f"SL corretto a: {stop_loss} ({MAX_SL_PERCENT}% sopra prezzo)")
+
+                sl_dist = stop_loss - current_price
+
+                # Controllo distanza massima SL (protezione da valori AI assurdi)
+                if sl_dist > max_sl_distance:
+                    old_sl = stop_loss
+                    stop_loss = _rp(current_price + max_sl_distance)
+                    sl_dist = max_sl_distance
+                    self._log_analysis(symbol, "error", f"⚠️ SL troppo lontano ({old_sl}, {((old_sl - current_price) / current_price * 100):.1f}%) → corretto a {stop_loss} ({MAX_SL_PERCENT}%)")
+
+                if take_profit >= current_price:
+                    self._log_analysis(symbol, "error", f"⚠️ TP ({take_profit}) >= prezzo ({current_price}) per SHORT — TP invertito/invalido, correggo...")
+                    take_profit = _rp(current_price - (sl_dist * MIN_RR_RATIO))
+                    self._log_analysis(symbol, "info", f"TP corretto a: {take_profit} (R:R 1:{MIN_RR_RATIO})")
+                else:
+                    tp_dist = current_price - take_profit
+                    actual_rr = tp_dist / sl_dist if sl_dist > 0 else 0
+
+                    # Enforce minimum R:R — se TP troppo vicino, spostalo a MIN_RR_RATIO
+                    if actual_rr < MIN_RR_RATIO:
+                        old_tp = take_profit
+                        take_profit = _rp(current_price - (sl_dist * MIN_RR_RATIO))
+                        self._log_analysis(symbol, "info", f"📏 TP troppo vicino ({old_tp}, R:R 1:{actual_rr:.1f}) → spostato a {take_profit} (R:R 1:{MIN_RR_RATIO})")
+
+                    # Cap TP: se il TP è troppo lontano (oltre MAX_RR_RATIO x SL), limitalo
+                    elif actual_rr > MAX_RR_RATIO:
+                        old_tp = take_profit
+                        take_profit = _rp(current_price - (sl_dist * MAX_RR_RATIO))
+                        self._log_analysis(symbol, "info", f"📏 TP troppo lontano ({old_tp}, R:R 1:{actual_rr:.1f}) → cappato a {take_profit} (R:R 1:{MAX_RR_RATIO})")
+
+            # ====== CALCOLO POSIZIONE (basato su valore pip) ======
+            account_info = await self.broker.get_account_info()
+            account_balance = float(account_info.balance)
+
+            risk_amount = account_balance * (self.config.risk_per_trade_percent / 100)
+            sl_distance = abs(current_price - stop_loss)
+
+            if sl_distance == 0:
+                self._log_analysis(symbol, "error", f"❌ Trade annullato: distanza SL = 0 (prezzo={current_price}, SL={stop_loss})")
+                return
+
+            # Recupera specifiche simbolo dal broker per calcolo pip value preciso
+            broker_spec = None
+            try:
+                if hasattr(self.broker, 'get_symbol_specification'):
+                    broker_spec = await self.broker.get_symbol_specification(symbol)
+                    if broker_spec:
+                        self._log_analysis(symbol, "info", f"📋 Specifiche broker: contractSize={broker_spec.get('contractSize')}, tickValue={broker_spec.get('tickValue')}, tickSize={broker_spec.get('tickSize')}")
+            except Exception as spec_err:
+                self._log_analysis(symbol, "info", f"⚠️ Specifiche broker non disponibili: {spec_err}")
+
+            # Calcola distanza SL in pips e valore pip per 1 lotto standard
+            sl_pips, pip_value = self._calculate_pip_info(symbol, current_price, sl_distance, broker_spec)
+
+            self._log_analysis(symbol, "info", f"📐 SL distanza: {sl_pips:.1f} pips | Valore pip/lotto: ${pip_value:.2f} | Rischio max: ${risk_amount:.2f}")
+
+            # Formula: Size = Rischio ($) / (SL pips × Valore pip per 1 lotto)
+            lot_size = risk_amount / (sl_pips * pip_value)
+            lot_size = round(lot_size, 2)
+
+            MIN_LOT = 0.01
+
+            # Se la size calcolata è sotto il minimo, bisogna stringere lo SL
+            if lot_size < MIN_LOT:
+                # SL massimo consentito con 0.01 lotti per non superare il rischio
+                max_sl_pips = risk_amount / (MIN_LOT * pip_value)
+                old_sl_pips = sl_pips
+
+                self._log_analysis(symbol, "info", f"⚠️ Size calcolata ({lot_size}) < minimo (0.01) — riduco SL da {old_sl_pips:.1f} a {max_sl_pips:.1f} pips")
+
+                # Ricalcola SL più stretto
+                pip_size = self._get_pip_size(symbol)
+                new_sl_distance = max_sl_pips * pip_size
+
+                if direction == "LONG":
+                    stop_loss = _rp(current_price - new_sl_distance)
+                    # Ricalcola TP con R:R 1:2
+                    take_profit = _rp(current_price + (new_sl_distance * 2))
+                else:
+                    stop_loss = _rp(current_price + new_sl_distance)
+                    take_profit = _rp(current_price - (new_sl_distance * 2))
+
+                lot_size = MIN_LOT
+                sl_pips = max_sl_pips
+
+                self._log_analysis(symbol, "info", f"✅ SL/TP ricalcolati — SL: {stop_loss} ({sl_pips:.1f} pips) | TP: {take_profit} | Size: {lot_size} lotti")
+            else:
+                lot_size = max(MIN_LOT, lot_size)
+
+            # ====== CONTROLLO SICUREZZA: Limita lot size massima ======
+            # Se il pip_value calcolato è sbagliato (es. tickValue non disponibile dal broker),
+            # la size potrebbe essere assurdamente alta. Limitiamo per sicurezza.
+            MAX_LOT_SIZE = 5.0  # Max 5 lotti per trade (sicurezza)
+            if lot_size > MAX_LOT_SIZE:
+                self._log_analysis(symbol, "error", f"⚠️ Size calcolata ({lot_size}) troppo alta! Limitata a {MAX_LOT_SIZE} lotti (possibile errore pip_value)")
+                lot_size = MAX_LOT_SIZE
+
+            # Calcolo rischio effettivo
+            actual_risk = lot_size * sl_pips * pip_value
+            risk_pct = (actual_risk / account_balance) * 100
+
+            side = OrderSide.BUY if direction == "LONG" else OrderSide.SELL
+
+            self._log_analysis(symbol, "trade", f"📊 Ordine: {side.value} {lot_size} lotti | SL: {stop_loss} ({sl_pips:.1f} pips) | TP: {take_profit} | Rischio: ${actual_risk:.2f} ({risk_pct:.2f}%)")
 
             order = OrderRequest(
                 symbol=symbol,
                 side=side,
                 order_type=OrderType.MARKET,
-                units=units,
-                stop_loss=consensus["stop_loss"],
-                take_profit=consensus["take_profit"],
+                size=Decimal(str(lot_size)),
+                stop_loss=Decimal(str(stop_loss)),
+                take_profit=Decimal(str(take_profit)),
             )
 
             order_result = await self.broker.place_order(order)
 
-            if order_result.success:
+            if order_result.is_filled:
+                fill_price = float(order_result.average_fill_price) if order_result.average_fill_price else current_price
+
+                # Break Even: usa il valore AI se disponibile, altrimenti default a 50% della distanza TP
+                be_trigger = consensus.get("break_even_trigger")
+                trailing_pips = consensus.get("trailing_stop_pips")
+                if be_trigger is None:
+                    # Default BE: quando il prezzo raggiunge il 50% del TP
+                    tp_distance = abs(take_profit - fill_price)
+                    if direction == "LONG":
+                        be_trigger = _rp(fill_price + (tp_distance * 0.5))
+                    else:
+                        be_trigger = _rp(fill_price - (tp_distance * 0.5))
+                    self._log_analysis(symbol, "info", f"🔒 Break Even auto impostato a {be_trigger} (50% del TP)")
+                if trailing_pips is None:
+                    # Default trailing: 15 pips dopo il BE
+                    trailing_pips = 15.0
+                    self._log_analysis(symbol, "info", f"📈 Trailing Stop auto: {trailing_pips} pips dopo BE")
+
                 trade = TradeRecord(
                     id=order_result.order_id,
                     symbol=symbol,
-                    direction=consensus["direction"],
-                    entry_price=order_result.fill_price or current_price,
-                    stop_loss=consensus["stop_loss"],
-                    take_profit=consensus["take_profit"],
-                    units=units,
+                    direction=direction,
+                    entry_price=fill_price,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                    units=lot_size,
                     timestamp=datetime.utcnow(),
                     confidence=consensus["confidence"],
-                    timeframes_analyzed=[self.config.autonomous_timeframe],
+                    timeframes_analyzed=consensus.get("timeframes", ["15"]),
                     models_agreed=consensus["models_agree"],
                     total_models=consensus["total_models"],
-                    break_even_trigger=consensus.get("break_even_trigger"),
-                    trailing_stop_pips=consensus.get("trailing_stop_pips"),
+                    break_even_trigger=be_trigger,
+                    trailing_stop_pips=trailing_pips,
                 )
 
                 self.state.open_positions.append(trade)
                 self.state.trades_today += 1
+                self._log_analysis(symbol, "trade", f"✅ TRADE ESEGUITO: {side.value} {symbol} @ {fill_price} | SL: {stop_loss} | TP: {take_profit} | ID: {order_result.order_id}")
 
                 await self._notify_tradingview_trade(trade, consensus, results)
+            elif order_result.is_rejected:
+                reject_msg = order_result.error_message or 'motivo sconosciuto'
+                self._log_analysis(symbol, "error", f"❌ ORDINE RIFIUTATO: {reject_msg}")
+                self._log_analysis(symbol, "error", f"📋 Dettagli: {side.value} {lot_size} lotti {symbol} | SL: {stop_loss} | TP: {take_profit}")
+                print(f"[AutoTrader] Order REJECTED for {symbol}: status={order_result.status}, error={reject_msg}, order_id={order_result.order_id}")
+            else:
+                self._log_analysis(symbol, "info", f"⏳ Ordine in stato: {order_result.status.value} — ID: {order_result.order_id or 'in attesa'}")
 
         except Exception as e:
+            error_detail = traceback.format_exc()
+            self._log_analysis(symbol, "error", f"❌ Esecuzione trade fallita: {str(e)}")
+            print(f"[AutoTrader] Trade execution error for {symbol}:\n{error_detail}")
             self.state.errors.append({
                 "timestamp": datetime.utcnow().isoformat(),
                 "symbol": symbol,
@@ -613,13 +1146,15 @@ class AutoTrader:
     ):
         """Execute a trade based on autonomous AI consensus."""
         try:
+            from decimal import Decimal
+
             # Get current price
-            price = await self.broker.get_price(symbol)
-            current_price = (price["bid"] + price["ask"]) / 2
+            tick = await self.broker.get_current_price(symbol)
+            current_price = float(tick.mid)
 
             # Calculate position size
             account_info = await self.broker.get_account_info()
-            account_balance = account_info.get("balance", 10000)
+            account_balance = float(account_info.balance)
 
             risk_amount = account_balance * (self.config.risk_per_trade_percent / 100)
             sl_distance = abs(current_price - consensus["stop_loss"])
@@ -638,31 +1173,32 @@ class AutoTrader:
                 symbol=symbol,
                 side=side,
                 order_type=OrderType.MARKET,
-                units=units,
-                stop_loss=consensus["stop_loss"],
-                take_profit=consensus["take_profit"],
+                size=Decimal(str(units)),
+                stop_loss=Decimal(str(consensus["stop_loss"])),
+                take_profit=Decimal(str(consensus["take_profit"])),
             )
 
             # Execute order
             order_result = await self.broker.place_order(order)
 
-            if order_result.success:
+            if order_result.is_filled:
                 # Collect analysis styles used by agreeing models
                 styles_used = consensus.get("analysis_styles_used", [])
                 indicators_used = consensus.get("indicators_considered", [])
 
                 # Record trade with advanced management
+                fill_price = float(order_result.average_fill_price) if order_result.average_fill_price else current_price
                 trade = TradeRecord(
                     id=order_result.order_id,
                     symbol=symbol,
                     direction=consensus["direction"],
-                    entry_price=order_result.fill_price or current_price,
+                    entry_price=fill_price,
                     stop_loss=consensus["stop_loss"],
                     take_profit=consensus["take_profit"],
                     units=units,
                     timestamp=datetime.utcnow(),
                     confidence=consensus["confidence"],
-                    timeframes_analyzed=[self.config.autonomous_timeframe],
+                    timeframes_analyzed=consensus.get("timeframes", ["15"]),
                     models_agreed=consensus["models_agree"],
                     total_models=consensus["total_models"],
                     # Advanced trade management
@@ -736,13 +1272,15 @@ class AutoTrader:
     async def _execute_trade(self, result: MultiTimeframeResult):
         """Execute a trade based on analysis result."""
         try:
+            from decimal import Decimal
+
             # Get current price
-            price = await self.broker.get_price(result.symbol)
-            current_price = (price["bid"] + price["ask"]) / 2
+            tick = await self.broker.get_current_price(result.symbol)
+            current_price = float(tick.mid)
 
             # Calculate position size
             account_info = await self.broker.get_account_info()
-            account_balance = account_info.get("balance", 10000)
+            account_balance = float(account_info.balance)
 
             risk_amount = account_balance * (self.config.risk_per_trade_percent / 100)
             sl_distance = abs(current_price - result.stop_loss)
@@ -757,25 +1295,27 @@ class AutoTrader:
             side = OrderSide.BUY if result.final_direction == "LONG" else OrderSide.SELL
 
             # Create order
+            tp_value = result.take_profit[0] if result.take_profit else None
             order = OrderRequest(
                 symbol=result.symbol,
                 side=side,
                 order_type=OrderType.MARKET,
-                units=units,
-                stop_loss=result.stop_loss,
-                take_profit=result.take_profit[0] if result.take_profit else None,
+                size=Decimal(str(units)),
+                stop_loss=Decimal(str(result.stop_loss)),
+                take_profit=Decimal(str(tp_value)) if tp_value else None,
             )
 
             # Execute order
             order_result = await self.broker.place_order(order)
 
-            if order_result.success:
+            if order_result.is_filled:
                 # Record trade
+                fill_price = float(order_result.average_fill_price) if order_result.average_fill_price else current_price
                 trade = TradeRecord(
                     id=order_result.order_id,
                     symbol=result.symbol,
                     direction=result.final_direction,
-                    entry_price=order_result.fill_price or current_price,
+                    entry_price=fill_price,
                     stop_loss=result.stop_loss,
                     take_profit=result.take_profit[0] if result.take_profit else 0,
                     units=units,

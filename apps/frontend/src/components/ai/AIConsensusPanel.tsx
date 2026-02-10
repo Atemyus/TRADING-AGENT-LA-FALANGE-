@@ -26,21 +26,26 @@ interface AIConsensusPanelProps {
 
 // Provider icons/colors mapping for AIML API models
 // These match the provider names returned by the backend
+// Updated 2026-01-26 - Vision-capable models first
 const providerStyles: Record<string, { color: string; icon: string }> = {
-  // The 6 AIML models we use
-  'OpenAI': { color: '#10a37f', icon: '💬' },      // ChatGPT 5.2
-  'Google': { color: '#4285f4', icon: '💎' },      // Gemini 3 Pro
-  'DeepSeek': { color: '#0ea5e9', icon: '🔍' },    // DeepSeek V3.2
-  'xAI': { color: '#ef4444', icon: '⚡' },          // Grok 4.1 Fast
-  'Alibaba': { color: '#f97316', icon: '🌟' },     // Qwen Max
-  'Zhipu': { color: '#8b5cf6', icon: '🧪' },       // GLM 4.7
+  // The 8 AIML models (vision-capable first, then text-only)
+  'OpenAI': { color: '#10a37f', icon: '💬' },      // ChatGPT 5.2 - Vision: YES
+  'Google': { color: '#4285f4', icon: '💎' },      // Gemini 3 Pro - Vision: YES
+  'xAI': { color: '#ef4444', icon: '⚡' },          // Grok 4.1 Fast - Vision: YES
+  'Alibaba': { color: '#f97316', icon: '🌟' },     // Qwen3 VL - Vision: YES
+  'DeepSeek': { color: '#0ea5e9', icon: '🔍' },    // DeepSeek V3.1 - Vision: NO
+  'Zhipu': { color: '#8b5cf6', icon: '🧪' },       // GLM 4.5 Air - Vision: NO
+  'Meta': { color: '#0ea5e9', icon: '🦙' },        // Llama 4 Scout - Vision: NO
+  'Mistral': { color: '#f59e0b', icon: '🌪️' },     // Mistral 7B v0.3 - Vision: NO
   // Lowercase fallbacks
   openai: { color: '#10a37f', icon: '💬' },
   google: { color: '#4285f4', icon: '💎' },
-  deepseek: { color: '#0ea5e9', icon: '🔍' },
   xai: { color: '#ef4444', icon: '⚡' },
   alibaba: { color: '#f97316', icon: '🌟' },
+  deepseek: { color: '#0ea5e9', icon: '🔍' },
   zhipu: { color: '#8b5cf6', icon: '🧪' },
+  meta: { color: '#0ea5e9', icon: '🦙' },
+  mistral: { color: '#f59e0b', icon: '🌪️' },
 }
 
 function DirectionBadge({ direction }: { direction: string }) {
@@ -93,7 +98,7 @@ function VoteCard({ vote, index }: { vote: AIVote; index: number }) {
           ) : (
             <span className="flex items-center gap-1 text-neon-red text-sm">
               <XCircle size={14} />
-              Failed
+              Fallito
             </span>
           )}
 
@@ -136,10 +141,10 @@ export function AIConsensusPanel({
       <div className="card p-6">
         <div className="text-center py-8">
           <Brain className="w-12 h-12 mx-auto text-dark-500 mb-4" />
-          <h3 className="font-semibold mb-2">No Analysis Yet</h3>
-          <p className="text-sm text-dark-400 mb-4">Run AI analysis to get trading signals</p>
+          <h3 className="font-semibold mb-2">Nessuna Analisi</h3>
+          <p className="text-sm text-dark-400 mb-4">Esegui l'analisi AI per ottenere segnali di trading</p>
           <button onClick={onAnalyze} className="btn-primary">
-            Analyze Market
+            Analizza Mercato
           </button>
         </div>
       </div>
@@ -156,9 +161,9 @@ export function AIConsensusPanel({
               <Brain className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h2 className="font-semibold">AI Consensus</h2>
+              <h2 className="font-semibold">Consenso AI</h2>
               <p className="text-xs text-dark-400">
-                {result?.valid_votes} of {result?.total_votes} models voted
+                {result?.valid_votes} di {result?.total_votes} modelli hanno votato
               </p>
             </div>
           </div>
@@ -176,16 +181,16 @@ export function AIConsensusPanel({
             transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
             className="w-12 h-12 mx-auto mb-4 rounded-full border-2 border-primary-500 border-t-transparent"
           />
-          <p className="text-dark-400">Analyzing with multiple AI models...</p>
+          <p className="text-dark-400">Analizzando con multipli modelli AI...</p>
         </div>
       ) : result && (
         <>
           {/* Confidence & Agreement */}
           <div className="p-4 space-y-4">
-            {/* Confidence Bar */}
+            {/* Barra di Confidenza */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-dark-400">Confidence</span>
+                <span className="text-sm text-dark-400">Confidenza</span>
                 <span className="font-mono font-bold text-lg">{result.confidence.toFixed(1)}%</span>
               </div>
               <div className="h-3 bg-dark-800 rounded-full overflow-hidden">
@@ -204,9 +209,9 @@ export function AIConsensusPanel({
               </div>
             </div>
 
-            {/* Vote Distribution */}
+            {/* Distribuzione Voti */}
             <div>
-              <p className="text-sm text-dark-400 mb-2">Vote Distribution</p>
+              <p className="text-sm text-dark-400 mb-2">Distribuzione Voti</p>
               <div className="flex gap-2 h-8">
                 <motion.div
                   initial={{ width: 0 }}
@@ -232,11 +237,11 @@ export function AIConsensusPanel({
               </div>
             </div>
 
-            {/* Trade Parameters */}
+            {/* Parametri Trade */}
             {result.should_trade && (
               <div className="grid grid-cols-3 gap-3 p-3 bg-dark-800/50 rounded-lg">
                 <div>
-                  <p className="text-xs text-dark-400">Entry</p>
+                  <p className="text-xs text-dark-400">Ingresso</p>
                   <p className="font-mono font-medium">{result.suggested_entry}</p>
                 </div>
                 <div>
@@ -250,9 +255,9 @@ export function AIConsensusPanel({
               </div>
             )}
 
-            {/* Key Factors */}
+            {/* Fattori Chiave */}
             <div>
-              <p className="text-sm font-medium mb-2">Key Factors</p>
+              <p className="text-sm font-medium mb-2">Fattori Chiave</p>
               <ul className="space-y-1.5">
                 {result.key_factors.slice(0, 4).map((factor, i) => (
                   <motion.li
@@ -269,10 +274,10 @@ export function AIConsensusPanel({
               </ul>
             </div>
 
-            {/* Risks */}
+            {/* Rischi */}
             {result.risks.length > 0 && (
               <div>
-                <p className="text-sm font-medium mb-2">Risks</p>
+                <p className="text-sm font-medium mb-2">Rischi</p>
                 <ul className="space-y-1.5">
                   {result.risks.map((risk, i) => (
                     <li key={i} className="flex items-start gap-2 text-sm text-dark-400">
@@ -285,13 +290,13 @@ export function AIConsensusPanel({
             )}
           </div>
 
-          {/* Individual Votes */}
+          {/* Voti Individuali */}
           <div className="border-t border-dark-700/50">
             <button
               onClick={() => setShowAllVotes(!showAllVotes)}
               className="w-full p-3 flex items-center justify-between hover:bg-dark-800/30 transition-colors"
             >
-              <span className="text-sm font-medium">Individual Votes</span>
+              <span className="text-sm font-medium">Voti Individuali</span>
               {showAllVotes ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             </button>
 

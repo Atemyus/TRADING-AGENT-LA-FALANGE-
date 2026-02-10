@@ -16,8 +16,15 @@ import {
   AlertCircle,
   CheckCircle,
   Info,
+  Plus,
+  Trash2,
+  Edit3,
+  Play,
+  Square,
+  RefreshCw,
+  Users,
 } from 'lucide-react'
-import { settingsApi, type BrokerSettingsData } from '@/lib/api'
+import { settingsApi, brokerAccountsApi, type BrokerSettingsData, type BrokerAccountData, type BrokerAccountCreate } from '@/lib/api'
 
 // Reusable Toggle Component
 function Toggle({
@@ -120,64 +127,23 @@ const AI_PROVIDERS = [
     id: 'aiml',
     name: 'AIML API',
     icon: '🚀',
-    models: ['ChatGPT 5.2', 'Gemini 3 Pro', 'DeepSeek V3.2', 'Grok 4.1 Fast', 'Qwen Max', 'GLM 4.7'],
+    models: ['ChatGPT 5.2', 'Gemini 3 Pro', 'Grok 4.1 Fast', 'Qwen3 VL', 'Llama 4 Scout', 'ERNIE 4.5 VL'],
     field: { key: 'AIML_API_KEY', label: 'API Key', placeholder: 'Your AIML API key' },
-    badge: 'Recommended - 6 Models',
-    description: 'Single API key for 6 top AI models via api.aimlapi.com',
+    badge: '6 Models',
+    description: 'Single API key for 6 AI models via api.aimlapi.com',
   },
   {
-    id: 'openai',
-    name: 'OpenAI',
-    icon: '🤖',
-    models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'],
-    field: { key: 'OPENAI_API_KEY', label: 'API Key', placeholder: 'sk-...' },
-    description: 'Fallback provider',
-  },
-  {
-    id: 'anthropic',
-    name: 'Anthropic',
-    icon: '🧠',
-    models: ['claude-3-5-sonnet', 'claude-3-haiku'],
-    field: { key: 'ANTHROPIC_API_KEY', label: 'API Key', placeholder: 'sk-ant-...' },
-    description: 'Fallback provider',
-  },
-  {
-    id: 'google',
-    name: 'Google AI',
-    icon: '💎',
-    models: ['gemini-1.5-flash', 'gemini-1.5-pro'],
-    field: { key: 'GOOGLE_API_KEY', label: 'API Key', placeholder: 'AI...' },
-    description: 'Fallback provider',
-  },
-  {
-    id: 'groq',
-    name: 'Groq',
-    icon: '⚡',
-    models: ['llama-3.3-70b', 'llama-3.1-8b', 'mixtral-8x7b'],
-    field: { key: 'GROQ_API_KEY', label: 'API Key', placeholder: 'gsk_...' },
-    badge: 'Ultra Fast',
-    description: 'Fallback provider',
-  },
-  {
-    id: 'mistral',
-    name: 'Mistral',
-    icon: '🌪️',
-    models: ['mistral-large', 'mistral-small'],
-    field: { key: 'MISTRAL_API_KEY', label: 'API Key', placeholder: 'Your Mistral key' },
-    description: 'Fallback provider',
-  },
-  {
-    id: 'ollama',
-    name: 'Ollama',
-    icon: '🦙',
-    models: ['llama3.1:8b', 'qwen2.5:14b', 'mistral:7b'],
-    field: { key: 'OLLAMA_BASE_URL', label: 'Base URL', placeholder: 'http://localhost:11434' },
-    badge: 'Free & Local',
-    description: 'Local inference - no API key needed',
+    id: 'nvidia',
+    name: 'NVIDIA API',
+    icon: '🟢',
+    models: ['Kimi K2.5', 'Mistral Large 3'],
+    field: { key: 'NVIDIA_API_KEY', label: 'API Key', placeholder: 'Your NVIDIA API key' },
+    badge: '2 Models',
+    description: 'Kimi K2.5 e Mistral Large 3 via integrate.api.nvidia.com',
   },
 ]
 
-type SettingsSection = 'broker' | 'ai' | 'risk' | 'notifications'
+type SettingsSection = 'broker' | 'accounts' | 'ai' | 'risk' | 'notifications'
 
 export default function SettingsPage() {
   const [activeSection, setActiveSection] = useState<SettingsSection>('broker')
@@ -229,11 +195,8 @@ export default function SettingsPage() {
         if (settings.ai.aiml_api_key) {
           aiSettings.aiml = { enabled: true, key: settings.ai.aiml_api_key }
         }
-        if (settings.ai.openai_api_key) {
-          aiSettings.openai = { enabled: true, key: settings.ai.openai_api_key }
-        }
-        if (settings.ai.anthropic_api_key) {
-          aiSettings.anthropic = { enabled: true, key: settings.ai.anthropic_api_key }
+        if (settings.ai.nvidia_api_key) {
+          aiSettings.nvidia = { enabled: true, key: settings.ai.nvidia_api_key }
         }
         setAiProviders(aiSettings)
 
@@ -317,11 +280,7 @@ export default function SettingsPage() {
       // Map provider IDs to API key names
       const keyMapping: Record<string, string> = {
         aiml: 'aiml_api_key',
-        openai: 'openai_api_key',
-        anthropic: 'anthropic_api_key',
-        google: 'google_api_key',
-        groq: 'groq_api_key',
-        mistral: 'mistral_api_key',
+        nvidia: 'nvidia_api_key',
       }
 
       for (const [providerId, settings] of Object.entries(aiProviders)) {
@@ -402,6 +361,7 @@ export default function SettingsPage() {
 
   const sections = [
     { id: 'broker', label: 'Broker', icon: Server },
+    { id: 'accounts', label: 'Broker Accounts', icon: Users },
     { id: 'ai', label: 'AI Providers', icon: Brain },
     { id: 'risk', label: 'Risk Management', icon: Shield },
     { id: 'notifications', label: 'Notifications', icon: Bell },
@@ -469,6 +429,10 @@ export default function SettingsPage() {
                 saving={saving}
                 saveMessage={saveMessage}
               />
+            )}
+
+            {activeSection === 'accounts' && (
+              <BrokerAccountsSettings key="accounts" />
             )}
 
             {activeSection === 'ai' && (
@@ -737,14 +701,14 @@ function AIProvidersSettings({
       exit={{ opacity: 0, y: -20 }}
       className="space-y-6"
     >
-      {/* Info Banner for AIML */}
+      {/* Info Banner for AI Providers */}
       <div className="p-4 bg-primary-500/10 border border-primary-500/30 rounded-xl flex items-start gap-3">
         <Info size={20} className="text-primary-400 flex-shrink-0 mt-0.5" />
         <div>
-          <p className="text-sm text-primary-300 font-medium">Recommended: AIML API</p>
+          <p className="text-sm text-primary-300 font-medium">8 Modelli AI - 2 Provider</p>
           <p className="text-xs text-dark-400 mt-1">
-            AIML API provides access to 6 top AI models (ChatGPT 5.2, Gemini 3 Pro, DeepSeek V3.2, Grok 4.1, Qwen Max, GLM 4.7)
-            with a single API key. Get your key at <a href="https://aimlapi.com" target="_blank" rel="noopener noreferrer" className="text-primary-400 hover:underline">aimlapi.com</a>
+            6 modelli via <a href="https://aimlapi.com" target="_blank" rel="noopener noreferrer" className="text-primary-400 hover:underline">AIML API</a> (ChatGPT 5.2, Gemini 3 Pro, Grok 4.1 Fast, Qwen3 VL, Llama 4 Scout, ERNIE 4.5 VL)
+            + 2 modelli via <a href="https://build.nvidia.com" target="_blank" rel="noopener noreferrer" className="text-primary-400 hover:underline">NVIDIA API</a> (Kimi K2.5, Mistral Large 3)
           </p>
         </div>
       </div>
@@ -752,7 +716,7 @@ function AIProvidersSettings({
       <div className="card p-6">
         <h2 className="text-xl font-semibold mb-2">AI Providers</h2>
         <p className="text-dark-400 mb-6">
-          Configure which AI models to use for market analysis. Enable AIML API for best results.
+          Configura le chiavi API per i modelli di analisi AI (8 modelli totali).
         </p>
 
         <div className="space-y-4">
@@ -1116,6 +1080,646 @@ function NotificationSettings({
         {saving ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
         Save Notification Settings
       </button>
+    </motion.div>
+  )
+}
+
+// Broker Accounts Settings Component (Multi-Broker Support)
+function BrokerAccountsSettings() {
+  const [accounts, setAccounts] = useState<BrokerAccountData[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [showCreateForm, setShowCreateForm] = useState(false)
+  const [editingAccount, setEditingAccount] = useState<BrokerAccountData | null>(null)
+  const [actionLoading, setActionLoading] = useState<Record<number, string>>({})
+
+  // Form state
+  const [formData, setFormData] = useState<BrokerAccountCreate>({
+    name: '',
+    broker_type: 'metaapi',
+    metaapi_account_id: '',
+    metaapi_token: '',
+    is_enabled: true,
+    symbols: ['EUR/USD', 'XAU/USD'],
+    risk_per_trade_percent: 1.0,
+    max_open_positions: 3,
+    analysis_mode: 'standard',
+    analysis_interval_seconds: 300,
+    min_confidence: 75.0,
+    min_models_agree: 4,
+    enabled_models: ['chatgpt', 'gemini', 'grok', 'qwen', 'llama', 'ernie', 'kimi', 'mistral'],
+    trading_start_hour: 7,
+    trading_end_hour: 21,
+  })
+  const [showToken, setShowToken] = useState(false)
+
+  // Load accounts
+  useEffect(() => {
+    loadAccounts()
+  }, [])
+
+  const loadAccounts = async () => {
+    try {
+      setIsLoading(true)
+      const data = await brokerAccountsApi.list()
+      setAccounts(data)
+      setError(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load accounts')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleCreate = async () => {
+    try {
+      setActionLoading({ ...actionLoading, 0: 'creating' })
+      await brokerAccountsApi.create(formData)
+      setShowCreateForm(false)
+      setFormData({
+        name: '',
+        broker_type: 'metaapi',
+        metaapi_account_id: '',
+        metaapi_token: '',
+        is_enabled: true,
+        symbols: ['EUR/USD', 'XAU/USD'],
+        risk_per_trade_percent: 1.0,
+        max_open_positions: 3,
+        analysis_mode: 'standard',
+        analysis_interval_seconds: 300,
+        min_confidence: 75.0,
+        min_models_agree: 4,
+        enabled_models: ['chatgpt', 'gemini', 'grok', 'qwen', 'llama', 'ernie', 'kimi', 'mistral'],
+        trading_start_hour: 7,
+        trading_end_hour: 21,
+      })
+      await loadAccounts()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create account')
+    } finally {
+      setActionLoading({})
+    }
+  }
+
+  const handleUpdate = async () => {
+    if (!editingAccount) return
+    try {
+      setActionLoading({ ...actionLoading, [editingAccount.id]: 'updating' })
+      await brokerAccountsApi.update(editingAccount.id, formData)
+      setEditingAccount(null)
+      await loadAccounts()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update account')
+    } finally {
+      setActionLoading({})
+    }
+  }
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this broker account?')) return
+    try {
+      setActionLoading({ ...actionLoading, [id]: 'deleting' })
+      await brokerAccountsApi.delete(id)
+      await loadAccounts()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete account')
+    } finally {
+      setActionLoading({})
+    }
+  }
+
+  const handleTestConnection = async (id: number) => {
+    try {
+      setActionLoading({ ...actionLoading, [id]: 'testing' })
+      const result = await brokerAccountsApi.testConnection(id)
+      alert(`${result.message}${result.account_name ? ` (${result.account_name})` : ''}`)
+      await loadAccounts()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Connection test failed')
+    } finally {
+      setActionLoading({})
+    }
+  }
+
+  const handleToggle = async (id: number) => {
+    try {
+      setActionLoading({ ...actionLoading, [id]: 'toggling' })
+      await brokerAccountsApi.toggle(id)
+      await loadAccounts()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to toggle account')
+    } finally {
+      setActionLoading({})
+    }
+  }
+
+  const handleStartBot = async (id: number) => {
+    try {
+      setActionLoading({ ...actionLoading, [id]: 'starting' })
+      const result = await brokerAccountsApi.startBot(id)
+      alert(result.message)
+      await loadAccounts()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to start bot')
+    } finally {
+      setActionLoading({})
+    }
+  }
+
+  const handleStopBot = async (id: number) => {
+    try {
+      setActionLoading({ ...actionLoading, [id]: 'stopping' })
+      const result = await brokerAccountsApi.stopBot(id)
+      alert(result.message)
+      await loadAccounts()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to stop bot')
+    } finally {
+      setActionLoading({})
+    }
+  }
+
+  const openEditForm = (account: BrokerAccountData) => {
+    setEditingAccount(account)
+    setFormData({
+      name: account.name,
+      broker_type: account.broker_type,
+      metaapi_account_id: account.metaapi_account_id || '',
+      metaapi_token: account.metaapi_token || '',
+      is_enabled: account.is_enabled,
+      symbols: account.symbols,
+      risk_per_trade_percent: account.risk_per_trade_percent,
+      max_open_positions: account.max_open_positions,
+      analysis_mode: account.analysis_mode,
+      analysis_interval_seconds: account.analysis_interval_seconds,
+      min_confidence: account.min_confidence,
+      min_models_agree: account.min_models_agree,
+      enabled_models: account.enabled_models,
+      trading_start_hour: account.trading_start_hour,
+      trading_end_hour: account.trading_end_hour,
+    })
+    setShowCreateForm(false)
+  }
+
+  if (isLoading) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="card p-6 flex items-center justify-center"
+      >
+        <Loader2 className="animate-spin mr-2" /> Loading broker accounts...
+      </motion.div>
+    )
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className="space-y-6"
+    >
+      {/* Header */}
+      <div className="card p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-xl font-semibold">Broker Accounts</h2>
+            <p className="text-sm text-dark-400">Manage multiple broker connections for parallel trading</p>
+          </div>
+          <button
+            onClick={() => {
+              setShowCreateForm(true)
+              setEditingAccount(null)
+              setFormData({
+                name: '',
+                broker_type: 'metaapi',
+                metaapi_account_id: '',
+                metaapi_token: '',
+                is_enabled: true,
+                symbols: ['EUR/USD', 'XAU/USD'],
+                risk_per_trade_percent: 1.0,
+                max_open_positions: 3,
+                analysis_mode: 'standard',
+                analysis_interval_seconds: 300,
+                min_confidence: 75.0,
+                min_models_agree: 4,
+                enabled_models: ['chatgpt', 'gemini', 'grok', 'qwen', 'llama', 'ernie', 'kimi', 'mistral'],
+                trading_start_hour: 7,
+                trading_end_hour: 21,
+              })
+            }}
+            className="btn-primary flex items-center gap-2"
+          >
+            <Plus size={18} /> Add Broker
+          </button>
+        </div>
+
+        {error && (
+          <div className="p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 mb-4 flex items-center gap-2">
+            <AlertCircle size={18} /> {error}
+          </div>
+        )}
+
+        {/* Accounts List */}
+        {accounts.length === 0 ? (
+          <div className="text-center py-8 text-dark-400">
+            <Users size={48} className="mx-auto mb-4 opacity-50" />
+            <p>No broker accounts configured</p>
+            <p className="text-sm">Add your first broker to start trading</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {accounts.map((account) => (
+              <div
+                key={account.id}
+                className={`p-4 rounded-xl border transition-all ${
+                  account.is_enabled
+                    ? account.is_connected
+                      ? 'border-neon-green/50 bg-neon-green/5'
+                      : 'border-primary-500/50 bg-primary-500/5'
+                    : 'border-dark-700 bg-dark-800/50 opacity-60'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">📊</span>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold">{account.name}</span>
+                        {account.is_connected && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-neon-green/20 text-neon-green">
+                            Connected
+                          </span>
+                        )}
+                        {!account.is_enabled && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-dark-600 text-dark-400">
+                            Disabled
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-dark-400">
+                        {account.symbols.join(', ')} | {account.analysis_mode} mode | {account.analysis_interval_seconds / 60}min interval
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {/* Bot Control */}
+                    <button
+                      onClick={() => handleStartBot(account.id)}
+                      disabled={!!actionLoading[account.id] || !account.is_enabled}
+                      className="p-2 rounded-lg bg-neon-green/20 text-neon-green hover:bg-neon-green/30 disabled:opacity-50"
+                      title="Start Bot"
+                    >
+                      {actionLoading[account.id] === 'starting' ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <Play size={16} />
+                      )}
+                    </button>
+                    <button
+                      onClick={() => handleStopBot(account.id)}
+                      disabled={!!actionLoading[account.id]}
+                      className="p-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 disabled:opacity-50"
+                      title="Stop Bot"
+                    >
+                      {actionLoading[account.id] === 'stopping' ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <Square size={16} />
+                      )}
+                    </button>
+
+                    {/* Test Connection */}
+                    <button
+                      onClick={() => handleTestConnection(account.id)}
+                      disabled={!!actionLoading[account.id]}
+                      className="p-2 rounded-lg bg-dark-700 hover:bg-dark-600 disabled:opacity-50"
+                      title="Test Connection"
+                    >
+                      {actionLoading[account.id] === 'testing' ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <TestTube size={16} />
+                      )}
+                    </button>
+
+                    {/* Edit */}
+                    <button
+                      onClick={() => openEditForm(account)}
+                      disabled={!!actionLoading[account.id]}
+                      className="p-2 rounded-lg bg-dark-700 hover:bg-dark-600 disabled:opacity-50"
+                      title="Edit"
+                    >
+                      <Edit3 size={16} />
+                    </button>
+
+                    {/* Toggle */}
+                    <button
+                      onClick={() => handleToggle(account.id)}
+                      disabled={!!actionLoading[account.id]}
+                      className={`p-2 rounded-lg ${
+                        account.is_enabled
+                          ? 'bg-primary-500/20 text-primary-400'
+                          : 'bg-dark-700 text-dark-400'
+                      } hover:opacity-80 disabled:opacity-50`}
+                      title={account.is_enabled ? 'Disable' : 'Enable'}
+                    >
+                      {actionLoading[account.id] === 'toggling' ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <RefreshCw size={16} />
+                      )}
+                    </button>
+
+                    {/* Delete */}
+                    <button
+                      onClick={() => handleDelete(account.id)}
+                      disabled={!!actionLoading[account.id]}
+                      className="p-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 disabled:opacity-50"
+                      title="Delete"
+                    >
+                      {actionLoading[account.id] === 'deleting' ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <Trash2 size={16} />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Create/Edit Form */}
+      <AnimatePresence>
+        {(showCreateForm || editingAccount) && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="card p-6"
+          >
+            <h3 className="text-lg font-semibold mb-4">
+              {editingAccount ? `Edit: ${editingAccount.name}` : 'Add New Broker'}
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Name */}
+              <div>
+                <label className="block text-sm font-medium mb-2">Account Name</label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="e.g., Ultima Markets Demo"
+                  className="input"
+                />
+              </div>
+
+              {/* MetaApi Account ID */}
+              <div>
+                <label className="block text-sm font-medium mb-2">MetaApi Account ID</label>
+                <input
+                  type="text"
+                  value={formData.metaapi_account_id}
+                  onChange={(e) => setFormData({ ...formData, metaapi_account_id: e.target.value })}
+                  placeholder="Your MetaApi account ID"
+                  className="input"
+                />
+              </div>
+
+              {/* MetaApi Token */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium mb-2">MetaApi Token</label>
+                <div className="relative">
+                  <input
+                    type={showToken ? 'text' : 'password'}
+                    value={formData.metaapi_token}
+                    onChange={(e) => setFormData({ ...formData, metaapi_token: e.target.value })}
+                    placeholder="Your MetaApi access token"
+                    className="input pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowToken(!showToken)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-400 hover:text-dark-200"
+                  >
+                    {showToken ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Symbols */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium mb-2">Symbols (comma-separated)</label>
+                <input
+                  type="text"
+                  value={formData.symbols?.join(', ')}
+                  onChange={(e) => setFormData({
+                    ...formData,
+                    symbols: e.target.value.split(',').map(s => s.trim()).filter(Boolean)
+                  })}
+                  placeholder="EUR/USD, XAU/USD, GBP/USD"
+                  className="input"
+                />
+              </div>
+
+              {/* Analysis Mode */}
+              <div>
+                <label className="block text-sm font-medium mb-2">Analysis Mode</label>
+                <select
+                  value={formData.analysis_mode}
+                  onChange={(e) => setFormData({ ...formData, analysis_mode: e.target.value })}
+                  className="input"
+                >
+                  <option value="quick">Quick (1 TF, fast)</option>
+                  <option value="standard">Standard (2 TF)</option>
+                  <option value="premium">Premium (3 TF)</option>
+                  <option value="ultra">Ultra (4 TF)</option>
+                </select>
+              </div>
+
+              {/* Analysis Interval */}
+              <div>
+                <label className="block text-sm font-medium mb-2">Analysis Interval</label>
+                <select
+                  value={formData.analysis_interval_seconds}
+                  onChange={(e) => setFormData({ ...formData, analysis_interval_seconds: parseInt(e.target.value) })}
+                  className="input"
+                >
+                  <option value={300}>5 minutes</option>
+                  <option value={600}>10 minutes</option>
+                  <option value={900}>15 minutes</option>
+                  <option value={1800}>30 minutes</option>
+                  <option value={3600}>1 hour</option>
+                  <option value={7200}>2 hours</option>
+                </select>
+              </div>
+
+              {/* Risk per Trade */}
+              <div>
+                <label className="block text-sm font-medium mb-2">Risk per Trade (%)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0.1"
+                  max="10"
+                  value={formData.risk_per_trade_percent}
+                  onChange={(e) => setFormData({ ...formData, risk_per_trade_percent: parseFloat(e.target.value) || 1.0 })}
+                  className="input"
+                />
+              </div>
+
+              {/* Max Positions */}
+              <div>
+                <label className="block text-sm font-medium mb-2">Max Open Positions</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="20"
+                  value={formData.max_open_positions}
+                  onChange={(e) => setFormData({ ...formData, max_open_positions: parseInt(e.target.value) || 3 })}
+                  className="input"
+                />
+              </div>
+
+              {/* Min Confidence */}
+              <div>
+                <label className="block text-sm font-medium mb-2">Min Confidence (%)</label>
+                <input
+                  type="number"
+                  min="50"
+                  max="100"
+                  value={formData.min_confidence}
+                  onChange={(e) => setFormData({ ...formData, min_confidence: parseFloat(e.target.value) || 75.0 })}
+                  className="input"
+                />
+              </div>
+
+              {/* Min Models Agree */}
+              <div>
+                <label className="block text-sm font-medium mb-2">Min Models Agree</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="8"
+                  value={formData.min_models_agree}
+                  onChange={(e) => setFormData({ ...formData, min_models_agree: parseInt(e.target.value) || 4 })}
+                  className="input"
+                />
+              </div>
+
+              {/* AI Models Selector */}
+              <div className="col-span-2">
+                <label className="block text-sm font-medium mb-3">Enabled AI Models</label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {[
+                    { id: 'chatgpt', name: 'ChatGPT', color: 'bg-green-500' },
+                    { id: 'gemini', name: 'Gemini', color: 'bg-blue-500' },
+                    { id: 'grok', name: 'Grok', color: 'bg-red-500' },
+                    { id: 'qwen', name: 'Qwen', color: 'bg-purple-500' },
+                    { id: 'llama', name: 'Llama', color: 'bg-indigo-500' },
+                    { id: 'ernie', name: 'ERNIE', color: 'bg-cyan-500' },
+                    { id: 'kimi', name: 'Kimi K2.5', color: 'bg-orange-500' },
+                    { id: 'mistral', name: 'Mistral', color: 'bg-amber-500' },
+                  ].map((model) => {
+                    const enabledModels = formData.enabled_models || []
+                    const isEnabled = enabledModels.includes(model.id)
+                    return (
+                      <label
+                        key={model.id}
+                        className={`
+                          flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-all
+                          ${isEnabled
+                            ? 'border-primary bg-primary/10'
+                            : 'border-border hover:border-primary/50 bg-surface'
+                          }
+                        `}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isEnabled}
+                          onChange={(e) => {
+                            const newModels = e.target.checked
+                              ? [...enabledModels, model.id]
+                              : enabledModels.filter(m => m !== model.id)
+                            setFormData({ ...formData, enabled_models: newModels })
+                          }}
+                          className="sr-only"
+                        />
+                        <div className={`w-3 h-3 rounded-full ${model.color}`} />
+                        <span className={`text-sm ${isEnabled ? 'text-primary font-medium' : 'text-secondary'}`}>
+                          {model.name}
+                        </span>
+                        {isEnabled && (
+                          <Check size={14} className="ml-auto text-primary" />
+                        )}
+                      </label>
+                    )
+                  })}
+                </div>
+                <p className="text-xs text-secondary mt-2">
+                  Select which AI models will analyze charts for this broker. More models = more comprehensive analysis.
+                </p>
+              </div>
+
+              {/* Trading Hours */}
+              <div>
+                <label className="block text-sm font-medium mb-2">Trading Start Hour (UTC)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="23"
+                  value={formData.trading_start_hour}
+                  onChange={(e) => setFormData({ ...formData, trading_start_hour: parseInt(e.target.value) || 7 })}
+                  className="input"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Trading End Hour (UTC)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="23"
+                  value={formData.trading_end_hour}
+                  onChange={(e) => setFormData({ ...formData, trading_end_hour: parseInt(e.target.value) || 21 })}
+                  className="input"
+                />
+              </div>
+            </div>
+
+            {/* Form Actions */}
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowCreateForm(false)
+                  setEditingAccount(null)
+                }}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={editingAccount ? handleUpdate : handleCreate}
+                disabled={!!actionLoading[editingAccount?.id || 0]}
+                className="btn-primary flex items-center gap-2"
+              >
+                {actionLoading[editingAccount?.id || 0] ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <Check size={18} />
+                )}
+                {editingAccount ? 'Update Broker' : 'Create Broker'}
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   )
 }

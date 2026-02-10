@@ -21,8 +21,9 @@ import { PriceTicker } from '@/components/trading/PriceTicker'
 import { PositionsTable } from '@/components/trading/PositionsTable'
 import { OrderHistory } from '@/components/trading/OrderHistory'
 import { StatCard } from '@/components/common/StatCard'
-import { aiApi, analyticsApi, tradingApi } from '@/lib/api'
+import { aiApi, analyticsApi, tradingApi, botApi, brokerAccountsApi } from '@/lib/api'
 import type { AccountSummary, ConsensusResult, PerformanceMetrics } from '@/lib/api'
+import type { Position } from '@/components/trading/PositionsTable'
 import { usePriceStream } from '@/hooks/useWebSocket'
 
 // Dynamic import for TradingView chart to avoid SSR issues
@@ -47,15 +48,29 @@ const itemVariants = {
   visible: { opacity: 1, y: 0 },
 }
 
+// Aggregated broker stats type
+interface AggregatedBrokerStats {
+  totalBalance: number
+  totalEquity: number
+  totalUnrealizedPnl: number
+  totalMarginUsed: number
+  totalOpenPositions: number
+  brokerCount: number
+  currency: string
+}
+
 export default function DashboardPage() {
   const [selectedSymbol, setSelectedSymbol] = useState('EUR/USD')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [consensusResult, setConsensusResult] = useState<ConsensusResult | null>(null)
   const [account, setAccount] = useState<AccountSummary | null>(null)
   const [performance, setPerformance] = useState<PerformanceMetrics | null>(null)
+  const [positions, setPositions] = useState<Position[]>([])
+  const [orders, setOrders] = useState<import('@/components/trading/OrderHistory').Order[]>([])
   const [currentPrice, setCurrentPrice] = useState<number>(0)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [aggregatedStats, setAggregatedStats] = useState<AggregatedBrokerStats | null>(null)
 
   // WebSocket symbol format
   const wsSymbol = selectedSymbol.replace('/', '_')
@@ -63,7 +78,7 @@ export default function DashboardPage() {
   // Use WebSocket for real-time price streaming
   const { prices: streamPrices, isConnected: isPriceConnected } = usePriceStream([wsSymbol])
 
-  // Fetch account data
+  // Fetch all dashboard data
   const fetchAccountData = useCallback(async () => {
     try {
       const [accountData, performanceData] = await Promise.all([
@@ -77,6 +92,117 @@ export default function DashboardPage() {
       console.error('Failed to fetch account data:', err)
       setError('Could not connect to backend. Configure broker in Settings.')
     }
+
+    // Fetch aggregated account data from all running brokers
+    try {
+      const aggregatedData = await brokerAccountsApi.getAggregatedAccount()
+      if (aggregatedData.broker_count > 0) {
+        setAggregatedStats({
+          totalBalance: aggregatedData.total_balance,
+          totalEquity: aggregatedData.total_equity,
+          totalUnrealizedPnl: aggregatedData.total_unrealized_pnl,
+          totalMarginUsed: aggregatedData.total_margin_used,
+          totalOpenPositions: aggregatedData.total_open_positions,
+          brokerCount: aggregatedData.broker_count,
+          currency: aggregatedData.currency,
+        })
+      }
+    } catch {
+      // Multi-broker aggregation not available
+    }
+
+    // Fetch positions from all brokers (multi-broker support)
+    try {
+      const allPositions: Position[] = []
+
+      // Try to get positions from all multi-broker instances
+      try {
+        const multiBrokerData = await brokerAccountsApi.getAllPositions()
+        if (multiBrokerData.positions && multiBrokerData.positions.length > 0) {
+          const mapped = multiBrokerData.positions.map((p) => ({
+            id: p.position_id,
+            symbol: p.symbol,
+            side: p.side.toLowerCase() as 'long' | 'short',
+            size: String(p.size),
+            entryPrice: String(p.entry_price),
+            currentPrice: String(p.current_price),
+            pnl: parseFloat(p.unrealized_pnl),
+            pnlPercent: parseFloat(p.unrealized_pnl_percent || '0'),
+            stopLoss: p.stop_loss ? String(p.stop_loss) : undefined,
+            takeProfit: p.take_profit ? String(p.take_profit) : undefined,
+            leverage: p.leverage || 1,
+            marginUsed: String(p.margin_used),
+            openedAt: p.opened_at || '',
+            brokerId: p.broker_id,
+            brokerName: p.broker_name,
+          }))
+          allPositions.push(...mapped)
+        }
+      } catch {
+        // Multi-broker not available, fall back to legacy single broker
+      }
+
+      // Also try legacy tradingApi for main broker (if not already included)
+      if (allPositions.length === 0) {
+        try {
+          const posData = await tradingApi.getPositions()
+          const mapped: Position[] = posData.positions.map((p: import('@/lib/api').Position) => ({
+            id: p.position_id,
+            symbol: p.symbol,
+            side: p.side as 'long' | 'short',
+            size: p.size,
+            entryPrice: p.entry_price,
+            currentPrice: p.current_price,
+            pnl: parseFloat(p.unrealized_pnl),
+            pnlPercent: parseFloat(p.unrealized_pnl_percent || '0'),
+            stopLoss: p.stop_loss || undefined,
+            takeProfit: p.take_profit || undefined,
+            leverage: p.leverage || 1,
+            marginUsed: p.margin_used,
+            openedAt: p.opened_at,
+          }))
+          allPositions.push(...mapped)
+        } catch {
+          // Legacy broker not available
+        }
+      }
+
+      setPositions(allPositions)
+    } catch (err) {
+      console.error('Failed to fetch positions:', err)
+    }
+
+    // Fetch trade history from bot as order history
+    try {
+      const tradeData = await botApi.getTrades(50)
+      const mapped: import('@/components/trading/OrderHistory').Order[] = tradeData.trades.map((t) => {
+        // Map status: "filled" from broker deals, "open" = pending, closed = filled
+        let status: 'filled' | 'pending' | 'cancelled' | 'rejected' = 'filled'
+        if (t.status === 'open') {
+          status = 'pending'
+        } else if (t.status === 'cancelled' || t.status === 'rejected') {
+          status = t.status as 'cancelled' | 'rejected'
+        } else if (t.status === 'filled' || t.profit_loss !== null) {
+          status = 'filled'
+        }
+
+        return {
+          id: t.id,
+          symbol: t.symbol,
+          side: (t.direction === 'LONG' || t.direction === 'DEAL_TYPE_BUY' ? 'buy' : 'sell') as 'buy' | 'sell',
+          type: 'market' as const,
+          size: String(t.units),
+          price: String(t.entry_price),
+          status,
+          pnl: t.profit_loss ?? undefined,
+          closedAt: t.exit_timestamp ?? undefined,
+          createdAt: t.timestamp,
+        }
+      })
+      setOrders(mapped)
+    } catch (err) {
+      console.error('Failed to fetch trade history:', err)
+    }
   }, [])
 
   // Update current price from WebSocket stream
@@ -89,7 +215,7 @@ export default function DashboardPage() {
     }
   }, [streamPrices, wsSymbol])
 
-  // Initial data load
+  // Initial data load + auto-refresh every 15 seconds
   useEffect(() => {
     const loadData = async () => {
       setIsLoading(true)
@@ -97,6 +223,13 @@ export default function DashboardPage() {
       setIsLoading(false)
     }
     loadData()
+
+    // Auto-refresh dashboard data
+    const interval = setInterval(() => {
+      fetchAccountData()
+    }, 15000) // 15 seconds
+
+    return () => clearInterval(interval)
   }, [fetchAccountData])
 
   // Run AI analysis - calls real backend
@@ -160,15 +293,17 @@ export default function DashboardPage() {
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-neon-yellow/10 border border-neon-yellow/30 rounded-lg p-4 flex items-center gap-3"
+          className="bg-primary-500/10 border border-primary-500/30 rounded-2xl p-4 flex items-center gap-3"
         >
-          <AlertCircle className="text-neon-yellow" size={20} />
-          <span className="text-sm">{error}</span>
+          <div className="w-10 h-10 rounded-xl bg-primary-500/20 flex items-center justify-center">
+            <AlertCircle className="text-primary-400" size={20} />
+          </div>
+          <span className="text-sm flex-1">{error}</span>
           <button
             onClick={fetchAccountData}
-            className="ml-auto p-2 hover:bg-dark-700 rounded-lg transition-colors"
+            className="p-2.5 hover:bg-dark-800 rounded-xl transition-colors border border-transparent hover:border-primary-500/20"
           >
-            <RefreshCw size={16} />
+            <RefreshCw size={16} className="text-primary-400" />
           </button>
         </motion.div>
       )}
@@ -178,29 +313,70 @@ export default function DashboardPage() {
         <PriceTicker selectedSymbol={selectedSymbol} onSelect={setSelectedSymbol} />
       </motion.div>
 
-      {/* Stats Row - Real Data */}
+      {/* Stats Row - Real Data (uses aggregated multi-broker data when available) */}
       <motion.div
         variants={itemVariants}
         className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
       >
         <StatCard
-          label="Account Balance"
-          value={account ? formatCurrency(account.balance) : isLoading ? 'Loading...' : '$0.00'}
+          label={aggregatedStats && aggregatedStats.brokerCount > 1 ? `Total Balance (${aggregatedStats.brokerCount} brokers)` : "Account Balance"}
+          value={
+            aggregatedStats
+              ? formatCurrency(aggregatedStats.totalBalance)
+              : account
+                ? formatCurrency(account.balance)
+                : isLoading ? 'Loading...' : '$0.00'
+          }
           change={account ? `${formatCurrency(account.realized_pnl_today)} today` : ''}
           isPositive={account ? parseFloat(account.realized_pnl_today) >= 0 : true}
           icon={DollarSign}
         />
         <StatCard
           label="Unrealized P&L"
-          value={account ? formatCurrency(account.unrealized_pnl) : isLoading ? 'Loading...' : '$0.00'}
-          change={account ? `${account.open_positions} positions` : ''}
-          isPositive={account ? parseFloat(account.unrealized_pnl) >= 0 : true}
-          icon={account && parseFloat(account.unrealized_pnl) >= 0 ? TrendingUp : TrendingDown}
+          value={
+            aggregatedStats
+              ? formatCurrency(aggregatedStats.totalUnrealizedPnl)
+              : account
+                ? formatCurrency(account.unrealized_pnl)
+                : isLoading ? 'Loading...' : '$0.00'
+          }
+          change={
+            aggregatedStats
+              ? `${aggregatedStats.totalOpenPositions} positions`
+              : account
+                ? `${account.open_positions} positions`
+                : ''
+          }
+          isPositive={
+            aggregatedStats
+              ? aggregatedStats.totalUnrealizedPnl >= 0
+              : account
+                ? parseFloat(account.unrealized_pnl) >= 0
+                : true
+          }
+          icon={
+            (aggregatedStats && aggregatedStats.totalUnrealizedPnl >= 0) ||
+            (account && parseFloat(account.unrealized_pnl) >= 0)
+              ? TrendingUp
+              : TrendingDown
+          }
         />
         <StatCard
           label="Open Positions"
-          value={account ? String(account.open_positions) : isLoading ? '...' : '0'}
-          subtext={account ? `${formatCurrency(account.margin_used)} margin` : ''}
+          value={
+            aggregatedStats
+              ? String(aggregatedStats.totalOpenPositions)
+              : account
+                ? String(account.open_positions)
+                : isLoading ? '...' : '0'
+          }
+          subtext={
+            aggregatedStats
+              ? `${formatCurrency(aggregatedStats.totalMarginUsed)} margin`
+              : account
+                ? `${formatCurrency(account.margin_used)} margin`
+                : ''
+          }
           icon={Activity}
         />
         <StatCard
@@ -246,10 +422,15 @@ export default function DashboardPage() {
         {/* Positions Table */}
         <motion.div variants={itemVariants}>
           <PositionsTable
+            positions={positions}
             onClose={(id) => {
-              tradingApi.closePosition(id).then(() => {
-                fetchAccountData()
-              }).catch(console.error)
+              // Find position symbol by id
+              const pos = positions.find(p => p.id === id)
+              if (pos) {
+                tradingApi.closePosition(pos.symbol).then(() => {
+                  fetchAccountData()
+                }).catch(console.error)
+              }
             }}
             onModify={(id) => console.log('Modify position:', id)}
           />
@@ -257,7 +438,7 @@ export default function DashboardPage() {
 
         {/* Order History */}
         <motion.div variants={itemVariants}>
-          <OrderHistory />
+          <OrderHistory orders={orders} />
         </motion.div>
       </div>
 
@@ -266,42 +447,42 @@ export default function DashboardPage() {
         variants={itemVariants}
         className="grid grid-cols-2 md:grid-cols-4 gap-4"
       >
-        <div className="card p-4 flex items-center gap-3">
-          <div className="p-2 bg-neon-purple/20 rounded-lg">
-            <Zap size={20} className="text-neon-purple" />
+        <div className="card-gold p-5 flex items-center gap-4">
+          <div className="p-3 bg-imperial-500/20 rounded-xl">
+            <Zap size={22} className="text-imperial-400" />
           </div>
           <div>
-            <p className="text-xs text-dark-400">Symbol</p>
-            <p className="font-mono font-bold">{selectedSymbol}</p>
+            <p className="text-xs text-dark-500 uppercase tracking-wider">Symbol</p>
+            <p className="font-mono font-bold text-lg text-gradient-gold">{selectedSymbol}</p>
           </div>
         </div>
-        <div className="card p-4 flex items-center gap-3">
-          <div className="p-2 bg-neon-blue/20 rounded-lg">
-            <BarChart3 size={20} className="text-neon-blue" />
+        <div className="card-gold p-5 flex items-center gap-4">
+          <div className="p-3 bg-primary-500/20 rounded-xl">
+            <BarChart3 size={22} className="text-primary-400" />
           </div>
           <div>
-            <p className="text-xs text-dark-400">Total Trades</p>
-            <p className="font-mono font-bold">{performance?.total_trades ?? 0}</p>
+            <p className="text-xs text-dark-500 uppercase tracking-wider">Total Trades</p>
+            <p className="font-mono font-bold text-lg text-gradient-gold">{performance?.total_trades ?? 0}</p>
           </div>
         </div>
-        <div className="card p-4 flex items-center gap-3">
-          <div className="p-2 bg-neon-green/20 rounded-lg">
-            <TrendingUp size={20} className="text-neon-green" />
+        <div className="card-gold p-5 flex items-center gap-4">
+          <div className="p-3 bg-profit/20 rounded-xl">
+            <TrendingUp size={22} className="text-profit" />
           </div>
           <div>
-            <p className="text-xs text-dark-400">Best Trade</p>
-            <p className="font-mono font-bold text-neon-green">
+            <p className="text-xs text-dark-500 uppercase tracking-wider">Best Trade</p>
+            <p className="font-mono font-bold text-lg text-profit">
               {performance ? formatCurrency(performance.largest_win) : '$0.00'}
             </p>
           </div>
         </div>
-        <div className="card p-4 flex items-center gap-3">
-          <div className="p-2 bg-neon-red/20 rounded-lg">
-            <TrendingDown size={20} className="text-neon-red" />
+        <div className="card-gold p-5 flex items-center gap-4">
+          <div className="p-3 bg-loss/20 rounded-xl">
+            <TrendingDown size={22} className="text-loss" />
           </div>
           <div>
-            <p className="text-xs text-dark-400">Worst Trade</p>
-            <p className="font-mono font-bold text-neon-red">
+            <p className="text-xs text-dark-500 uppercase tracking-wider">Worst Trade</p>
+            <p className="font-mono font-bold text-lg text-loss">
               {performance ? formatCurrency(performance.largest_loss) : '$0.00'}
             </p>
           </div>

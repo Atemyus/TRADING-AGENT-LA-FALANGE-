@@ -19,6 +19,7 @@ interface PriceData {
   spread: string
   change: number
   changePercent: number
+  isReal: boolean  // True = from broker, False = simulated
 }
 
 interface PriceTickerProps {
@@ -29,36 +30,8 @@ interface PriceTickerProps {
 // Get WebSocket format symbols
 const WS_SYMBOLS = ALL_SYMBOLS.map(s => s.value)
 
-// Default fallback prices per category
-const getDefaultPrice = (symbol: TradingSymbol): PriceData => {
-  const defaultPrices: Record<string, { mid: string; spread: string }> = {
-    // Forex
-    'EUR_USD': { mid: '1.0891', spread: '0.2' },
-    'GBP_USD': { mid: '1.2651', spread: '0.3' },
-    'USD_JPY': { mid: '149.86', spread: '0.3' },
-    'USD_CHF': { mid: '0.8825', spread: '0.3' },
-    'AUD_USD': { mid: '0.6542', spread: '0.3' },
-    'USD_CAD': { mid: '1.3568', spread: '0.3' },
-    'NZD_USD': { mid: '0.6125', spread: '0.4' },
-    // Metals
-    'XAU_USD': { mid: '2045.85', spread: '0.7' },
-    'XAG_USD': { mid: '23.45', spread: '0.05' },
-    // Commodities
-    'WTI_USD': { mid: '76.50', spread: '0.05' },
-    'BRENT_USD': { mid: '81.20', spread: '0.05' },
-    'NATGAS_USD': { mid: '2.85', spread: '0.01' },
-    // Indices
-    'US30': { mid: '38252', spread: '5' },
-    'US500': { mid: '4925', spread: '0.5' },
-    'NAS100': { mid: '17522', spread: '5' },
-    'DE40': { mid: '17850', spread: '2' },
-    'UK100': { mid: '7650', spread: '2' },
-    'JP225': { mid: '38500', spread: '10' },
-  }
-
-  const defaultData = defaultPrices[symbol.value] || { mid: '100.00', spread: '0.5' }
-  const mid = parseFloat(defaultData.mid)
-
+// Create empty placeholder for symbol (no hardcoded prices)
+const createEmptyPrice = (symbol: TradingSymbol): PriceData => {
   return {
     symbol: symbol.label,
     displayName: symbol.displayName,
@@ -66,12 +39,13 @@ const getDefaultPrice = (symbol: TradingSymbol): PriceData => {
     value: symbol.value,
     tvSymbol: symbol.tvSymbol,
     category: symbol.category,
-    bid: (mid - 0.0001).toFixed(mid < 10 ? 4 : mid < 1000 ? 2 : 0),
-    ask: (mid + 0.0001).toFixed(mid < 10 ? 4 : mid < 1000 ? 2 : 0),
-    mid: defaultData.mid,
-    spread: defaultData.spread,
+    bid: '--',
+    ask: '--',
+    mid: '--',
+    spread: '--',
     change: 0,
     changePercent: 0,
+    isReal: false,
   }
 }
 
@@ -91,22 +65,25 @@ function PriceCard({
   const [flash, setFlash] = useState<'up' | 'down' | null>(null)
   const [prevMid, setPrevMid] = useState(price.mid)
   const isPositive = price.change >= 0
+  const hasPrice = price.mid !== '--' && price.mid !== ''
 
   // Flash animation when price changes
   useEffect(() => {
-    if (price.mid !== prevMid) {
+    if (price.mid !== prevMid && hasPrice) {
       const newMid = parseFloat(price.mid)
       const oldMid = parseFloat(prevMid)
-      if (newMid > oldMid) {
-        setFlash('up')
-      } else if (newMid < oldMid) {
-        setFlash('down')
+      if (!isNaN(newMid) && !isNaN(oldMid)) {
+        if (newMid > oldMid) {
+          setFlash('up')
+        } else if (newMid < oldMid) {
+          setFlash('down')
+        }
       }
       setPrevMid(price.mid)
       const timer = setTimeout(() => setFlash(null), 500)
       return () => clearTimeout(timer)
     }
-  }, [price.mid, prevMid])
+  }, [price.mid, prevMid, hasPrice])
 
   const categoryColors: Record<TradingSymbol['category'], string> = {
     forex: 'bg-blue-500/20 text-blue-400',
@@ -148,29 +125,41 @@ function PriceCard({
       {/* Symbol & Change */}
       <div className="flex items-center justify-between mb-2 mt-4">
         <span className="font-semibold text-sm">{price.displayName}</span>
-        <div className={`flex items-center gap-1 text-xs ${isPositive ? 'text-neon-green' : 'text-neon-red'}`}>
-          {isPositive ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
-          <span>{isPositive ? '+' : ''}{price.changePercent.toFixed(2)}%</span>
-        </div>
+        {hasPrice ? (
+          <div className={`flex items-center gap-1 text-xs ${isPositive ? 'text-neon-green' : 'text-neon-red'}`}>
+            {isPositive ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+            <span>{isPositive ? '+' : ''}{price.changePercent.toFixed(2)}%</span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1 text-xs text-dark-400">
+            <span>--</span>
+          </div>
+        )}
       </div>
 
       {/* Price */}
       <div className="flex items-baseline gap-2">
-        <span className={`text-xl font-mono font-bold transition-colors duration-300 ${flash === 'up' ? 'text-neon-green' : flash === 'down' ? 'text-neon-red' : ''}`}>
-          {price.mid}
-        </span>
+        {hasPrice ? (
+          <span className={`text-xl font-mono font-bold transition-colors duration-300 ${flash === 'up' ? 'text-neon-green' : flash === 'down' ? 'text-neon-red' : ''}`}>
+            {price.mid}
+          </span>
+        ) : (
+          <span className="text-xl font-mono font-bold text-dark-500 animate-pulse">
+            Loading...
+          </span>
+        )}
       </div>
 
       {/* Bid/Ask */}
       <div className="flex items-center justify-between mt-2 text-[10px] text-dark-400">
-        <span>Bid: {price.bid}</span>
-        <span>Ask: {price.ask}</span>
+        <span>Bid: {hasPrice ? price.bid : '--'}</span>
+        <span>Ask: {hasPrice ? price.ask : '--'}</span>
       </div>
 
       {/* Spread */}
       <div className="absolute bottom-2 right-2">
         <span className="text-[9px] px-1.5 py-0.5 bg-dark-700 rounded text-dark-400">
-          {price.spread} pip
+          {hasPrice ? `${price.spread} pip` : '--'}
         </span>
       </div>
     </motion.div>
@@ -178,10 +167,12 @@ function PriceCard({
 }
 
 export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
-  const [prices, setPrices] = useState<PriceData[]>(() => ALL_SYMBOLS.map(getDefaultPrice))
+  // Initialize with empty prices (no hardcoded values) - wait for broker data
+  const [prices, setPrices] = useState<PriceData[]>(() => ALL_SYMBOLS.map(createEmptyPrice))
   const [scrollPosition, setScrollPosition] = useState(0)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const prevPricesRef = useRef<Record<string, number>>({})
+  // Base prices will be set from FIRST broker price received (not hardcoded)
   const basePricesRef = useRef<Record<string, number>>({})
 
   // Use WebSocket for real-time price streaming
@@ -213,15 +204,7 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
     ? scrollPosition < scrollContainerRef.current.scrollWidth - scrollContainerRef.current.clientWidth - 10
     : true
 
-  // Initialize base prices
-  useEffect(() => {
-    ALL_SYMBOLS.forEach(s => {
-      const defaultPrice = getDefaultPrice(s)
-      basePricesRef.current[s.value] = parseFloat(defaultPrice.mid)
-    })
-  }, [])
-
-  // Update prices from WebSocket stream
+  // Update prices from WebSocket stream - use FIRST broker price as base
   useEffect(() => {
     if (Object.keys(streamPrices).length > 0) {
       const newPrices: PriceData[] = ALL_SYMBOLS.map(symbol => {
@@ -229,8 +212,14 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
 
         if (streamData) {
           const mid = parseFloat(streamData.mid)
+
+          // Set base price from FIRST broker price received (not hardcoded)
+          if (!basePricesRef.current[symbol.value]) {
+            basePricesRef.current[symbol.value] = mid
+          }
+
           const prevMid = prevPricesRef.current[symbol.value] || mid
-          const baseMid = basePricesRef.current[symbol.value] || mid
+          const baseMid = basePricesRef.current[symbol.value]
 
           const sessionChange = mid - baseMid
           const changePercent = baseMid > 0 ? (sessionChange / baseMid) * 100 : 0
@@ -250,10 +239,12 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
             spread: streamData.spread,
             change: sessionChange,
             changePercent,
+            isReal: streamData.isReal ?? false,
           }
         }
 
-        return getDefaultPrice(symbol)
+        // Return empty placeholder if no broker data yet (no fallback to hardcoded)
+        return createEmptyPrice(symbol)
       })
 
       setPrices(newPrices)
@@ -262,6 +253,10 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
 
   // Convert selected symbol format
   const selectedValue = selectedSymbol?.replace('/', '_')
+
+  // Show ONLY real broker prices
+  const activePrices = prices.filter(p => p.isReal && p.mid !== '--' && p.mid !== '')
+  const realCount = activePrices.length
 
   return (
     <>
@@ -274,9 +269,9 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
       <div className="space-y-2 w-full overflow-hidden">
       {/* Header with connection status */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <span className="text-sm text-dark-400">
-            {ALL_SYMBOLS.length} Assets
+            {realCount} Asset{realCount !== 1 ? 's' : ''} Reali
           </span>
         </div>
         <div className="flex items-center gap-2 text-xs">
@@ -326,22 +321,28 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
               msOverflowStyle: 'none', /* IE/Edge */
             }}
           >
-            {prices.map((price, index) => (
-              <motion.div
-                key={price.value}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: Math.min(index * 0.02, 0.5) }}
-                className="flex-shrink-0"
-              >
-                <PriceCard
-                  price={price}
-                  isSelected={selectedValue === price.value}
-                  onClick={() => onSelect?.(price.label)}
-                  isLoading={!isConnected}
-                />
-              </motion.div>
-            ))}
+            {activePrices.length > 0 ? (
+              activePrices.map((price, index) => (
+                <motion.div
+                  key={price.value}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: Math.min(index * 0.02, 0.5) }}
+                  className="flex-shrink-0"
+                >
+                  <PriceCard
+                    price={price}
+                    isSelected={selectedValue === price.value}
+                    onClick={() => onSelect?.(price.label)}
+                    isLoading={!isConnected}
+                  />
+                </motion.div>
+              ))
+            ) : (
+              <div className="flex items-center justify-center w-full py-8 text-dark-400">
+                <span>Caricamento prezzi dal broker...</span>
+              </div>
+            )}
           </div>
           {/* Gradient fades for smooth edges */}
           <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-dark-900 to-transparent pointer-events-none z-10" />
@@ -373,43 +374,70 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
 
 export function PriceTickerCompact({ onSelect, selectedSymbol }: { onSelect?: (symbol: string) => void; selectedSymbol?: string }) {
   const { prices: streamPrices, isConnected } = usePriceStream(WS_SYMBOLS.slice(0, 10))
+  const basePricesRef = useRef<Record<string, number>>({})
 
   const prices = ALL_SYMBOLS.slice(0, 10).map(symbol => {
     const streamData = streamPrices[symbol.value]
     if (streamData) {
+      const mid = parseFloat(streamData.mid)
+
+      // Set base price from FIRST broker price received
+      if (!basePricesRef.current[symbol.value]) {
+        basePricesRef.current[symbol.value] = mid
+      }
+
+      const baseMid = basePricesRef.current[symbol.value]
+      const sessionChange = mid - baseMid
+      const changePercent = baseMid > 0 ? (sessionChange / baseMid) * 100 : 0
+
       return {
-        ...getDefaultPrice(symbol),
+        ...createEmptyPrice(symbol),
         mid: streamData.mid,
         bid: streamData.bid,
         ask: streamData.ask,
+        change: sessionChange,
+        changePercent,
+        isReal: streamData.isReal ?? false,
       }
     }
-    return getDefaultPrice(symbol)
+    return createEmptyPrice(symbol)
   })
+
+  // Show only real broker prices
+  const filteredPrices = prices.filter(p => p.isReal && p.mid !== '--' && p.mid !== '')
 
   return (
     <div className="flex gap-4 overflow-x-auto py-2 scrollbar-hide">
-      {prices.map((price) => {
-        const isPositive = price.change >= 0
-        const isSelected = selectedSymbol?.replace('/', '_') === price.value
-        return (
-          <div
-            key={price.value}
-            onClick={() => onSelect?.(price.label)}
-            className={`
-              flex items-center gap-3 px-4 py-2 rounded-lg whitespace-nowrap cursor-pointer
-              transition-colors duration-200
-              ${isSelected ? 'bg-primary-500/20 border border-primary-500/50' : 'bg-dark-800/50 hover:bg-dark-700/50'}
-            `}
-          >
-            <span className="font-medium">{price.displayName}</span>
-            <span className="font-mono">{price.mid}</span>
-            <span className={`text-sm ${isPositive ? 'text-neon-green' : 'text-neon-red'}`}>
-              {isPositive ? '+' : ''}{price.changePercent.toFixed(2)}%
-            </span>
-          </div>
-        )
-      })}
+      {filteredPrices.length > 0 ? (
+        filteredPrices.map((price) => {
+          const isPositive = price.change >= 0
+          const isSelected = selectedSymbol?.replace('/', '_') === price.value
+          const hasPrice = price.mid !== '--' && price.mid !== ''
+          return (
+            <div
+              key={price.value}
+              onClick={() => onSelect?.(price.label)}
+              className={`
+                flex items-center gap-3 px-4 py-2 rounded-lg whitespace-nowrap cursor-pointer
+                transition-colors duration-200
+                ${isSelected ? 'bg-primary-500/20 border border-primary-500/50' : 'bg-dark-800/50 hover:bg-dark-700/50'}
+              `}
+            >
+              <span className="font-medium">{price.displayName}</span>
+              <span className="font-mono">{hasPrice ? price.mid : <span className="text-dark-500 animate-pulse">--</span>}</span>
+              {hasPrice ? (
+                <span className={`text-sm ${isPositive ? 'text-neon-green' : 'text-neon-red'}`}>
+                  {isPositive ? '+' : ''}{price.changePercent.toFixed(2)}%
+                </span>
+              ) : (
+                <span className="text-sm text-dark-500">--</span>
+              )}
+            </div>
+          )
+        })
+      ) : (
+        <span className="text-dark-400 text-sm">Caricamento...</span>
+      )}
     </div>
   )
 }

@@ -60,7 +60,6 @@ class ChartVisionService:
         "figcolor": "#0f172a",
         "gridcolor": "#1e293b",
         "gridstyle": "-",
-        "gridwidth": 0.5,
         "y_on_right": True,
         "rc": {
             "axes.labelcolor": "#94a3b8",

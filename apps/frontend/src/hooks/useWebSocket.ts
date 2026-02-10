@@ -178,6 +178,7 @@ export function usePriceStream(symbols: string[]) {
     mid: string;
     spread: string;
     timestamp: string;
+    isReal: boolean;
   }>>({});
 
   const { isConnected, subscribe, addMessageHandler, removeMessageHandler } = useWebSocket();
@@ -194,6 +195,7 @@ export function usePriceStream(symbols: string[]) {
           mid: string;
           spread: string;
           timestamp: string;
+          isReal?: boolean;
         };
         setPrices((prev) => ({
           ...prev,
@@ -203,6 +205,7 @@ export function usePriceStream(symbols: string[]) {
             mid: priceData.mid,
             spread: priceData.spread,
             timestamp: priceData.timestamp,
+            isReal: priceData.isReal ?? false,
           },
         }));
       });
@@ -256,6 +259,62 @@ export function usePositionStream() {
   }, [isConnected, subscribe, addMessageHandler, removeMessageHandler]);
 
   return { positions, isConnected };
+}
+
+/**
+ * Hook for getting available symbols from broker
+ * Returns only symbols that have real broker prices (not simulated)
+ */
+export function useAvailableSymbols() {
+  const [availableSymbols, setAvailableSymbols] = useState<string[]>([]);
+  const [failedSymbols, setFailedSymbols] = useState<string[]>([]);
+  const [brokerConnected, setBrokerConnected] = useState(false);
+  const wsRef = useRef<WebSocket | null>(null);
+
+  useEffect(() => {
+    const connect = () => {
+      try {
+        const wsUrl = `${WS_URL}/api/v1/ws/stream`;
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          // Request available symbols
+          ws.send(JSON.stringify({ action: 'get_available_symbols' }));
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'available_symbols') {
+              setAvailableSymbols(data.available || []);
+              setFailedSymbols(data.failed || []);
+              setBrokerConnected(data.broker_connected || false);
+            }
+          } catch (err) {
+            console.error('Failed to parse available symbols:', err);
+          }
+        };
+
+        ws.onclose = () => {
+          // Reconnect after 5 seconds
+          setTimeout(connect, 5000);
+        };
+      } catch (err) {
+        console.error('Failed to connect for available symbols:', err);
+      }
+    };
+
+    connect();
+
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
+  }, []);
+
+  return { availableSymbols, failedSymbols, brokerConnected };
 }
 
 export default useWebSocket;

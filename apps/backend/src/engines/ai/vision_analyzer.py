@@ -1,13 +1,13 @@
 """
 Vision Analyzer - Multi-AI visual chart analysis via AIML API.
 
-Uses AIML API gateway to access multiple vision-capable models:
-- ChatGPT 5.2
-- Gemini 3 Pro
-- DeepSeek V3.2
-- GLM 4.7
-- Grok 4.1
-- Qwen Max
+Uses AIML API gateway to access AI models:
+- ChatGPT 5.2 (vision-capable)
+- Gemini 3 Pro (vision-capable)
+- Grok 4.1 Fast (vision-capable)
+- Qwen3 VL (vision-capable)
+- Llama 4 Scout (text analysis)
+- ERNIE 4.5 VL (vision-capable)
 """
 
 import asyncio
@@ -24,24 +24,24 @@ from src.core.config import settings
 
 
 class VisionModel(str, Enum):
-    """Available vision-capable AI models via AIML API."""
-    # Correct AIML API model IDs (updated 2026-01-23)
-    CHATGPT_5_2 = "openai/gpt-5-2-chat-latest"
+    """Available AI models via AIML API."""
+    # AIML API model IDs (updated 2026-01-27)
+    CHATGPT_5_2 = "openai/gpt-5-2"
     GEMINI_3_PRO = "google/gemini-3-pro-preview"
-    DEEPSEEK_V3_2 = "deepseek/deepseek-non-thinking-v3.2-exp"
-    GLM_4_5 = "zhipu/glm-4.5-air"
     GROK_4_1 = "x-ai/grok-4-1-fast-reasoning"
-    QWEN_MAX = "qwen-max"
+    QWEN3_VL = "alibaba/qwen3-vl-32b-instruct"  # Vision-Language model
+    LLAMA_4_SCOUT = "meta-llama/llama-4-scout"  # Text analysis
+    ERNIE_4_5_VL = "baidu/ernie-4.5-vl-424b-a47b"  # Vision-Language model
 
 
 # Human-readable model names for display
 MODEL_DISPLAY_NAMES = {
     VisionModel.CHATGPT_5_2: "ChatGPT 5.2",
-    VisionModel.GEMINI_3_PRO: "Gemini 3 Pro Preview",
-    VisionModel.DEEPSEEK_V3_2: "DeepSeek V3.2",
-    VisionModel.GLM_4_5: "GLM 4.5 Air",
+    VisionModel.GEMINI_3_PRO: "Gemini 3 Pro",
     VisionModel.GROK_4_1: "Grok 4.1 Fast",
-    VisionModel.QWEN_MAX: "Qwen Max",
+    VisionModel.QWEN3_VL: "Qwen3 VL",
+    VisionModel.LLAMA_4_SCOUT: "Llama 4 Scout",
+    VisionModel.ERNIE_4_5_VL: "ERNIE 4.5 VL",
 }
 
 
@@ -152,12 +152,13 @@ IMPORTANT: Be PRECISE with price levels. Read them directly from the chart. Refe
         display_name = MODEL_DISPLAY_NAMES.get(model, model.value)
 
         if not self.api_key:
+            print(f"[VisionAnalyzer] ⚠️ AIML API KEY NOT SET - No real API call for {model.value}. Set AIML_API_KEY env variable.")
             return VisionAnalysisResult(
                 model=model.value,
                 model_display_name=display_name,
                 direction="HOLD",
                 confidence=0,
-                error="AIML API key not configured"
+                error="⚠️ AIML API KEY NON CONFIGURATA - Nessuna chiamata API reale. Configura AIML_API_KEY nelle variabili d'ambiente."
             )
 
         start_time = datetime.now()
@@ -251,7 +252,7 @@ IMPORTANT: Be PRECISE with price levels. Read them directly from the chart. Refe
         Args:
             images_base64: Dict mapping timeframe to base64 chart image
             prompt: Analysis prompt
-            models: List of models to use. Defaults to all 6 models.
+            models: List of models to use. Defaults to all 8 models.
             max_models: Maximum number of models to use (for faster modes)
 
         Returns:
@@ -520,7 +521,7 @@ IMPORTANT: Be PRECISE with price levels. Read them directly from the chart. Refe
         """
         Calculate consensus from multiple AI analysis results.
 
-        With 6 models, requires at least 4 to agree for a strong signal.
+        With 8 models, requires at least 5 to agree for a strong signal.
         """
         valid_results = [r for r in results if not r.error and r.direction != "HOLD"]
         total_results = len([r for r in results if not r.error])

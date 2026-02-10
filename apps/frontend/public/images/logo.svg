@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 120">
+  <defs>
+    <linearGradient id="goldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFD700"/>
+      <stop offset="50%" style="stop-color:#FFA500"/>
+      <stop offset="100%" style="stop-color:#FF6B00"/>
+    </linearGradient>
+    <linearGradient id="fireGradient" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#FF4500"/>
+      <stop offset="50%" style="stop-color:#FFA500"/>
+      <stop offset="100%" style="stop-color:#FFD700"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Flame Icon -->
+  <g transform="translate(20, 15)" filter="url(#glow)">
+    <path d="M45 90c-20 0-35-15-35-40 0-20 15-35 25-45 0 15 5 20 15 20-5-15 0-25 10-25 5 10 15 15 15 30 10-5 10-15 10-20 10 15 15 30 15 45 0 20-15 35-35 35z" fill="url(#fireGradient)"/>
+    <path d="M45 85c-15 0-25-10-25-30 0-15 10-25 18-35 0 12 4 15 12 15-4-12 0-20 8-20 4 8 12 12 12 24 8-4 8-12 8-16 8 12 12 24 12 36 0 15-12 26-27 26z" fill="#FFD700" opacity="0.6"/>
+  </g>
+
+  <!-- PROMETHEUS Text -->
+  <text x="115" y="55" font-family="Georgia, serif" font-size="36" font-weight="bold" fill="url(#goldGradient)" letter-spacing="4">
+    PROMETHEUS
+  </text>
+
+  <!-- AI TRADING Subtitle -->
+  <text x="115" y="85" font-family="Arial, sans-serif" font-size="16" fill="#888888" letter-spacing="8">
+    AI TRADING
+  </text>
+
+  <!-- Decorative Line -->
+  <line x1="115" y1="95" x2="380" y2="95" stroke="url(#goldGradient)" stroke-width="1" opacity="0.5"/>
+</svg>

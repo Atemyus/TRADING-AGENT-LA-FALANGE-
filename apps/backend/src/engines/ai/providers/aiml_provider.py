@@ -4,13 +4,17 @@ AIML API Provider
 Multi-model gateway at api.aimlapi.com/v1
 Uses a single API key to access multiple AI models.
 
-Supported models (exact AIML API model IDs):
-- ChatGPT 5.2 → openai/gpt-5-2-chat-latest
+Supported models (exact AIML API model IDs) - ordered by vision capability:
+Vision-capable:
+- ChatGPT 5.2 → openai/gpt-5-2
 - Gemini 3 Pro → google/gemini-3-pro-preview
-- DeepSeek V3.2 → deepseek/deepseek-non-thinking-v3.2-exp
 - Grok 4.1 Fast → x-ai/grok-4-1-fast-reasoning
-- Qwen Max → qwen-max
-- GLM 4.7 → zhipu/glm-4.7
+- Qwen3 VL → alibaba/qwen3-vl-32b-instruct
+Text-only:
+- DeepSeek V3.1 → deepseek/deepseek-chat-v3.1
+- GLM 4.5 Air → zhipu/glm-4.5-air
+- Llama 4 Scout → meta-llama/llama-4-scout
+- Mistral 7B Instruct v0.3 → mistralai/Mistral-7B-Instruct-v0.3
 """
 
 import json
@@ -33,37 +37,62 @@ from src.engines.ai.prompts.templates import build_analysis_prompt, get_system_p
 
 
 # AIML API model mappings - EXACT model IDs from AIML API documentation
-# Updated 2026-01-23 from https://docs.aimlapi.com/api-references/model-database
+# Updated 2026-01-26 - Vision capability verified against AIML API docs
+# See: https://docs.aimlapi.com/capabilities/image-to-text-vision
 AIML_MODELS = {
     "chatgpt-5.2": {
-        "id": "openai/gpt-5-2-chat-latest",
+        "id": "openai/gpt-5-2",
         "display_name": "ChatGPT 5.2",
         "provider": "OpenAI",
+        "supports_vision": True,
     },
     "gemini-3-pro": {
         "id": "google/gemini-3-pro-preview",
-        "display_name": "Gemini 3 Pro Preview",
+        "display_name": "Gemini 3 Pro",
         "provider": "Google",
-    },
-    "deepseek-v3.2": {
-        "id": "deepseek/deepseek-non-thinking-v3.2-exp",
-        "display_name": "DeepSeek V3.2",
-        "provider": "DeepSeek",
+        "supports_vision": True,
     },
     "grok-4.1-fast": {
         "id": "x-ai/grok-4-1-fast-reasoning",
         "display_name": "Grok 4.1 Fast",
         "provider": "xAI",
+        "supports_vision": True,
     },
-    "qwen-max": {
-        "id": "qwen-max",
-        "display_name": "Qwen Max",
+    "qwen3-vl": {
+        "id": "alibaba/qwen3-vl-32b-instruct",
+        "display_name": "Qwen3 VL",
         "provider": "Alibaba",
+        "supports_vision": True,  # VL = Vision-Language model
+    },
+    "deepseek-v3.1": {
+        "id": "deepseek/deepseek-chat-v3.1",
+        "display_name": "DeepSeek V3.1",
+        "provider": "DeepSeek",
+        "supports_vision": False,  # Text-only model, no vision support
     },
     "glm-4.5": {
         "id": "zhipu/glm-4.5-air",
         "display_name": "GLM 4.5 Air",
         "provider": "Zhipu",
+        "supports_vision": False,  # Text-only model, no vision support
+    },
+    "llama-4-scout": {
+        "id": "meta-llama/llama-4-scout",
+        "display_name": "Llama 4 Scout",
+        "provider": "Meta",
+        "supports_vision": False,  # Text-only model
+    },
+    "mistral-7b-v0.3": {
+        "id": "mistralai/Mistral-7B-Instruct-v0.3",
+        "display_name": "Mistral 7B v0.3",
+        "provider": "Mistral",
+        "supports_vision": False,  # Text-only model
+    },
+    "ernie-4.5-vl": {
+        "id": "baidu/ernie-4.5-vl-424b-a47b",
+        "display_name": "ERNIE 4.5 VL",
+        "provider": "Baidu",
+        "supports_vision": True,  # VL = Vision-Language model
     },
 }
 

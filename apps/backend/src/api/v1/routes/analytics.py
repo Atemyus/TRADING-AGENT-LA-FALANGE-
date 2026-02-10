@@ -13,6 +13,7 @@ from src.services.trading_service import get_trading_service
 from src.engines.data.market_data import get_market_data_service
 from src.engines.data.indicators import TechnicalIndicators
 from src.engines.trading.broker_factory import NoBrokerConfiguredError
+from src.engines.trading.metatrader_broker import RateLimitError
 
 router = APIRouter()
 
@@ -149,8 +150,20 @@ async def get_account_summary():
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(e),
         )
+    except RateLimitError as e:
+        logger.warning(f"Rate limit reached for account summary: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="API rate limit exceeded. Please wait a few minutes and try again.",
+        )
     except Exception as e:
         logger.error(f"DEBUG: Exception in get_account_summary: {type(e).__name__}: {e}")
+        # Check if it's a rate limit error from the message
+        if "429" in str(e) or "rate limit" in str(e).lower() or "TooManyRequestsError" in str(e):
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="API rate limit exceeded. Please wait a few minutes and try again.",
+            )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e),
@@ -162,25 +175,108 @@ async def get_performance_metrics(
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
 ):
-    """Get overall performance metrics."""
-    # TODO: Calculate from database trade history
+    """Get overall performance metrics from bot trade history and broker deals."""
+    from src.engines.trading.auto_trader import get_auto_trader
+
+    bot = get_auto_trader()
+    closed_trades = [t for t in bot.state.trade_history if t.profit_loss is not None]
+
+    # Also try to get data from broker deal history
+    try:
+        service = await get_trading_service()
+        if hasattr(service._broker, 'get_deals_history'):
+            from datetime import datetime as dt, timezone, timedelta
+            # Get last 30 days of deals
+            start = dt.now(timezone.utc) - timedelta(days=30)
+            deals = await service._broker.get_deals_history(start.isoformat())
+            # Extract profit from deals that have a profit field
+            for deal in deals:
+                profit = deal.get("profit", 0)
+                if profit and profit != 0:
+                    # Add broker deal as a pseudo-trade if not already tracked
+                    deal_id = str(deal.get("id", deal.get("dealId", "")))
+                    if not any(t.id == deal_id for t in closed_trades):
+                        from src.engines.trading.auto_trader import TradeRecord
+                        pseudo_trade = TradeRecord(
+                            id=deal_id,
+                            symbol=deal.get("symbol", "UNKNOWN"),
+                            direction=deal.get("type", "UNKNOWN"),
+                            entry_price=float(deal.get("price", 0)),
+                            units=float(deal.get("volume", 0)),
+                            timestamp=dt.now(timezone.utc),
+                            profit_loss=float(profit) + float(deal.get("swap", 0)) + float(deal.get("commission", 0)),
+                            status="closed",
+                        )
+                        closed_trades.append(pseudo_trade)
+    except Exception as e:
+        print(f"[Analytics] Error fetching broker deals: {e}")
+
+    if not closed_trades:
+        return PerformanceMetrics(
+            total_trades=0, winning_trades=0, losing_trades=0,
+            win_rate="0.00", profit_factor="0.00", total_pnl="0.00",
+            average_win="0.00", average_loss="0.00",
+            largest_win="0.00", largest_loss="0.00",
+            max_drawdown="0.00", max_drawdown_percent="0.00",
+            sharpe_ratio=None, sortino_ratio=None,
+            expectancy="0.00", average_hold_time="0h",
+        )
+
+    # Calculate metrics
+    wins = [t for t in closed_trades if t.profit_loss and t.profit_loss > 0]
+    losses = [t for t in closed_trades if t.profit_loss and t.profit_loss < 0]
+    total = len(closed_trades)
+    win_count = len(wins)
+    loss_count = len(losses)
+    win_rate = (win_count / total * 100) if total > 0 else 0
+
+    total_pnl = sum(t.profit_loss for t in closed_trades if t.profit_loss)
+    total_wins = sum(t.profit_loss for t in wins if t.profit_loss)
+    total_losses = abs(sum(t.profit_loss for t in losses if t.profit_loss))
+    avg_win = (total_wins / win_count) if win_count > 0 else 0
+    avg_loss = (total_losses / loss_count) if loss_count > 0 else 0
+    profit_factor = (total_wins / total_losses) if total_losses > 0 else float('inf') if total_wins > 0 else 0
+    largest_win = max((t.profit_loss for t in wins if t.profit_loss), default=0)
+    largest_loss = min((t.profit_loss for t in losses if t.profit_loss), default=0)
+    expectancy = (total_pnl / total) if total > 0 else 0
+
+    # Max drawdown
+    cumulative = 0
+    peak = 0
+    max_dd = 0
+    for t in closed_trades:
+        cumulative += (t.profit_loss or 0)
+        if cumulative > peak:
+            peak = cumulative
+        dd = peak - cumulative
+        if dd > max_dd:
+            max_dd = dd
+
+    # Average hold time
+    hold_times = []
+    for t in closed_trades:
+        if t.exit_timestamp and t.timestamp:
+            delta = t.exit_timestamp - t.timestamp
+            hold_times.append(delta.total_seconds() / 3600)  # hours
+    avg_hold = f"{sum(hold_times) / len(hold_times):.1f}h" if hold_times else "N/A"
+
     return PerformanceMetrics(
-        total_trades=0,
-        winning_trades=0,
-        losing_trades=0,
-        win_rate="0.00",
-        profit_factor="0.00",
-        total_pnl="0.00",
-        average_win="0.00",
-        average_loss="0.00",
-        largest_win="0.00",
-        largest_loss="0.00",
-        max_drawdown="0.00",
+        total_trades=total,
+        winning_trades=win_count,
+        losing_trades=loss_count,
+        win_rate=f"{win_rate:.2f}",
+        profit_factor=f"{profit_factor:.2f}" if profit_factor != float('inf') else "∞",
+        total_pnl=f"{total_pnl:.2f}",
+        average_win=f"{avg_win:.2f}",
+        average_loss=f"{avg_loss:.2f}",
+        largest_win=f"{largest_win:.2f}",
+        largest_loss=f"{largest_loss:.2f}",
+        max_drawdown=f"{max_dd:.2f}",
         max_drawdown_percent="0.00",
         sharpe_ratio=None,
         sortino_ratio=None,
-        expectancy="0.00",
-        average_hold_time="0h",
+        expectancy=f"{expectancy:.2f}",
+        average_hold_time=avg_hold,
     )
 
 
