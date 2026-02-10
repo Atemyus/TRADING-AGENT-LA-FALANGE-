@@ -83,7 +83,7 @@ function VerifyEmailContent() {
               alt="Prometheus AI Trading"
               width={150}
               height={45}
-              className="h-8 w-auto hidden sm:block"
+              className="h-8 w-auto hidden sm:block mix-blend-screen"
             />
           </Link>
           <MusicPlayer size="md" showLabel={false} />

@@ -149,7 +149,7 @@ export default function RegisterPage() {
                 alt="Prometheus AI Trading"
                 width={280}
                 height={84}
-                className="h-20 w-auto"
+                className="h-20 w-auto mix-blend-screen"
                 priority
               />
               <div className="absolute -inset-4 bg-imperial-500/15 rounded-2xl blur-xl animate-pulse -z-10" />

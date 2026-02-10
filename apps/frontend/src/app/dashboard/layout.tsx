@@ -144,7 +144,7 @@ export default function DashboardLayout({
                   alt="Prometheus AI Trading"
                   width={220}
                   height={66}
-                  className="h-14 w-auto group-hover:scale-105 transition-transform"
+                  className="h-14 w-auto group-hover:scale-105 transition-transform mix-blend-screen"
                   priority
                 />
                 <div className="absolute -inset-2 bg-primary-500/10 rounded-xl blur-lg opacity-0 group-hover:opacity-100 transition-opacity" />
