@@ -139,6 +139,11 @@ class Settings(BaseSettings):
     # Market Data
     CMC_API_KEY: Optional[str] = None
 
+    # Email Service (Resend)
+    RESEND_API_KEY: Optional[str] = None
+    EMAIL_FROM: str = "Prometheus <noreply@prometheus.trading>"
+    FRONTEND_URL: str = "http://localhost:3000"
+
     # Notifications
     TELEGRAM_BOT_TOKEN: Optional[str] = None
     TELEGRAM_CHAT_ID: Optional[str] = None
