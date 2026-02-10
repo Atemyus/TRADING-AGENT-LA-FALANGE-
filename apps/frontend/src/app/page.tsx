@@ -15,12 +15,110 @@ import {
   Globe,
   ChevronRight,
   Sparkles,
-  Shield
+  Shield,
+  LogIn,
 } from 'lucide-react'
+import { MusicPlayer } from '@/components/common/MusicPlayer'
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen overflow-hidden">
+    <div className="min-h-screen overflow-hidden relative">
+      {/* Fixed header with music and login */}
+      <header className="fixed top-0 left-0 right-0 z-50 px-6 py-4">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          {/* Logo */}
+          <Link href="/" className="flex items-center gap-3 group">
+            <div className="relative">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary-500 to-imperial-600 flex items-center justify-center">
+                <Flame className="w-5 h-5 text-dark-950" />
+              </div>
+              <div className="absolute -inset-1 bg-primary-500/20 rounded-lg blur-md opacity-0 group-hover:opacity-100 transition-opacity" />
+            </div>
+            <span className="font-imperial text-xl font-bold text-gradient-gold tracking-wide hidden sm:block">
+              PROMETHEUS
+            </span>
+          </Link>
+
+          {/* Right side - Music & Auth */}
+          <div className="flex items-center gap-4">
+            <MusicPlayer size="md" showLabel={false} />
+
+            <Link
+              href="/login"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-dark-800/50 border border-primary-500/20 hover:bg-dark-800 hover:border-primary-500/40 transition-all duration-300 text-dark-200 hover:text-primary-300"
+            >
+              <LogIn size={18} />
+              <span className="hidden sm:inline font-medium">Login</span>
+            </Link>
+          </div>
+        </div>
+      </header>
+
+      {/* Left border fire effect */}
+      <div className="fixed left-0 top-0 bottom-0 w-16 pointer-events-none z-40">
+        <div className="absolute inset-0 bg-gradient-to-r from-primary-500/5 to-transparent" />
+        <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-gradient-to-b from-transparent via-primary-500/40 to-transparent" />
+        <div className="absolute left-2 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-primary-500/20 to-transparent" />
+        {/* Floating embers */}
+        <motion.div
+          animate={{
+            y: ['100vh', '-10vh'],
+            opacity: [0, 1, 1, 0],
+            scale: [0.5, 1, 1, 0.5],
+          }}
+          transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}
+          className="absolute left-4 w-2 h-2 rounded-full bg-primary-400/60 blur-[2px]"
+        />
+        <motion.div
+          animate={{
+            y: ['100vh', '-10vh'],
+            opacity: [0, 1, 1, 0],
+          }}
+          transition={{ duration: 12, repeat: Infinity, ease: 'linear', delay: 2 }}
+          className="absolute left-6 w-1.5 h-1.5 rounded-full bg-imperial-400/50 blur-[1px]"
+        />
+        <motion.div
+          animate={{
+            y: ['100vh', '-10vh'],
+            opacity: [0, 0.8, 0.8, 0],
+          }}
+          transition={{ duration: 10, repeat: Infinity, ease: 'linear', delay: 5 }}
+          className="absolute left-3 w-1 h-1 rounded-full bg-primary-300/70 blur-[1px]"
+        />
+      </div>
+
+      {/* Right border fire effect */}
+      <div className="fixed right-0 top-0 bottom-0 w-16 pointer-events-none z-40">
+        <div className="absolute inset-0 bg-gradient-to-l from-primary-500/5 to-transparent" />
+        <div className="absolute right-0 top-0 bottom-0 w-[2px] bg-gradient-to-b from-transparent via-primary-500/40 to-transparent" />
+        <div className="absolute right-2 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-primary-500/20 to-transparent" />
+        {/* Floating embers */}
+        <motion.div
+          animate={{
+            y: ['100vh', '-10vh'],
+            opacity: [0, 1, 1, 0],
+            scale: [0.5, 1, 1, 0.5],
+          }}
+          transition={{ duration: 9, repeat: Infinity, ease: 'linear', delay: 1 }}
+          className="absolute right-4 w-2 h-2 rounded-full bg-primary-400/60 blur-[2px]"
+        />
+        <motion.div
+          animate={{
+            y: ['100vh', '-10vh'],
+            opacity: [0, 1, 1, 0],
+          }}
+          transition={{ duration: 11, repeat: Infinity, ease: 'linear', delay: 4 }}
+          className="absolute right-6 w-1.5 h-1.5 rounded-full bg-imperial-400/50 blur-[1px]"
+        />
+        <motion.div
+          animate={{
+            y: ['100vh', '-10vh'],
+            opacity: [0, 0.8, 0.8, 0],
+          }}
+          transition={{ duration: 7, repeat: Infinity, ease: 'linear', delay: 3 }}
+          className="absolute right-3 w-1 h-1 rounded-full bg-primary-300/70 blur-[1px]"
+        />
+      </div>
       {/* Hero Section */}
       <section className="relative min-h-screen flex flex-col items-center justify-center px-4 hero-gradient particles-bg">
         {/* Animated background orbs */}

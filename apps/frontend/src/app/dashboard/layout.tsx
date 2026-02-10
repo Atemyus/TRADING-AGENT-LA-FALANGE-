@@ -14,56 +14,15 @@ import {
   AlertCircle,
   TrendingUp,
   TrendingDown,
-  Zap,
   Flame,
   ChevronRight,
-  Headphones,
-  Volume2,
-  VolumeX,
 } from 'lucide-react'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { analyticsApi } from '@/lib/api'
-
-// Epic background music hook
-function useBackgroundMusic() {
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [isLoaded, setIsLoaded] = useState(false)
-
-  useEffect(() => {
-    // Create audio element with epic orchestral music
-    audioRef.current = new Audio('/audio/prometheus-theme.mp3')
-    audioRef.current.loop = true
-    audioRef.current.volume = 0.3
-
-    audioRef.current.addEventListener('canplaythrough', () => {
-      setIsLoaded(true)
-    })
-
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause()
-        audioRef.current = null
-      }
-    }
-  }, [])
-
-  const toggleMusic = () => {
-    if (!audioRef.current) return
-
-    if (isPlaying) {
-      audioRef.current.pause()
-      setIsPlaying(false)
-    } else {
-      audioRef.current.play().catch(() => {
-        // Autoplay blocked, user needs to interact first
-      })
-      setIsPlaying(true)
-    }
-  }
-
-  return { isPlaying, isLoaded, toggleMusic }
-}
+import { MusicPlayer } from '@/components/common/MusicPlayer'
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
+import { useAuth } from '@/contexts/AuthContext'
+import { LogOut, User } from 'lucide-react'
 
 const navItems = [
   { href: '/dashboard', label: 'Command Center', icon: LayoutDashboard },
@@ -82,7 +41,7 @@ export default function DashboardLayout({
   const [accountData, setAccountData] = useState<{ balance: number; todayPnl: number } | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [connectionError, setConnectionError] = useState<string | null>(null)
-  const { isPlaying, toggleMusic } = useBackgroundMusic()
+  const { user, logout } = useAuth()
 
   useEffect(() => {
     const fetchAccountData = async () => {
@@ -107,19 +66,71 @@ export default function DashboardLayout({
   }, [])
 
   return (
+    <ProtectedRoute>
     <div className="min-h-screen flex overflow-x-hidden max-w-[100vw] bg-dark-abyss">
       {/* Sidebar */}
       <motion.aside
         initial={{ x: -280 }}
         animate={{ x: sidebarOpen ? 0 : -280 }}
         transition={{ duration: 0.3, ease: 'easeOut' }}
-        className="fixed left-0 top-0 h-full w-[280px] z-40"
+        className="fixed left-0 top-0 h-full w-[280px] z-40 overflow-hidden"
       >
         {/* Sidebar background with gradient */}
         <div className="absolute inset-0 bg-dark-950/95 backdrop-blur-2xl border-r border-primary-500/10" />
 
         {/* Gradient accent at top */}
         <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary-500 via-imperial-500 to-primary-500" />
+
+        {/* Rising flames effect on sidebar */}
+        <div className="absolute bottom-0 left-0 right-0 h-64 pointer-events-none overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-t from-primary-500/5 via-primary-500/2 to-transparent" />
+          {/* Animated flame particles */}
+          <motion.div
+            animate={{
+              y: [0, -100, -200],
+              opacity: [0.6, 0.3, 0],
+              scale: [1, 1.2, 0.8],
+            }}
+            transition={{ duration: 4, repeat: Infinity, ease: 'easeOut' }}
+            className="absolute bottom-0 left-[20%] w-3 h-8 bg-gradient-to-t from-primary-500/30 to-transparent rounded-full blur-sm"
+          />
+          <motion.div
+            animate={{
+              y: [0, -80, -160],
+              opacity: [0.5, 0.25, 0],
+            }}
+            transition={{ duration: 3.5, repeat: Infinity, ease: 'easeOut', delay: 0.5 }}
+            className="absolute bottom-0 left-[50%] w-2 h-6 bg-gradient-to-t from-imperial-500/25 to-transparent rounded-full blur-sm"
+          />
+          <motion.div
+            animate={{
+              y: [0, -120, -220],
+              opacity: [0.7, 0.35, 0],
+            }}
+            transition={{ duration: 5, repeat: Infinity, ease: 'easeOut', delay: 1 }}
+            className="absolute bottom-0 left-[75%] w-2.5 h-7 bg-gradient-to-t from-primary-400/30 to-transparent rounded-full blur-sm"
+          />
+        </div>
+
+        {/* Glowing orb effect */}
+        <motion.div
+          animate={{
+            opacity: [0.3, 0.5, 0.3],
+            scale: [1, 1.1, 1],
+          }}
+          transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+          className="absolute top-1/3 -right-20 w-40 h-40 bg-primary-500/10 rounded-full blur-3xl pointer-events-none"
+        />
+
+        {/* Vertical accent line with glow */}
+        <div className="absolute right-0 top-20 bottom-20 w-px pointer-events-none">
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-primary-500/30 to-transparent" />
+          <motion.div
+            animate={{ y: ['-100%', '100%'] }}
+            transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
+            className="absolute w-full h-20 bg-gradient-to-b from-transparent via-primary-400/60 to-transparent"
+          />
+        </div>
 
         {/* Content */}
         <div className="relative z-10 flex flex-col h-full">
@@ -303,52 +314,8 @@ export default function DashboardLayout({
                 </div>
               </div>
 
-              {/* Music Toggle - Epic Fire Style */}
-              <motion.button
-                onClick={toggleMusic}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                className={`relative p-3 rounded-xl transition-all duration-300 ${
-                  isPlaying
-                    ? 'bg-gradient-to-br from-primary-500/20 to-imperial-500/20 border border-primary-500/40 shadow-lg shadow-primary-500/20'
-                    : 'bg-dark-800/50 border border-primary-500/20 hover:bg-dark-800 hover:border-primary-500/40 hover:shadow-lg hover:shadow-primary-500/10'
-                }`}
-                title={isPlaying ? 'Pause epic music' : 'Play epic music'}
-              >
-                {/* Glow effect behind icon */}
-                <div className={`absolute inset-0 rounded-xl transition-opacity duration-300 ${isPlaying ? 'opacity-100' : 'opacity-0'}`}>
-                  <div className="absolute inset-0 bg-primary-500/20 rounded-xl blur-md animate-pulse" />
-                </div>
-
-                {isPlaying ? (
-                  <Volume2 size={22} className="relative z-10 text-primary-400 torch-glow" />
-                ) : (
-                  <Headphones size={22} className="relative z-10 text-primary-400 hover:text-primary-300 transition-colors" />
-                )}
-
-                {/* Animated ring when playing */}
-                {isPlaying && (
-                  <>
-                    <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-gradient-to-br from-primary-400 to-primary-600"></span>
-                    </span>
-                    {/* Rotating fire ring */}
-                    <motion.div
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
-                      className="absolute -inset-1 rounded-xl border border-primary-500/30 border-t-primary-500/60"
-                    />
-                  </>
-                )}
-
-                {/* Music label */}
-                <span className={`absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap transition-opacity ${
-                  isPlaying ? 'text-primary-400 opacity-100' : 'text-dark-500 opacity-70'
-                }`}>
-                  {isPlaying ? 'Playing' : 'Music'}
-                </span>
-              </motion.button>
+              {/* Music Toggle */}
+              <MusicPlayer size="md" showLabel={true} />
 
               {/* Notifications */}
               <button className="relative p-2.5 hover:bg-dark-800 rounded-xl transition-all duration-200 border border-transparent hover:border-primary-500/20">
@@ -357,6 +324,25 @@ export default function DashboardLayout({
                   <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-loss rounded-full border-2 border-dark-950" />
                 )}
               </button>
+
+              {/* User Menu */}
+              {user && (
+                <div className="flex items-center gap-3 pl-4 border-l border-dark-700">
+                  <div className="hidden sm:flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500/20 to-imperial-500/20 border border-primary-500/30 flex items-center justify-center">
+                      <User size={16} className="text-primary-400" />
+                    </div>
+                    <span className="text-sm font-medium text-dark-200">{user.username}</span>
+                  </div>
+                  <button
+                    onClick={logout}
+                    className="p-2 hover:bg-loss/10 rounded-lg transition-all duration-200 text-dark-400 hover:text-loss"
+                    title="Logout"
+                  >
+                    <LogOut size={18} />
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </header>
@@ -401,5 +387,6 @@ export default function DashboardLayout({
         </main>
       </div>
     </div>
+    </ProtectedRoute>
   )
 }

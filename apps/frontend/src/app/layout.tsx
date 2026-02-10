@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import { Providers } from '@/components/providers/Providers'
 
 export const metadata: Metadata = {
   title: 'Prometheus | AI Trading Platform',
@@ -17,7 +18,9 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className="min-h-screen bg-gradient-dark">
-        {children}
+        <Providers>
+          {children}
+        </Providers>
       </body>
     </html>
   )
