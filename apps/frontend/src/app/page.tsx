@@ -27,20 +27,8 @@ export default function LandingPage() {
       {/* Fixed header with music and login */}
       <header className="fixed top-0 left-0 right-0 z-50 px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          {/* Logo */}
-          <Link href="/" className="flex items-center group">
-            <div className="relative">
-              <Image
-                src="/images/logo.png"
-                alt="Prometheus AI Trading"
-                width={280}
-                height={84}
-                className="h-16 w-auto mix-blend-screen"
-                priority
-              />
-              <div className="absolute -inset-2 bg-primary-500/10 rounded-lg blur-xl opacity-0 group-hover:opacity-100 transition-opacity" />
-            </div>
-          </Link>
+          {/* Spacer for layout balance */}
+          <div className="w-16" />
 
           {/* Right side - Music & Auth */}
           <div className="flex items-center gap-4">
