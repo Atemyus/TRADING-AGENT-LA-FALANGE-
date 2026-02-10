@@ -293,15 +293,17 @@ export default function DashboardPage() {
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-neon-yellow/10 border border-neon-yellow/30 rounded-lg p-4 flex items-center gap-3"
+          className="bg-primary-500/10 border border-primary-500/30 rounded-2xl p-4 flex items-center gap-3"
         >
-          <AlertCircle className="text-neon-yellow" size={20} />
-          <span className="text-sm">{error}</span>
+          <div className="w-10 h-10 rounded-xl bg-primary-500/20 flex items-center justify-center">
+            <AlertCircle className="text-primary-400" size={20} />
+          </div>
+          <span className="text-sm flex-1">{error}</span>
           <button
             onClick={fetchAccountData}
-            className="ml-auto p-2 hover:bg-dark-700 rounded-lg transition-colors"
+            className="p-2.5 hover:bg-dark-800 rounded-xl transition-colors border border-transparent hover:border-primary-500/20"
           >
-            <RefreshCw size={16} />
+            <RefreshCw size={16} className="text-primary-400" />
           </button>
         </motion.div>
       )}
@@ -445,42 +447,42 @@ export default function DashboardPage() {
         variants={itemVariants}
         className="grid grid-cols-2 md:grid-cols-4 gap-4"
       >
-        <div className="card p-4 flex items-center gap-3">
-          <div className="p-2 bg-neon-purple/20 rounded-lg">
-            <Zap size={20} className="text-neon-purple" />
+        <div className="card-gold p-5 flex items-center gap-4">
+          <div className="p-3 bg-imperial-500/20 rounded-xl">
+            <Zap size={22} className="text-imperial-400" />
           </div>
           <div>
-            <p className="text-xs text-dark-400">Symbol</p>
-            <p className="font-mono font-bold">{selectedSymbol}</p>
+            <p className="text-xs text-dark-500 uppercase tracking-wider">Symbol</p>
+            <p className="font-mono font-bold text-lg text-gradient-gold">{selectedSymbol}</p>
           </div>
         </div>
-        <div className="card p-4 flex items-center gap-3">
-          <div className="p-2 bg-neon-blue/20 rounded-lg">
-            <BarChart3 size={20} className="text-neon-blue" />
+        <div className="card-gold p-5 flex items-center gap-4">
+          <div className="p-3 bg-primary-500/20 rounded-xl">
+            <BarChart3 size={22} className="text-primary-400" />
           </div>
           <div>
-            <p className="text-xs text-dark-400">Total Trades</p>
-            <p className="font-mono font-bold">{performance?.total_trades ?? 0}</p>
+            <p className="text-xs text-dark-500 uppercase tracking-wider">Total Trades</p>
+            <p className="font-mono font-bold text-lg text-gradient-gold">{performance?.total_trades ?? 0}</p>
           </div>
         </div>
-        <div className="card p-4 flex items-center gap-3">
-          <div className="p-2 bg-neon-green/20 rounded-lg">
-            <TrendingUp size={20} className="text-neon-green" />
+        <div className="card-gold p-5 flex items-center gap-4">
+          <div className="p-3 bg-profit/20 rounded-xl">
+            <TrendingUp size={22} className="text-profit" />
           </div>
           <div>
-            <p className="text-xs text-dark-400">Best Trade</p>
-            <p className="font-mono font-bold text-neon-green">
+            <p className="text-xs text-dark-500 uppercase tracking-wider">Best Trade</p>
+            <p className="font-mono font-bold text-lg text-profit">
               {performance ? formatCurrency(performance.largest_win) : '$0.00'}
             </p>
           </div>
         </div>
-        <div className="card p-4 flex items-center gap-3">
-          <div className="p-2 bg-neon-red/20 rounded-lg">
-            <TrendingDown size={20} className="text-neon-red" />
+        <div className="card-gold p-5 flex items-center gap-4">
+          <div className="p-3 bg-loss/20 rounded-xl">
+            <TrendingDown size={22} className="text-loss" />
           </div>
           <div>
-            <p className="text-xs text-dark-400">Worst Trade</p>
-            <p className="font-mono font-bold text-neon-red">
+            <p className="text-xs text-dark-500 uppercase tracking-wider">Worst Trade</p>
+            <p className="font-mono font-bold text-lg text-loss">
               {performance ? formatCurrency(performance.largest_loss) : '$0.00'}
             </p>
           </div>
