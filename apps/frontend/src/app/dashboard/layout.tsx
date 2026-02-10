@@ -15,11 +15,55 @@ import {
   TrendingUp,
   TrendingDown,
   Zap,
-  Shield,
+  Flame,
   ChevronRight,
+  Headphones,
+  Volume2,
+  VolumeX,
 } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { analyticsApi } from '@/lib/api'
+
+// Epic background music hook
+function useBackgroundMusic() {
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [isLoaded, setIsLoaded] = useState(false)
+
+  useEffect(() => {
+    // Create audio element with epic orchestral music
+    audioRef.current = new Audio('/audio/prometheus-theme.mp3')
+    audioRef.current.loop = true
+    audioRef.current.volume = 0.3
+
+    audioRef.current.addEventListener('canplaythrough', () => {
+      setIsLoaded(true)
+    })
+
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current = null
+      }
+    }
+  }, [])
+
+  const toggleMusic = () => {
+    if (!audioRef.current) return
+
+    if (isPlaying) {
+      audioRef.current.pause()
+      setIsPlaying(false)
+    } else {
+      audioRef.current.play().catch(() => {
+        // Autoplay blocked, user needs to interact first
+      })
+      setIsPlaying(true)
+    }
+  }
+
+  return { isPlaying, isLoaded, toggleMusic }
+}
 
 const navItems = [
   { href: '/dashboard', label: 'Command Center', icon: LayoutDashboard },
@@ -38,6 +82,7 @@ export default function DashboardLayout({
   const [accountData, setAccountData] = useState<{ balance: number; todayPnl: number } | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [connectionError, setConnectionError] = useState<string | null>(null)
+  const { isPlaying, toggleMusic } = useBackgroundMusic()
 
   useEffect(() => {
     const fetchAccountData = async () => {
@@ -83,15 +128,17 @@ export default function DashboardLayout({
             <Link href="/" className="flex items-center gap-4 group">
               <div className="relative">
                 <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-imperial-600 flex items-center justify-center group-hover:scale-105 transition-transform">
-                  <Shield className="w-6 h-6 text-dark-950" />
+                  <Flame className="w-6 h-6 text-dark-950 animate-pulse" />
                 </div>
                 <div className="absolute -inset-1 bg-gradient-to-br from-primary-500/20 to-imperial-500/20 rounded-xl blur-md opacity-0 group-hover:opacity-100 transition-opacity" />
+                {/* Fire glow effect */}
+                <div className="absolute -inset-2 bg-primary-500/10 rounded-xl blur-lg animate-pulse-slow" />
               </div>
               <div>
                 <h1 className="font-imperial text-xl font-bold text-gradient-gold tracking-wide">
-                  LA FALANGE
+                  PROMETHEUS
                 </h1>
-                <p className="text-xs text-dark-500 tracking-wider">TRADING PLATFORM</p>
+                <p className="text-xs text-dark-500 tracking-wider">BRINGER OF FIRE</p>
               </div>
             </Link>
           </div>
@@ -138,13 +185,13 @@ export default function DashboardLayout({
                 </div>
                 <div className="flex-1">
                   <p className={`text-sm font-semibold ${isConnected ? 'text-profit' : 'text-loss'}`}>
-                    {isConnected ? 'System Online' : 'Disconnected'}
+                    {isConnected ? 'Fire Burning' : 'Fire Dormant'}
                   </p>
                   <p className="text-xs text-dark-500">
-                    {isConnected ? 'Connected to broker' : 'Configure broker'}
+                    {isConnected ? 'Titan connected' : 'Ignite your broker'}
                   </p>
                 </div>
-                <Zap size={16} className={isConnected ? 'text-profit' : 'text-loss'} />
+                <Flame size={16} className={isConnected ? 'text-profit animate-pulse' : 'text-loss'} />
               </div>
             </div>
           </div>
@@ -202,6 +249,29 @@ export default function DashboardLayout({
                   </div>
                 </div>
               </div>
+
+              {/* Music Toggle */}
+              <button
+                onClick={toggleMusic}
+                className={`relative p-2.5 rounded-xl transition-all duration-200 border ${
+                  isPlaying
+                    ? 'bg-primary-500/10 border-primary-500/30 hover:bg-primary-500/20'
+                    : 'hover:bg-dark-800 border-transparent hover:border-primary-500/20'
+                }`}
+                title={isPlaying ? 'Pause epic music' : 'Play epic music'}
+              >
+                {isPlaying ? (
+                  <Volume2 size={20} className="text-primary-400 animate-pulse" />
+                ) : (
+                  <Headphones size={20} className="text-dark-400" />
+                )}
+                {isPlaying && (
+                  <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-primary-500"></span>
+                  </span>
+                )}
+              </button>
 
               {/* Notifications */}
               <button className="relative p-2.5 hover:bg-dark-800 rounded-xl transition-all duration-200 border border-transparent hover:border-primary-500/20">

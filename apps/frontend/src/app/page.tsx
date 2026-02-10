@@ -3,7 +3,7 @@
 import { motion } from 'framer-motion'
 import Link from 'next/link'
 import {
-  Shield,
+  Flame,
   Cpu,
   TrendingUp,
   Users,
@@ -14,7 +14,8 @@ import {
   Lock,
   Globe,
   ChevronRight,
-  Sparkles
+  Sparkles,
+  Shield
 } from 'lucide-react'
 
 export default function LandingPage() {
@@ -71,33 +72,60 @@ export default function LandingPage() {
             </span>
           </motion.div>
 
+          {/* Prometheus Fire Icon - with epic glow effect */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.5 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.8, delay: 0.1 }}
+            className="mb-6"
+          >
+            <div className="relative inline-block fire-glow">
+              <Flame className="w-24 h-24 text-primary-400 torch-glow" />
+              <div className="absolute inset-0 w-24 h-24 bg-primary-500/40 blur-3xl rounded-full animate-pulse" />
+              {/* Ember particles effect */}
+              <div className="absolute -inset-4 ember-particles" />
+            </div>
+          </motion.div>
+
           {/* Title */}
           <motion.h1
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.1 }}
-            className="font-imperial text-7xl md:text-8xl font-bold mb-6 tracking-wider"
+            transition={{ duration: 0.8, delay: 0.2 }}
+            className="font-imperial text-7xl md:text-9xl font-bold mb-2 tracking-wider"
           >
-            <span className="text-gradient-gold">LA FALANGE</span>
+            <span className="text-gradient-gold text-fire">PROMETHEUS</span>
           </motion.h1>
+
+          {/* Epic Subtitle */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.3 }}
+            className="mb-6"
+          >
+            <span className="text-2xl md:text-3xl font-imperial text-imperial-400 tracking-[0.3em] uppercase">
+              Bringer of Market Fire
+            </span>
+          </motion.div>
 
           {/* Subtitle */}
           <motion.p
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
+            transition={{ duration: 0.6, delay: 0.4 }}
             className="text-xl md:text-2xl text-dark-300 mb-4 font-light"
           >
-            Autonomous AI Trading Platform
+            The Titan Among Trading Platforms
           </motion.p>
 
           <motion.p
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.3 }}
+            transition={{ duration: 0.6, delay: 0.5 }}
             className="text-lg text-dark-400 max-w-2xl mx-auto mb-12"
           >
-            Where multiple AI minds unite to conquer the markets.
+            Like Prometheus brought fire to humanity, we bring the power of AI to traders.
             <br />
             Multi-broker support. Real-time analysis. Automated execution.
           </motion.p>
@@ -106,7 +134,7 @@ export default function LandingPage() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.4 }}
+            transition={{ duration: 0.6, delay: 0.6 }}
             className="flex flex-col sm:flex-row gap-4 justify-center items-center"
           >
             <Link
@@ -124,8 +152,8 @@ export default function LandingPage() {
               href="/dashboard/settings"
               className="btn-secondary text-lg px-8 py-4 inline-flex items-center gap-2"
             >
-              <Shield className="w-5 h-5" />
-              Connect Broker
+              <Flame className="w-5 h-5" />
+              Ignite Trading
             </Link>
           </motion.div>
         </div>
@@ -174,8 +202,10 @@ export default function LandingPage() {
             transition={{ duration: 0.6 }}
             className="text-center mb-20"
           >
-            <h2 className="font-imperial text-4xl md:text-5xl font-bold mb-6">
-              <span className="text-gradient-falange">Supreme Arsenal</span>
+            <h2 className="font-imperial text-4xl md:text-5xl font-bold mb-6 flex items-center justify-center gap-4">
+              <Flame className="w-10 h-10 text-primary-400 torch-glow hidden md:block" />
+              <span className="text-gradient-falange">The Titan&apos;s Arsenal</span>
+              <Flame className="w-10 h-10 text-primary-400 torch-glow hidden md:block" />
             </h2>
             <p className="text-lg text-dark-400 max-w-2xl mx-auto">
               A complete suite of tools designed for the modern trader warrior.
@@ -237,7 +267,7 @@ export default function LandingPage() {
               <span className="text-gradient-imperial">Battle Strategy</span>
             </h2>
             <p className="text-lg text-dark-400 max-w-2xl mx-auto">
-              How LA FALANGE conquers the markets.
+              How Prometheus conquers the markets.
             </p>
           </motion.div>
 
@@ -280,8 +310,10 @@ export default function LandingPage() {
             transition={{ duration: 0.6 }}
             className="text-center mb-16"
           >
-            <h2 className="font-imperial text-4xl md:text-5xl font-bold mb-6">
-              <span className="text-gradient-gold">The Legion</span>
+            <h2 className="font-imperial text-4xl md:text-5xl font-bold mb-6 flex items-center justify-center gap-4">
+              <Flame className="w-10 h-10 text-primary-400 torch-glow hidden md:block" />
+              <span className="text-gradient-gold">The Titan&apos;s Legion</span>
+              <Flame className="w-10 h-10 text-primary-400 torch-glow hidden md:block" />
             </h2>
             <p className="text-lg text-dark-400 max-w-2xl mx-auto">
               Our army of AI models, each with unique trading expertise.
@@ -336,18 +368,19 @@ export default function LandingPage() {
           className="max-w-3xl mx-auto text-center relative z-10"
         >
           <h2 className="font-imperial text-4xl md:text-5xl font-bold mb-6">
-            <span className="text-gradient-falange">Join The Falange</span>
+            <span className="text-gradient-falange">Embrace The Fire</span>
           </h2>
           <p className="text-lg text-dark-400 mb-10">
             Start your journey to autonomous trading excellence.
             <br />
-            Connect your broker and let the AI legion trade for you.
+            Connect your broker and let the Titan's fire forge your profits.
           </p>
 
           <Link
             href="/dashboard"
-            className="btn-primary text-xl px-12 py-5 inline-flex items-center gap-3 group animate-warrior-pulse"
+            className="btn-primary text-xl px-12 py-5 inline-flex items-center gap-3 group animate-warrior-pulse titan-pulse"
           >
+            <Flame className="w-6 h-6 torch-glow" />
             <span>Enter Command Center</span>
             <ChevronRight className="w-6 h-6 transition-transform group-hover:translate-x-1" />
           </Link>
@@ -358,12 +391,13 @@ export default function LandingPage() {
       <footer className="py-8 px-4 border-t border-dark-800/50">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <span className="font-imperial text-lg text-gradient-gold">LA FALANGE</span>
+            <Flame className="w-5 h-5 text-primary-400" />
+            <span className="font-imperial text-lg text-gradient-gold">PROMETHEUS</span>
             <span className="text-dark-500">·</span>
             <span className="text-dark-500 text-sm">v2.0.0</span>
           </div>
           <p className="text-dark-500 text-sm">
-            Multi-Broker AI Trading Platform
+            The Titan of AI Trading
           </p>
         </div>
       </footer>
