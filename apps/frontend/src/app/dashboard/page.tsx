@@ -17,7 +17,6 @@ import {
   AlertCircle,
   Bot,
   Settings,
-  PlusCircle,
   Flame,
   Shield,
   Sparkles,
@@ -32,7 +31,7 @@ import { PositionsTable } from '@/components/trading/PositionsTable'
 import { OrderHistory } from '@/components/trading/OrderHistory'
 import { StatCard } from '@/components/common/StatCard'
 import { aiApi, analyticsApi, tradingApi, botApi, brokerAccountsApi } from '@/lib/api'
-import type { AccountSummary, BrokerAccountData, ConsensusResult, PerformanceMetrics } from '@/lib/api'
+import type { BrokerAccountData, ConsensusResult, PerformanceMetrics } from '@/lib/api'
 import type { Position } from '@/components/trading/PositionsTable'
 import { usePriceStream } from '@/hooks/useWebSocket'
 import { useAuth } from '@/contexts/AuthContext'
@@ -76,6 +75,8 @@ interface WorkspaceSnapshot {
   equity: number | null
   unrealizedPnl: number | null
   marginUsed: number | null
+  openPositions: number
+  dailyPnl: number | null
   currency: string
 }
 
@@ -89,7 +90,6 @@ export default function DashboardPage() {
   const [selectedSymbol, setSelectedSymbol] = useState('EUR/USD')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [consensusResult, setConsensusResult] = useState<ConsensusResult | null>(null)
-  const [account, setAccount] = useState<AccountSummary | null>(null)
   const [performance, setPerformance] = useState<PerformanceMetrics | null>(null)
   const [positions, setPositions] = useState<Position[]>([])
   const [orders, setOrders] = useState<import('@/components/trading/OrderHistory').Order[]>([])
@@ -100,12 +100,13 @@ export default function DashboardPage() {
   const [brokers, setBrokers] = useState<BrokerAccountData[]>([])
   const [selectedBrokerId, setSelectedBrokerId] = useState<number | null>(null)
   const [workspaceSnapshots, setWorkspaceSnapshots] = useState<Record<number, WorkspaceSnapshot>>({})
+  const [toggleLoadingByBroker, setToggleLoadingByBroker] = useState<Record<number, boolean>>({})
 
   // WebSocket symbol format
   const wsSymbol = selectedSymbol.replace('/', '_')
 
   // Use WebSocket for real-time price streaming
-  const { prices: streamPrices, isConnected: isPriceConnected } = usePriceStream([wsSymbol])
+  const { prices: streamPrices } = usePriceStream([wsSymbol])
 
   // Persist selected broker workspace across dashboard sections
   useEffect(() => {
@@ -153,6 +154,7 @@ export default function DashboardPage() {
   const fetchAccountData = useCallback(async () => {
     // Load broker workspaces for slot cards
     let brokerList: BrokerAccountData[] = []
+    let computedSnapshots: Record<number, WorkspaceSnapshot> = {}
     try {
       brokerList = await brokerAccountsApi.list()
       setBrokers(brokerList)
@@ -177,42 +179,52 @@ export default function DashboardPage() {
         infoMap.set(entry.brokerId, entry.info)
       }
 
-      const statusMap = new Map<number, WorkspaceSnapshot['status']>()
+      const statusMap = new Map<number, {
+        normalizedStatus: WorkspaceSnapshot['status']
+        openPositions: number
+        dailyPnl: number | null
+      }>()
       if (allStatuses?.brokers) {
         for (const status of allStatuses.brokers) {
-          const normalized =
+          const normalizedStatus =
             status.status === 'running' || status.status === 'paused'
               ? status.status
               : status.status === 'not_initialized'
                 ? 'not_initialized'
                 : 'stopped'
-          statusMap.set(status.broker_id, normalized)
+          statusMap.set(status.broker_id, {
+            normalizedStatus,
+            openPositions: status.statistics?.open_positions || 0,
+            dailyPnl: typeof status.statistics?.daily_pnl === 'number'
+              ? status.statistics.daily_pnl
+              : null,
+          })
         }
       }
 
       const snapshots: Record<number, WorkspaceSnapshot> = {}
       for (const broker of brokerList) {
         const accountInfo = infoMap.get(broker.id)
+        const statusEntry = statusMap.get(broker.id)
         snapshots[broker.id] = {
-          status: broker.is_enabled ? (statusMap.get(broker.id) || 'stopped') : 'disabled',
+          status: broker.is_enabled ? (statusEntry?.normalizedStatus || 'stopped') : 'disabled',
           balance: accountInfo?.balance ?? null,
           equity: accountInfo?.equity ?? null,
           unrealizedPnl: accountInfo?.unrealized_pnl ?? null,
           marginUsed: accountInfo?.margin_used ?? null,
+          openPositions: statusEntry?.openPositions || 0,
+          dailyPnl: statusEntry?.dailyPnl ?? null,
           currency: accountInfo?.currency || 'USD',
         }
       }
+      computedSnapshots = snapshots
       setWorkspaceSnapshots(snapshots)
     } catch {
       setWorkspaceSnapshots({})
     }
 
     try {
-      const [accountData, performanceData] = await Promise.all([
-        analyticsApi.getAccount(),
-        analyticsApi.getPerformance(),
-      ])
-      setAccount(accountData)
+      const performanceData = await analyticsApi.getPerformance()
       setPerformance(performanceData)
       setError(null)
     } catch (err) {
@@ -238,7 +250,20 @@ export default function DashboardPage() {
           setAggregatedStats(null)
         }
       } catch {
-        setAggregatedStats(null)
+        const fallbackSnapshot = computedSnapshots[selectedBrokerId]
+        if (fallbackSnapshot) {
+          setAggregatedStats({
+            totalBalance: fallbackSnapshot.balance ?? 0,
+            totalEquity: fallbackSnapshot.equity ?? 0,
+            totalUnrealizedPnl: fallbackSnapshot.unrealizedPnl ?? 0,
+            totalMarginUsed: fallbackSnapshot.marginUsed ?? 0,
+            totalOpenPositions: fallbackSnapshot.openPositions || 0,
+            brokerCount: 1,
+            currency: fallbackSnapshot.currency || 'USD',
+          })
+        } else {
+          setAggregatedStats(null)
+        }
       }
     } else {
       // Global view: aggregate all available workspaces
@@ -450,14 +475,41 @@ export default function DashboardPage() {
     }
   }
 
+  const handleToggleWorkspace = async (brokerId: number) => {
+    setToggleLoadingByBroker((prev) => ({ ...prev, [brokerId]: true }))
+    setError(null)
+    try {
+      await brokerAccountsApi.toggle(brokerId)
+      await fetchAccountData()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to toggle workspace')
+    } finally {
+      setToggleLoadingByBroker((prev) => {
+        const next = { ...prev }
+        delete next[brokerId]
+        return next
+      })
+    }
+  }
+
   // Format currency
-  const formatCurrency = (value: string | number | undefined) => {
+  const formatCurrency = (value: string | number | undefined, currency = 'USD') => {
     if (!value) return '$0.00'
     const num = typeof value === 'string' ? parseFloat(value) : value
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'USD',
+      currency,
     }).format(num)
+  }
+
+  const formatCurrencyNullable = (value: number | null | undefined, currency = 'USD') => {
+    if (value === null || value === undefined || Number.isNaN(value)) return '--'
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value)
   }
 
   // Format percentage
@@ -475,6 +527,35 @@ export default function DashboardPage() {
   }, [brokers, selectedBrokerId])
 
   const selectedBroker = brokers.find((b) => b.id === selectedBrokerId) || null
+  const selectedSnapshot = selectedBrokerId ? workspaceSnapshots[selectedBrokerId] : null
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    if (!selectedBrokerId) {
+      localStorage.removeItem('selected_broker_snapshot')
+      window.dispatchEvent(new Event('selected-broker-snapshot-changed'))
+      return
+    }
+
+    const snapshot = workspaceSnapshots[selectedBrokerId]
+    if (!snapshot) {
+      localStorage.removeItem('selected_broker_snapshot')
+      window.dispatchEvent(new Event('selected-broker-snapshot-changed'))
+      return
+    }
+
+    localStorage.setItem(
+      'selected_broker_snapshot',
+      JSON.stringify({
+        brokerId: selectedBrokerId,
+        balance: snapshot.balance ?? null,
+        todayPnl: snapshot.dailyPnl ?? snapshot.unrealizedPnl ?? null,
+      }),
+    )
+    window.dispatchEvent(new Event('selected-broker-snapshot-changed'))
+  }, [selectedBrokerId, workspaceSnapshots])
+
   const licenseSlots = Math.max(1, user?.license_broker_slots || 1)
   const totalSlots = user?.is_superuser
     ? (user?.license_broker_slots ? licenseSlots : Math.max(1, brokers.length))
@@ -506,6 +587,13 @@ export default function DashboardPage() {
       maximumFractionDigits: 2,
     }).format(abs)
   }
+
+  const scopedCurrency = selectedSnapshot?.currency || aggregatedStats?.currency || 'USD'
+  const scopedBalance = selectedSnapshot?.balance ?? aggregatedStats?.totalBalance ?? null
+  const scopedUnrealizedPnl = selectedSnapshot?.unrealizedPnl ?? aggregatedStats?.totalUnrealizedPnl ?? null
+  const scopedMarginUsed = selectedSnapshot?.marginUsed ?? aggregatedStats?.totalMarginUsed ?? null
+  const scopedOpenPositions = selectedSnapshot?.openPositions ?? aggregatedStats?.totalOpenPositions ?? 0
+  const scopedTodayPnl = selectedSnapshot?.dailyPnl ?? selectedSnapshot?.unrealizedPnl ?? null
 
   return (
     <motion.div
@@ -558,16 +646,18 @@ export default function DashboardPage() {
         </div>
       </motion.div>
 
-      {/* Workspace Slots */}
-      <motion.div variants={itemVariants} className="card-gold prometheus-panel-surface p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+      <motion.div variants={itemVariants} className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-wider text-dark-500">Workspace</p>
-            <h2 className="text-lg font-semibold text-white">
-              {selectedBroker ? `${selectedBroker.name} selected` : 'All broker workspaces'}
-            </h2>
+            <p className="text-xs uppercase tracking-wider text-dark-500">Workspace Panels</p>
+            <h3 className="text-lg font-semibold text-dark-100">
+              {selectedBroker ? `${selectedBroker.name} performance view` : 'Parallel broker performance'}
+            </h3>
+            <p className="text-xs text-dark-400 mt-1">
+              Slots used: {brokers.length}/{totalSlots}. Click a panel to open its dedicated command center context.
+            </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setSelectedBrokerId(null)}
               className={`px-3 py-1.5 rounded-lg text-xs border transition-colors ${
@@ -593,61 +683,6 @@ export default function DashboardPage() {
               Auto Bot
             </Link>
           </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-          {Array.from({ length: totalSlots }, (_, idx) => {
-            const slot = idx + 1
-            const broker = brokersBySlot.get(slot)
-            const isSelected = broker && selectedBrokerId === broker.id
-            return (
-              <button
-                key={slot}
-                onClick={() => (broker ? setSelectedBrokerId(broker.id) : undefined)}
-                className={`group text-left rounded-xl border p-4 transition-all ${
-                  broker
-                    ? isSelected
-                      ? 'border-primary-500/70 bg-primary-500/12 shadow-[0_0_22px_rgba(245,158,11,0.18)]'
-                      : 'border-dark-700 bg-dark-900/55 hover:border-primary-500/35 hover:-translate-y-0.5'
-                    : 'border-dashed border-dark-700 bg-dark-900/45'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs uppercase tracking-wider text-dark-500">Slot {slot}</span>
-                  {broker ? (
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full ${broker.is_enabled ? 'bg-profit/20 text-profit' : 'bg-dark-700 text-dark-400'}`}>
-                      {broker.is_enabled ? 'Enabled' : 'Disabled'}
-                    </span>
-                  ) : (
-                    <PlusCircle size={14} className="text-dark-500" />
-                  )}
-                </div>
-                {broker ? (
-                  <>
-                    <p className="font-medium text-white">{broker.name}</p>
-                    <p className="text-xs text-dark-400 mt-1">{broker.symbols.slice(0, 3).join(', ')}</p>
-                  </>
-                ) : (
-                  <>
-                    <p className="font-medium text-dark-300">Empty slot</p>
-                    <p className="text-xs text-dark-500 mt-1">Add a broker in Settings</p>
-                  </>
-                )}
-              </button>
-            )
-          })}
-        </div>
-      </motion.div>
-
-      <motion.div variants={itemVariants} className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-xs uppercase tracking-wider text-dark-500">Workspace Panels</p>
-            <h3 className="text-lg font-semibold text-dark-100">
-              {selectedBroker ? `${selectedBroker.name} performance view` : 'Parallel broker performance'}
-            </h3>
-          </div>
-          <p className="text-xs text-dark-400">Click a panel to open its dedicated command center context</p>
         </div>
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           {Array.from({ length: totalSlots }, (_, idx) => {
@@ -675,10 +710,18 @@ export default function DashboardPage() {
             const snapshot = workspaceSnapshots[broker.id]
             const isSelected = selectedBrokerId === broker.id
             return (
-              <button
+              <div
                 key={broker.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => setSelectedBrokerId(broker.id)}
-                className={`workspace-panel-card text-left ${isSelected ? 'workspace-panel-card-active' : ''}`}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    setSelectedBrokerId(broker.id)
+                  }
+                }}
+                className={`workspace-panel-card text-left cursor-pointer ${isSelected ? 'workspace-panel-card-active' : ''}`}
               >
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                   <div className="flex items-center gap-2">
@@ -693,9 +736,33 @@ export default function DashboardPage() {
                       {snapshot?.status || (broker.is_enabled ? 'stopped' : 'disabled')}
                     </span>
                   </div>
-                  <span className={`text-[11px] px-2 py-0.5 rounded-full ${broker.is_enabled ? 'bg-profit/20 text-profit' : 'bg-dark-700 text-dark-400'}`}>
-                    {broker.is_enabled ? 'Enabled' : 'Disabled'}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[11px] px-2 py-0.5 rounded-full ${broker.is_enabled ? 'bg-profit/20 text-profit' : 'bg-dark-700 text-dark-400'}`}>
+                      {broker.is_enabled ? 'Enabled' : 'Disabled'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        void handleToggleWorkspace(broker.id)
+                      }}
+                      disabled={!!toggleLoadingByBroker[broker.id]}
+                      className={`text-[11px] px-2 py-0.5 rounded-full border inline-flex items-center gap-1 ${
+                        broker.is_enabled
+                          ? 'border-primary-500/40 text-primary-300 bg-primary-500/10'
+                          : 'border-profit/30 text-profit bg-profit/10'
+                      } disabled:opacity-60`}
+                    >
+                      {toggleLoadingByBroker[broker.id] ? (
+                        <>
+                          <RefreshCw size={11} className="animate-spin" />
+                          Saving
+                        </>
+                      ) : (
+                        broker.is_enabled ? 'Disable Slot' : 'Enable Slot'
+                      )}
+                    </button>
+                  </div>
                 </div>
 
                 <h4 className="text-2xl font-semibold text-white mb-2">{broker.name}</h4>
@@ -751,7 +818,7 @@ export default function DashboardPage() {
                   Open scoped command view
                   <ArrowRight size={14} />
                 </div>
-              </button>
+              </div>
             )
           })}
         </div>
@@ -796,61 +863,40 @@ export default function DashboardPage() {
             <StatCard
               label="Account Balance"
               value={
-                aggregatedStats
-                  ? formatCurrency(aggregatedStats.totalBalance)
-                  : account
-                    ? formatCurrency(account.balance)
-                    : isLoading ? 'Loading...' : '$0.00'
+                isLoading && scopedBalance === null
+                  ? 'Loading...'
+                  : formatCurrencyNullable(scopedBalance, scopedCurrency)
               }
-              change={account ? `${formatCurrency(account.realized_pnl_today)} today` : ''}
-              isPositive={account ? parseFloat(account.realized_pnl_today) >= 0 : true}
+              change={
+                scopedTodayPnl !== null
+                  ? `${scopedTodayPnl >= 0 ? '+' : ''}${formatCurrency(scopedTodayPnl, scopedCurrency)} today`
+                  : 'Today P&L unavailable'
+              }
+              isPositive={scopedTodayPnl !== null ? scopedTodayPnl >= 0 : true}
               icon={DollarSign}
             />
             <StatCard
               label="Unrealized P&L"
               value={
-                aggregatedStats
-                  ? formatCurrency(aggregatedStats.totalUnrealizedPnl)
-                  : account
-                    ? formatCurrency(account.unrealized_pnl)
-                    : isLoading ? 'Loading...' : '$0.00'
+                isLoading && scopedUnrealizedPnl === null
+                  ? 'Loading...'
+                  : formatCurrencyNullable(scopedUnrealizedPnl, scopedCurrency)
               }
-              change={
-                aggregatedStats
-                  ? `${aggregatedStats.totalOpenPositions} positions`
-                  : account
-                    ? `${account.open_positions} positions`
-                    : ''
-              }
-              isPositive={
-                aggregatedStats
-                  ? aggregatedStats.totalUnrealizedPnl >= 0
-                  : account
-                    ? parseFloat(account.unrealized_pnl) >= 0
-                    : true
-              }
+              change={`${scopedOpenPositions} positions`}
+              isPositive={scopedUnrealizedPnl !== null ? scopedUnrealizedPnl >= 0 : true}
               icon={
-                (aggregatedStats && aggregatedStats.totalUnrealizedPnl >= 0) ||
-                (account && parseFloat(account.unrealized_pnl) >= 0)
+                scopedUnrealizedPnl === null || scopedUnrealizedPnl >= 0
                   ? TrendingUp
                   : TrendingDown
               }
             />
             <StatCard
               label="Open Positions"
-              value={
-                aggregatedStats
-                  ? String(aggregatedStats.totalOpenPositions)
-                  : account
-                    ? String(account.open_positions)
-                    : isLoading ? '...' : '0'
-              }
+              value={String(scopedOpenPositions)}
               subtext={
-                aggregatedStats
-                  ? `${formatCurrency(aggregatedStats.totalMarginUsed)} margin`
-                  : account
-                    ? `${formatCurrency(account.margin_used)} margin`
-                    : ''
+                scopedMarginUsed !== null
+                  ? `${formatCurrency(scopedMarginUsed, scopedCurrency)} margin`
+                  : 'Margin unavailable'
               }
               icon={Activity}
             />

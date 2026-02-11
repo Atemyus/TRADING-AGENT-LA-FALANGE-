@@ -44,6 +44,11 @@ export default function DashboardLayout({
   const [isConnected, setIsConnected] = useState(false)
   const [connectionError, setConnectionError] = useState<string | null>(null)
   const [selectedBrokerId, setSelectedBrokerId] = useState<number | null>(null)
+  const [selectedBrokerSnapshot, setSelectedBrokerSnapshot] = useState<{
+    brokerId: number
+    balance: number | null
+    todayPnl: number | null
+  } | null>(null)
   const { user, logout } = useAuth()
 
   useEffect(() => {
@@ -56,13 +61,46 @@ export default function DashboardLayout({
       } else {
         setSelectedBrokerId(null)
       }
+
+      const rawSnapshot = localStorage.getItem('selected_broker_snapshot')
+      if (!rawSnapshot) {
+        setSelectedBrokerSnapshot(null)
+        return
+      }
+
+      try {
+        const parsedSnapshot = JSON.parse(rawSnapshot) as {
+          brokerId?: number
+          balance?: number | null
+          todayPnl?: number | null
+        }
+        if (
+          parsedSnapshot &&
+          typeof parsedSnapshot.brokerId === 'number' &&
+          parsedSnapshot.brokerId > 0 &&
+          typeof parsedSnapshot.balance !== 'undefined' &&
+          typeof parsedSnapshot.todayPnl !== 'undefined'
+        ) {
+          setSelectedBrokerSnapshot({
+            brokerId: parsedSnapshot.brokerId,
+            balance: parsedSnapshot.balance ?? null,
+            todayPnl: parsedSnapshot.todayPnl ?? null,
+          })
+        } else {
+          setSelectedBrokerSnapshot(null)
+        }
+      } catch {
+        setSelectedBrokerSnapshot(null)
+      }
     }
     updateSelectedBroker()
     window.addEventListener('storage', updateSelectedBroker)
     window.addEventListener('selected-broker-changed', updateSelectedBroker)
+    window.addEventListener('selected-broker-snapshot-changed', updateSelectedBroker)
     return () => {
       window.removeEventListener('storage', updateSelectedBroker)
       window.removeEventListener('selected-broker-changed', updateSelectedBroker)
+      window.removeEventListener('selected-broker-snapshot-changed', updateSelectedBroker)
     }
   }, [pathname])
 
@@ -74,22 +112,37 @@ export default function DashboardLayout({
   useEffect(() => {
     const fetchAccountData = async () => {
       if (selectedBrokerId) {
-        try {
-          const [scopedAccount, scopedStatus] = await Promise.all([
-            brokerAccountsApi.getAccountInfo(selectedBrokerId),
-            brokerAccountsApi.getBotStatus(selectedBrokerId).catch(() => null),
-          ])
+        const fallbackSnapshot = selectedBrokerSnapshot?.brokerId === selectedBrokerId
+          ? selectedBrokerSnapshot
+          : null
 
-          setAccountData({
-            balance: scopedAccount.balance ?? null,
-            todayPnl: scopedStatus?.statistics?.daily_pnl ?? scopedAccount.unrealized_pnl ?? null,
-          })
+        const [accountResult, statusResult] = await Promise.allSettled([
+          brokerAccountsApi.getAccountInfo(selectedBrokerId),
+          brokerAccountsApi.getBotStatus(selectedBrokerId),
+        ])
+
+        const scopedAccount = accountResult.status === 'fulfilled' ? accountResult.value : null
+        const scopedStatus = statusResult.status === 'fulfilled' ? statusResult.value : null
+
+        const resolvedBalance = scopedAccount?.balance ?? fallbackSnapshot?.balance ?? null
+        const resolvedTodayPnl =
+          scopedStatus?.statistics?.daily_pnl ??
+          scopedAccount?.unrealized_pnl ??
+          fallbackSnapshot?.todayPnl ??
+          null
+
+        setAccountData({
+          balance: resolvedBalance,
+          todayPnl: resolvedTodayPnl,
+        })
+
+        const hasAnyMetric = resolvedBalance !== null || resolvedTodayPnl !== null
+        if (hasAnyMetric) {
           setIsConnected(true)
           setConnectionError(null)
-        } catch {
+        } else {
           setIsConnected(false)
-          setConnectionError('Unable to connect to selected workspace')
-          setAccountData(null)
+          setConnectionError('No live metrics for selected workspace')
         }
         return
       }
@@ -112,7 +165,7 @@ export default function DashboardLayout({
     fetchAccountData()
     const interval = setInterval(fetchAccountData, 30000) // Update every 30s
     return () => clearInterval(interval)
-  }, [selectedBrokerId])
+  }, [selectedBrokerId, selectedBrokerSnapshot])
 
   const balanceValue = accountData?.balance ?? null
   const todayPnlValue = accountData?.todayPnl ?? null
