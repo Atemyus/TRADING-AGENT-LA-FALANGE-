@@ -37,20 +37,26 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         """Parse CORS_ORIGINS string into a list."""
+        def normalize_origin(origin: str) -> str:
+            return origin.strip().rstrip("/")
+
         v = self.CORS_ORIGINS
         if not v:
             return ["*"]
         # Handle JSON array format
         if v.startswith("["):
             try:
-                return json.loads(v)
+                origins = json.loads(v)
+                if isinstance(origins, list):
+                    return [o for o in (normalize_origin(str(origin)) for origin in origins) if o]
+                return ["*"]
             except json.JSONDecodeError:
                 pass
         # Handle "*" wildcard
         if v.strip() == "*":
             return ["*"]
         # Handle comma-separated list
-        return [origin.strip() for origin in v.split(",") if origin.strip()]
+        return [o for o in (normalize_origin(origin) for origin in v.split(",")) if o]
 
     # Database
     DATABASE_URL: str = Field(

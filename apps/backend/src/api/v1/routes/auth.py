@@ -239,8 +239,10 @@ async def register(
             detail="License has reached maximum number of users"
         )
 
+    normalized_email = user_data.email.strip().lower()
+
     # Check if email already exists
-    result = await db.execute(select(User).where(User.email == user_data.email))
+    result = await db.execute(select(User).where(User.email == normalized_email))
     if result.scalar_one_or_none():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -260,7 +262,7 @@ async def register(
 
     # Create new user with license
     user = User(
-        email=user_data.email,
+        email=normalized_email,
         username=user_data.username,
         hashed_password=get_password_hash(user_data.password),
         full_name=user_data.full_name,
@@ -343,7 +345,8 @@ async def resend_verification(
     """
     Resend verification email.
     """
-    result = await db.execute(select(User).where(User.email == data.email))
+    normalized_email = data.email.strip().lower()
+    result = await db.execute(select(User).where(User.email == normalized_email))
     user = result.scalar_one_or_none()
 
     if not user:
@@ -379,7 +382,8 @@ async def forgot_password(
     """
     Request a password reset email.
     """
-    result = await db.execute(select(User).where(User.email == data.email))
+    normalized_email = data.email.strip().lower()
+    result = await db.execute(select(User).where(User.email == normalized_email))
     user = result.scalar_one_or_none()
 
     if not user:
@@ -447,9 +451,13 @@ async def login(
     Login with email/username and password.
     Returns JWT access and refresh tokens.
     """
+    username_or_email = form_data.username.strip()
+    if "@" in username_or_email:
+        username_or_email = username_or_email.lower()
+
     result = await db.execute(
         select(User).where(
-            (User.email == form_data.username) | (User.username == form_data.username)
+            (User.email == username_or_email) | (User.username == username_or_email)
         )
     )
     user = result.scalar_one_or_none()
@@ -490,7 +498,8 @@ async def login_json(
     """
     Login with JSON body (alternative to form-data).
     """
-    result = await db.execute(select(User).where(User.email == credentials.email))
+    normalized_email = credentials.email.strip().lower()
+    result = await db.execute(select(User).where(User.email == normalized_email))
     user = result.scalar_one_or_none()
 
     if not user or not verify_password(credentials.password, user.hashed_password):
