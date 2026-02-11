@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -18,7 +18,7 @@ from src.core.email import (
     generate_verification_token,
     get_token_expiry,
 )
-from src.core.models import License, LicenseStatus, User
+from src.core.models import BrokerAccount, License, LicenseStatus, User
 from src.core.security import (
     create_access_token,
     create_refresh_token,
@@ -61,6 +61,11 @@ class UserResponse(BaseModel):
     is_active: bool
     is_verified: bool
     is_superuser: bool
+    license_id: int | None = None
+    license_key: str | None = None
+    license_expires_at: datetime | None = None
+    license_broker_slots: int | None = None
+    license_slots_used: int | None = None
     created_at: datetime
 
     class Config:
@@ -566,9 +571,42 @@ async def refresh_token(
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_me(current_user: User = Depends(get_current_user)):
+async def get_me(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """Get current authenticated user's profile."""
-    return current_user
+    license_key = None
+    license_expires_at = None
+    license_broker_slots = None
+    license_slots_used = None
+
+    if current_user.license:
+        license_key = current_user.license.key
+        license_expires_at = current_user.license.expires_at
+        license_broker_slots = current_user.license.broker_slots
+
+    if not current_user.is_superuser:
+        license_slots_used = await db.scalar(
+            select(func.count(BrokerAccount.id)).where(BrokerAccount.user_id == current_user.id)
+        ) or 0
+
+    return UserResponse(
+        id=current_user.id,
+        email=current_user.email,
+        username=current_user.username,
+        full_name=current_user.full_name,
+        avatar_url=current_user.avatar_url,
+        is_active=current_user.is_active,
+        is_verified=current_user.is_verified,
+        is_superuser=current_user.is_superuser,
+        license_id=current_user.license_id,
+        license_key=license_key,
+        license_expires_at=license_expires_at,
+        license_broker_slots=license_broker_slots,
+        license_slots_used=license_slots_used,
+        created_at=current_user.created_at,
+    )
 
 
 @router.put("/me", response_model=UserResponse)

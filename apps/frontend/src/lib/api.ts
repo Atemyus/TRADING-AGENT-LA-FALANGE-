@@ -713,6 +713,8 @@ export const settingsApi = {
 
 export interface BrokerAccountData {
   id: number
+  user_id?: number
+  slot_index?: number
   name: string
   broker_type: string
   metaapi_account_id?: string
@@ -740,6 +742,7 @@ export interface BrokerAccountData {
 export interface BrokerAccountCreate {
   name: string
   broker_type?: string
+  slot_index?: number
   metaapi_account_id?: string
   metaapi_token?: string
   is_enabled?: boolean

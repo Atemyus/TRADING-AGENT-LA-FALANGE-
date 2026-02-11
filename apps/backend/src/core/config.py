@@ -159,6 +159,7 @@ class Settings(BaseSettings):
     BOOTSTRAP_LICENSE_KEY: str | None = None
     BOOTSTRAP_LICENSE_NAME: str = "Bootstrap License"
     BOOTSTRAP_LICENSE_MAX_USES: int = 100
+    BOOTSTRAP_LICENSE_BROKER_SLOTS: int = 5
     BOOTSTRAP_LICENSE_DURATION_DAYS: int = 365
 
     # Notifications

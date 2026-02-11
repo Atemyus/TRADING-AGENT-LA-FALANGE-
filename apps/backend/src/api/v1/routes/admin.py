@@ -28,6 +28,7 @@ class LicenseCreate(BaseModel):
     name: str | None = Field(None, max_length=255)
     description: str | None = None
     max_uses: int = Field(1, ge=1, le=1000)
+    broker_slots: int = Field(5, ge=1, le=100)
     expires_in_days: int | None = Field(None, ge=1, le=3650)  # Max 10 years
 
 
@@ -38,6 +39,7 @@ class LicenseUpdate(BaseModel):
     is_active: bool | None = None
     status: LicenseStatus | None = None
     max_uses: int | None = Field(None, ge=1, le=1000)
+    broker_slots: int | None = Field(None, ge=1, le=100)
     expires_at: datetime | None = None
 
 
@@ -51,6 +53,7 @@ class LicenseResponse(BaseModel):
     is_active: bool
     max_uses: int
     current_uses: int
+    broker_slots: int
     expires_at: datetime | None
     created_at: datetime
     created_by: int | None
@@ -114,6 +117,7 @@ class BulkLicenseCreate(BaseModel):
     count: int = Field(..., ge=1, le=100)
     name_prefix: str | None = Field(None, max_length=200)
     max_uses: int = Field(1, ge=1, le=1000)
+    broker_slots: int = Field(5, ge=1, le=100)
     expires_in_days: int | None = Field(None, ge=1, le=3650)
 
 
@@ -199,6 +203,7 @@ async def create_license(
         name=data.name,
         description=data.description,
         max_uses=data.max_uses,
+        broker_slots=data.broker_slots,
         expires_at=expires_at,
         created_by=admin.id,
         status=LicenseStatus.ACTIVE,
@@ -218,6 +223,7 @@ async def create_license(
         is_active=license.is_active,
         max_uses=license.max_uses,
         current_uses=license.current_uses,
+        broker_slots=license.broker_slots,
         expires_at=license.expires_at,
         created_at=license.created_at,
         created_by=license.created_by,
@@ -244,6 +250,7 @@ async def create_bulk_licenses(
             key=License.generate_key(),
             name=name,
             max_uses=data.max_uses,
+            broker_slots=data.broker_slots,
             expires_at=expires_at,
             created_by=admin.id,
             status=LicenseStatus.ACTIVE,
@@ -266,6 +273,7 @@ async def create_bulk_licenses(
             is_active=lic.is_active,
             max_uses=lic.max_uses,
             current_uses=lic.current_uses,
+            broker_slots=lic.broker_slots,
             expires_at=lic.expires_at,
             created_at=lic.created_at,
             created_by=lic.created_by,
@@ -311,6 +319,7 @@ async def list_licenses(
             is_active=lic.is_active,
             max_uses=lic.max_uses,
             current_uses=lic.current_uses,
+            broker_slots=lic.broker_slots,
             expires_at=lic.expires_at,
             created_at=lic.created_at,
             created_by=lic.created_by,
@@ -350,6 +359,7 @@ async def get_license(
         is_active=license.is_active,
         max_uses=license.max_uses,
         current_uses=license.current_uses,
+        broker_slots=license.broker_slots,
         expires_at=license.expires_at,
         created_at=license.created_at,
         created_by=license.created_by,
@@ -395,6 +405,8 @@ async def update_license(
         license.status = data.status
     if data.max_uses is not None:
         license.max_uses = data.max_uses
+    if data.broker_slots is not None:
+        license.broker_slots = data.broker_slots
     if data.expires_at is not None:
         license.expires_at = data.expires_at
 
@@ -410,6 +422,7 @@ async def update_license(
         is_active=license.is_active,
         max_uses=license.max_uses,
         current_uses=license.current_uses,
+        broker_slots=license.broker_slots,
         expires_at=license.expires_at,
         created_at=license.created_at,
         created_by=license.created_by,
@@ -489,6 +502,7 @@ async def revoke_license(
         is_active=license.is_active,
         max_uses=license.max_uses,
         current_uses=license.current_uses,
+        broker_slots=license.broker_slots,
         expires_at=license.expires_at,
         created_at=license.created_at,
         created_by=license.created_by,
@@ -704,6 +718,7 @@ class WhopProductResponse(BaseModel):
     currency: str
     license_duration_days: int
     license_max_uses: int
+    license_broker_slots: int
     license_name_template: str
     is_active: bool
     created_at: datetime
@@ -722,6 +737,7 @@ class WhopProductCreate(BaseModel):
     currency: str = Field("EUR", max_length=10)
     license_duration_days: int = Field(30, ge=1, le=3650)
     license_max_uses: int = Field(1, ge=1, le=1000)
+    license_broker_slots: int = Field(5, ge=1, le=100)
     license_name_template: str = Field("Whop License - {product_name}", max_length=255)
 
 
@@ -733,6 +749,7 @@ class WhopProductUpdate(BaseModel):
     currency: str | None = None
     license_duration_days: int | None = Field(None, ge=1, le=3650)
     license_max_uses: int | None = Field(None, ge=1, le=1000)
+    license_broker_slots: int | None = Field(None, ge=1, le=100)
     license_name_template: str | None = None
     is_active: bool | None = None
 
@@ -967,6 +984,7 @@ async def create_license_for_order(
     if product:
         duration_days = product.license_duration_days
         max_uses = product.license_max_uses
+        broker_slots = product.license_broker_slots
         name = product.license_name_template.format(
             product_name=product.name,
             customer_email=order.customer_email,
@@ -975,6 +993,7 @@ async def create_license_for_order(
     else:
         duration_days = 30
         max_uses = 1
+        broker_slots = 5
         name = f"Whop License - {order.product_name}"
 
     license = License(
@@ -982,6 +1001,7 @@ async def create_license_for_order(
         name=name,
         description=f"Manually created for Whop order {order.whop_order_id}",
         max_uses=max_uses,
+        broker_slots=broker_slots,
         expires_at=datetime.now(UTC) + timedelta(days=duration_days),
         status=LicenseStatus.ACTIVE,
         is_active=True,
@@ -1058,6 +1078,7 @@ async def list_whop_products(
             currency=p.currency,
             license_duration_days=p.license_duration_days,
             license_max_uses=p.license_max_uses,
+            license_broker_slots=p.license_broker_slots,
             license_name_template=p.license_name_template,
             is_active=p.is_active,
             created_at=p.created_at,
@@ -1092,6 +1113,7 @@ async def create_whop_product(
         currency=data.currency,
         license_duration_days=data.license_duration_days,
         license_max_uses=data.license_max_uses,
+        license_broker_slots=data.license_broker_slots,
         license_name_template=data.license_name_template,
         is_active=True,
     )
@@ -1110,6 +1132,7 @@ async def create_whop_product(
         currency=product.currency,
         license_duration_days=product.license_duration_days,
         license_max_uses=product.license_max_uses,
+        license_broker_slots=product.license_broker_slots,
         license_name_template=product.license_name_template,
         is_active=product.is_active,
         created_at=product.created_at,
@@ -1147,6 +1170,8 @@ async def update_whop_product(
         product.license_duration_days = data.license_duration_days
     if data.license_max_uses is not None:
         product.license_max_uses = data.license_max_uses
+    if data.license_broker_slots is not None:
+        product.license_broker_slots = data.license_broker_slots
     if data.license_name_template is not None:
         product.license_name_template = data.license_name_template
     if data.is_active is not None:
@@ -1165,6 +1190,7 @@ async def update_whop_product(
         currency=product.currency,
         license_duration_days=product.license_duration_days,
         license_max_uses=product.license_max_uses,
+        license_broker_slots=product.license_broker_slots,
         license_name_template=product.license_name_template,
         is_active=product.is_active,
         created_at=product.created_at,

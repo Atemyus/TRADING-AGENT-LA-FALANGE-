@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import dynamic from "next/dynamic";
+import { useSearchParams } from "next/navigation";
 import {
   Play,
   Pause,
@@ -31,13 +32,15 @@ import {
   Loader2,
   ChevronDown,
   ChevronUp,
+  Flame,
+  Sparkles,
 } from "lucide-react";
 import { botApi, brokerAccountsApi, BrokerAccountData, BrokerBotStatus } from "@/lib/api";
 
 // Dynamic import for TradingView widget
 const TradingViewWidget = dynamic(
   () => import("@/components/charts/TradingViewWidget"),
-  { ssr: false, loading: () => <div className="h-[300px] bg-slate-900 rounded-xl animate-pulse" /> }
+  { ssr: false, loading: () => <div className="h-[300px] bg-dark-900 rounded-xl animate-pulse" /> }
 );
 
 // ============ AI Reasoning Panel ============
@@ -114,7 +117,7 @@ function AIReasoningPanel({ brokerId, brokerName, compact = false }: AIReasoning
   };
 
   return (
-    <div className={`bg-slate-800 rounded-xl border border-slate-700 ${compact ? 'p-4' : 'p-6'}`}>
+    <div className={`prometheus-panel-surface ${compact ? 'p-4' : 'p-6'}`}>
       <div className="flex items-center justify-between mb-4">
         <h3 className={`${compact ? 'text-sm' : 'text-lg'} font-semibold flex items-center gap-2`}>
           <Brain size={compact ? 16 : 20} className="text-purple-400" />
@@ -136,7 +139,7 @@ function AIReasoningPanel({ brokerId, brokerName, compact = false }: AIReasoning
       </div>
       <div
         ref={scrollRef}
-        className={`bg-slate-900/80 rounded-lg p-3 ${compact ? 'max-h-[250px]' : 'max-h-[400px]'} overflow-y-auto font-mono text-xs space-y-1 border border-slate-700/50`}
+        className={`bg-dark-900/80 rounded-lg p-3 ${compact ? 'max-h-[250px]' : 'max-h-[400px]'} overflow-y-auto font-mono text-xs space-y-1 border border-dark-700/50`}
         onScroll={() => {
           if (scrollRef.current) {
             const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
@@ -312,6 +315,7 @@ const ANALYSIS_MODES = [
 ];
 
 export default function BotControlPage() {
+  const searchParams = useSearchParams();
   const [status, setStatus] = useState<BotStatus | null>(null);
   const [config, setConfig] = useState<BotConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -327,6 +331,31 @@ export default function BotControlPage() {
   const [selectedBrokerId, setSelectedBrokerId] = useState<number | null>(null);
   const [brokerLoading, setBrokerLoading] = useState<Record<number, boolean>>({});
   const [showBrokersPanel, setShowBrokersPanel] = useState(true);
+
+  useEffect(() => {
+    const brokerIdParam = Number(searchParams.get("brokerId") || "");
+    if (!Number.isNaN(brokerIdParam) && brokerIdParam > 0) {
+      setSelectedBrokerId(brokerIdParam);
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      const stored = Number(localStorage.getItem("selected_broker_id") || "");
+      if (!Number.isNaN(stored) && stored > 0) {
+        setSelectedBrokerId(stored);
+      }
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (selectedBrokerId && selectedBrokerId > 0) {
+      localStorage.setItem("selected_broker_id", String(selectedBrokerId));
+    } else {
+      localStorage.removeItem("selected_broker_id");
+    }
+    window.dispatchEvent(new Event("selected-broker-changed"));
+  }, [selectedBrokerId]);
 
   // Demo data for visualization
   const demoStatus: BotStatus = {
@@ -535,6 +564,13 @@ export default function BotControlPage() {
     return () => clearInterval(interval);
   }, [fetchStatus, fetchConfig, fetchBrokers]);
 
+  useEffect(() => {
+    if (!selectedBrokerId) return;
+    if (brokers.length > 0 && !brokers.some((b) => b.id === selectedBrokerId)) {
+      setSelectedBrokerId(null);
+    }
+  }, [brokers, selectedBrokerId]);
+
   const handleAction = async (action: "start" | "stop" | "pause" | "resume") => {
     setIsActioning(true);
     setError(null);
@@ -616,25 +652,37 @@ export default function BotControlPage() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="space-y-6"
+      className="space-y-6 prometheus-page-shell"
     >
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Auto Trading Bot</h1>
-          <p className="text-slate-400">
-            Fully autonomous AI-powered trading system
-          </p>
-        </div>
+      <div className="prometheus-hero-card p-6 md:p-7">
+        <div className="relative z-10 flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <span className="prometheus-chip">
+                <Flame size={12} />
+                Auto Bot
+              </span>
+              <span className="prometheus-chip prometheus-chip-imperial">
+                <Sparkles size={12} />
+                Multi Broker Engine
+              </span>
+            </div>
+            <h1 className="text-3xl font-bold text-gradient-falange mb-2">Autonomous Execution Hub</h1>
+            <p className="text-dark-300 max-w-2xl">
+              Control runtime status, broker-level execution, risk rules and AI model orchestration from one panel.
+            </p>
+          </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowConfig(!showConfig)}
-            className="btn-secondary flex items-center gap-2"
-          >
-            <Settings size={18} />
-            Configure
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowConfig(!showConfig)}
+              className="btn-secondary flex items-center gap-2"
+            >
+              <Settings size={18} />
+              Configure
+            </button>
+          </div>
         </div>
       </div>
 
@@ -655,7 +703,7 @@ export default function BotControlPage() {
 
       {/* Multi-Broker Panel */}
       {brokers.length > 0 && (
-        <div className="bg-slate-800 rounded-xl border border-slate-700">
+        <div className="prometheus-panel-surface">
           <button
             onClick={() => setShowBrokersPanel(!showBrokersPanel)}
             className="w-full p-4 flex items-center justify-between hover:bg-slate-700/50 transition-colors rounded-xl"
@@ -715,7 +763,7 @@ export default function BotControlPage() {
                     className={`p-4 rounded-lg border transition-colors cursor-pointer ${
                       isSelected
                         ? 'bg-indigo-500/10 border-indigo-500'
-                        : 'bg-slate-900 border-slate-700 hover:border-slate-600'
+                        : 'bg-dark-900/70 border-dark-700 hover:border-primary-500/35'
                     }`}
                     onClick={() => setSelectedBrokerId(isSelected ? null : broker.id)}
                   >
@@ -893,7 +941,7 @@ export default function BotControlPage() {
                         {/* Config info */}
                         <div className="flex flex-wrap gap-2 mb-4">
                           <span className="px-2 py-1 bg-purple-500/20 text-purple-300 text-xs rounded-full capitalize">
-                            Modalità: {brokerStatus?.config?.analysis_mode || broker.analysis_mode}
+                            Modalita: {brokerStatus?.config?.analysis_mode || broker.analysis_mode}
                           </span>
                           <span className="px-2 py-1 bg-blue-500/20 text-blue-300 text-xs rounded-full">
                             Risk: {broker.risk_per_trade_percent}%
@@ -934,7 +982,7 @@ export default function BotControlPage() {
                 <div className="text-center py-6 text-slate-400">
                   <Users size={32} className="mx-auto mb-2 opacity-50" />
                   <p>Nessun broker abilitato</p>
-                  <p className="text-sm">Vai su Settings → Broker Accounts per configurare</p>
+                  <p className="text-sm">Vai su Settings -&gt; Broker Accounts per configurare</p>
                 </div>
               )}
             </div>
@@ -943,7 +991,7 @@ export default function BotControlPage() {
       )}
 
       {/* Main Status Card */}
-      <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
+      <div className="prometheus-panel-surface p-6">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
             <div
@@ -1039,21 +1087,21 @@ export default function BotControlPage() {
 
         {/* Stats Grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-slate-900 rounded-lg p-4">
+          <div className="bg-dark-900/70 rounded-xl p-4 border border-dark-700/60">
             <div className="flex items-center gap-2 text-slate-400 mb-1">
               <Zap size={16} />
               <span className="text-sm">Analyses Today</span>
             </div>
             <p className="text-2xl font-bold">{currentStatus.statistics.analyses_today}</p>
           </div>
-          <div className="bg-slate-900 rounded-lg p-4">
+          <div className="bg-dark-900/70 rounded-xl p-4 border border-dark-700/60">
             <div className="flex items-center gap-2 text-slate-400 mb-1">
               <BarChart3 size={16} />
               <span className="text-sm">Trades Today</span>
             </div>
             <p className="text-2xl font-bold">{currentStatus.statistics.trades_today}</p>
           </div>
-          <div className="bg-slate-900 rounded-lg p-4">
+          <div className="bg-dark-900/70 rounded-xl p-4 border border-dark-700/60">
             <div className="flex items-center gap-2 text-slate-400 mb-1">
               <DollarSign size={16} />
               <span className="text-sm">Daily P&L</span>
@@ -1069,7 +1117,7 @@ export default function BotControlPage() {
               {currentStatus.statistics.daily_pnl.toFixed(2)}
             </p>
           </div>
-          <div className="bg-slate-900 rounded-lg p-4">
+          <div className="bg-dark-900/70 rounded-xl p-4 border border-dark-700/60">
             <div className="flex items-center gap-2 text-slate-400 mb-1">
               <Activity size={16} />
               <span className="text-sm">Open Positions</span>
@@ -1082,7 +1130,7 @@ export default function BotControlPage() {
       </div>
 
       {/* Chart Preview */}
-      <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
+      <div className="prometheus-panel-surface p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold flex items-center gap-2">
             <BarChart3 size={20} />
@@ -1120,7 +1168,7 @@ export default function BotControlPage() {
         <motion.div
           initial={{ opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: "auto" }}
-          className="bg-slate-800 rounded-xl border border-slate-700 p-6"
+          className="prometheus-panel-surface p-6"
         >
           <h3 className="text-lg font-semibold mb-6 flex items-center gap-2">
             <Settings size={20} />
@@ -1314,7 +1362,7 @@ export default function BotControlPage() {
               </p>
               <div className="grid grid-cols-3 gap-2">
                 {[
-                  { value: 300, label: "5 min", desc: "Più reattivo" },
+                  { value: 300, label: "5 min", desc: "Piu reattivo" },
                   { value: 600, label: "10 min", desc: "Bilanciato" },
                   { value: 900, label: "15 min", desc: "Moderato" },
                   { value: 1800, label: "30 min", desc: "Economico" },
@@ -1414,7 +1462,7 @@ export default function BotControlPage() {
                     TradingView Free Plan - Max 2 Indicators
                   </label>
                   <div className="bg-slate-700 rounded-lg px-3 py-2 text-sm text-slate-300">
-                    Ogni AI può aggiungere fino a 2 indicatori sul grafico (limite piano Free)
+                    Ogni AI puo aggiungere fino a 2 indicatori sul grafico (limite piano Free)
                   </div>
                 </div>
 
@@ -1537,7 +1585,7 @@ export default function BotControlPage() {
 
       {/* Open Positions */}
       {currentStatus.open_positions.length > 0 && (
-        <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
+        <div className="prometheus-panel-surface p-6">
           <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
             <Activity size={20} />
             Open Positions
@@ -1582,7 +1630,7 @@ export default function BotControlPage() {
       )}
 
       {/* How It Works */}
-      <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
+      <div className="prometheus-panel-surface p-6">
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <Eye size={20} />
           Come Funziona
@@ -1649,3 +1697,4 @@ export default function BotControlPage() {
     </motion.div>
   );
 }
+

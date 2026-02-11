@@ -50,6 +50,7 @@ interface License {
   is_active: boolean
   max_uses: number
   current_uses: number
+  broker_slots: number
   expires_at: string | null
   created_at: string
   created_by: number | null
@@ -115,6 +116,7 @@ interface WhopProduct {
   currency: string
   license_duration_days: number
   license_max_uses: number
+  license_broker_slots: number
   license_name_template: string
   is_active: boolean
   created_at: string
@@ -153,6 +155,7 @@ export default function AdminPage() {
     name: '',
     description: '',
     max_uses: 1,
+    broker_slots: 5,
     expires_in_days: 30,
   })
   const [isCreating, setIsCreating] = useState(false)
@@ -163,6 +166,7 @@ export default function AdminPage() {
     count: 10,
     name_prefix: 'Demo License',
     max_uses: 1,
+    broker_slots: 5,
     expires_in_days: 30,
   })
 
@@ -177,6 +181,7 @@ export default function AdminPage() {
     currency: 'EUR',
     license_duration_days: 30,
     license_max_uses: 1,
+    license_broker_slots: 5,
     license_name_template: 'Whop License - {product_name}',
   })
   const [editingProduct, setEditingProduct] = useState<WhopProduct | null>(null)
@@ -259,7 +264,7 @@ export default function AdminPage() {
 
       if (response.ok) {
         setShowCreateModal(false)
-        setCreateForm({ name: '', description: '', max_uses: 1, expires_in_days: 30 })
+        setCreateForm({ name: '', description: '', max_uses: 1, broker_slots: 5, expires_in_days: 30 })
         fetchData()
       } else {
         const data = await response.json()
@@ -289,7 +294,7 @@ export default function AdminPage() {
 
       if (response.ok) {
         setShowBulkModal(false)
-        setBulkForm({ count: 10, name_prefix: 'Demo License', max_uses: 1, expires_in_days: 30 })
+        setBulkForm({ count: 10, name_prefix: 'Demo License', max_uses: 1, broker_slots: 5, expires_in_days: 30 })
         fetchData()
       } else {
         const data = await response.json()
@@ -404,6 +409,7 @@ export default function AdminPage() {
           currency: 'EUR',
           license_duration_days: 30,
           license_max_uses: 1,
+          license_broker_slots: 5,
           license_name_template: 'Whop License - {product_name}',
         })
         fetchData()
@@ -501,6 +507,7 @@ export default function AdminPage() {
       currency: product.currency,
       license_duration_days: product.license_duration_days,
       license_max_uses: product.license_max_uses,
+      license_broker_slots: product.license_broker_slots,
       license_name_template: product.license_name_template,
     })
     setShowWhopProductModal(true)
@@ -765,6 +772,7 @@ export default function AdminPage() {
                   currency: 'EUR',
                   license_duration_days: 30,
                   license_max_uses: 1,
+                  license_broker_slots: 5,
                   license_name_template: 'Whop License - {product_name}',
                 })
                 setShowWhopProductModal(true)
@@ -831,8 +839,13 @@ export default function AdminPage() {
                         </span>
                       </td>
                       <td className="p-4 text-sm">
-                        <span className="text-dark-300">{license.current_uses}</span>
-                        <span className="text-dark-600"> / {license.max_uses}</span>
+                        <div>
+                          <span className="text-dark-300">{license.current_uses}</span>
+                          <span className="text-dark-600"> / {license.max_uses} users</span>
+                        </div>
+                        <div className="text-xs text-dark-500">
+                          {license.broker_slots} broker slots
+                        </div>
                       </td>
                       <td className="p-4 text-sm text-dark-400">{formatDate(license.expires_at)}</td>
                       <td className="p-4 text-sm text-dark-400">{formatDate(license.created_at)}</td>
@@ -1193,6 +1206,7 @@ export default function AdminPage() {
                         <div className="text-xs text-dark-400">
                           <p>Duration: {product.license_duration_days} days</p>
                           <p>Max uses: {product.license_max_uses}</p>
+                          <p>Broker slots: {product.license_broker_slots}</p>
                         </div>
                       </td>
                       <td className="p-4">
@@ -1296,7 +1310,7 @@ export default function AdminPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-dark-300 mb-2">Max Uses</label>
                     <input
@@ -1306,6 +1320,17 @@ export default function AdminPage() {
                       className="input"
                       min={1}
                       max={1000}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-dark-300 mb-2">Broker Slots</label>
+                    <input
+                      type="number"
+                      value={createForm.broker_slots}
+                      onChange={(e) => setCreateForm({ ...createForm, broker_slots: parseInt(e.target.value) || 1 })}
+                      className="input"
+                      min={1}
+                      max={100}
                     />
                   </div>
                   <div>
@@ -1447,7 +1472,7 @@ export default function AdminPage() {
                 <div className="border-t border-dark-700 pt-4 mt-4">
                   <h3 className="text-sm font-semibold text-white mb-3">License Configuration</h3>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-3 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-dark-300 mb-2">Duration (days)</label>
                       <input
@@ -1468,6 +1493,17 @@ export default function AdminPage() {
                         className="input"
                         min={1}
                         max={1000}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-dark-300 mb-2">Broker Slots</label>
+                      <input
+                        type="number"
+                        value={whopProductForm.license_broker_slots}
+                        onChange={(e) => setWhopProductForm({ ...whopProductForm, license_broker_slots: parseInt(e.target.value) || 1 })}
+                        className="input"
+                        min={1}
+                        max={100}
                       />
                     </div>
                   </div>
@@ -1561,7 +1597,7 @@ export default function AdminPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-dark-300 mb-2">Max Uses</label>
                     <input
@@ -1571,6 +1607,17 @@ export default function AdminPage() {
                       className="input"
                       min={1}
                       max={1000}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-dark-300 mb-2">Broker Slots</label>
+                    <input
+                      type="number"
+                      value={bulkForm.broker_slots}
+                      onChange={(e) => setBulkForm({ ...bulkForm, broker_slots: parseInt(e.target.value) || 1 })}
+                      className="input"
+                      min={1}
+                      max={100}
                     />
                   </div>
                   <div>

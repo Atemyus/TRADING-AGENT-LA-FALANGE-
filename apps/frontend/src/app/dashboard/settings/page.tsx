@@ -25,6 +25,7 @@ import {
   Users,
 } from 'lucide-react'
 import { settingsApi, brokerAccountsApi, type BrokerSettingsData, type BrokerAccountData, type BrokerAccountCreate } from '@/lib/api'
+import { useAuth } from '@/contexts/AuthContext'
 
 // Reusable Toggle Component
 function Toggle({
@@ -1086,6 +1087,7 @@ function NotificationSettings({
 
 // Broker Accounts Settings Component (Multi-Broker Support)
 function BrokerAccountsSettings() {
+  const { user } = useAuth()
   const [accounts, setAccounts] = useState<BrokerAccountData[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -1097,6 +1099,7 @@ function BrokerAccountsSettings() {
   const [formData, setFormData] = useState<BrokerAccountCreate>({
     name: '',
     broker_type: 'metaapi',
+    slot_index: 1,
     metaapi_account_id: '',
     metaapi_token: '',
     is_enabled: true,
@@ -1112,6 +1115,18 @@ function BrokerAccountsSettings() {
     trading_end_hour: 21,
   })
   const [showToken, setShowToken] = useState(false)
+
+  const maxSlots = user?.is_superuser ? Math.max(10, accounts.length) : Math.max(1, user?.license_broker_slots || 1)
+  const takenSlots = new Set(accounts.map((a) => a.slot_index).filter((s): s is number => typeof s === 'number' && s > 0))
+  const usedSlots = takenSlots.size
+  const canAddMore = user?.is_superuser ? true : usedSlots < maxSlots
+
+  const getFirstAvailableSlot = () => {
+    for (let i = 1; i <= maxSlots; i += 1) {
+      if (!takenSlots.has(i)) return i
+    }
+    return null
+  }
 
   // Load accounts
   useEffect(() => {
@@ -1139,6 +1154,7 @@ function BrokerAccountsSettings() {
       setFormData({
         name: '',
         broker_type: 'metaapi',
+        slot_index: 1,
         metaapi_account_id: '',
         metaapi_token: '',
         is_enabled: true,
@@ -1244,6 +1260,7 @@ function BrokerAccountsSettings() {
     setFormData({
       name: account.name,
       broker_type: account.broker_type,
+      slot_index: account.slot_index,
       metaapi_account_id: account.metaapi_account_id || '',
       metaapi_token: account.metaapi_token || '',
       is_enabled: account.is_enabled,
@@ -1286,14 +1303,25 @@ function BrokerAccountsSettings() {
           <div>
             <h2 className="text-xl font-semibold">Broker Accounts</h2>
             <p className="text-sm text-dark-400">Manage multiple broker connections for parallel trading</p>
+            {!user?.is_superuser && (
+              <p className="text-xs text-dark-500 mt-1">
+                License slots used: <span className="text-dark-200 font-medium">{usedSlots}</span> / <span className="text-dark-200 font-medium">{maxSlots}</span>
+              </p>
+            )}
           </div>
           <button
             onClick={() => {
+              const firstAvailableSlot = getFirstAvailableSlot()
+              if (!user?.is_superuser && firstAvailableSlot === null) {
+                setError(`All ${maxSlots} license slots are occupied. Remove a broker or upgrade the license.`)
+                return
+              }
               setShowCreateForm(true)
               setEditingAccount(null)
               setFormData({
                 name: '',
                 broker_type: 'metaapi',
+                slot_index: firstAvailableSlot || 1,
                 metaapi_account_id: '',
                 metaapi_token: '',
                 is_enabled: true,
@@ -1309,6 +1337,7 @@ function BrokerAccountsSettings() {
                 trading_end_hour: 21,
               })
             }}
+            disabled={!canAddMore}
             className="btn-primary flex items-center gap-2"
           >
             <Plus size={18} /> Add Broker
@@ -1347,6 +1376,11 @@ function BrokerAccountsSettings() {
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-semibold">{account.name}</span>
+                        {account.slot_index && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-dark-700 text-dark-300">
+                            Slot {account.slot_index}
+                          </span>
+                        )}
                         {account.is_connected && (
                           <span className="text-xs px-2 py-0.5 rounded-full bg-neon-green/20 text-neon-green">
                             Connected
@@ -1478,6 +1512,22 @@ function BrokerAccountsSettings() {
                   placeholder="e.g., Ultima Markets Demo"
                   className="input"
                 />
+              </div>
+
+              {/* Slot */}
+              <div>
+                <label className="block text-sm font-medium mb-2">License Slot</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={maxSlots}
+                  value={formData.slot_index || ''}
+                  onChange={(e) => setFormData({ ...formData, slot_index: parseInt(e.target.value) || 1 })}
+                  className="input"
+                />
+                {!user?.is_superuser && (
+                  <p className="text-xs text-dark-500 mt-1">Available range: 1-{maxSlots}</p>
+                )}
               </div>
 
               {/* MetaApi Account ID */}

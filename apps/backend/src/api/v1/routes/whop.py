@@ -61,6 +61,7 @@ async def create_license_for_order(
     if product:
         duration_days = product.license_duration_days
         max_uses = product.license_max_uses
+        broker_slots = product.license_broker_slots
         name = product.license_name_template.format(
             product_name=product.name,
             customer_email=order.customer_email,
@@ -70,6 +71,7 @@ async def create_license_for_order(
         # Default values if product not mapped
         duration_days = 30
         max_uses = 1
+        broker_slots = 5
         name = f"Whop License - {order.product_name}"
 
     # Create license
@@ -78,6 +80,7 @@ async def create_license_for_order(
         name=name,
         description=f"Auto-generated from Whop order {order.whop_order_id}",
         max_uses=max_uses,
+        broker_slots=broker_slots,
         expires_at=datetime.now(UTC) + timedelta(days=duration_days),
         status=LicenseStatus.ACTIVE,
         is_active=True,

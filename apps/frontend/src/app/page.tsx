@@ -1,6 +1,8 @@
 'use client'
 
 import { motion } from 'framer-motion'
+import { AnimatePresence } from 'framer-motion'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import {
@@ -32,9 +34,51 @@ const EDGE_PARTICLES = [
 
 export default function LandingPage() {
   const visibleLegionModels = LEGION_MODELS.filter((model) => model.visible)
+  const [showArrivalOverlay, setShowArrivalOverlay] = useState(false)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const seen = localStorage.getItem('prometheus_arrival_seen')
+    if (seen) return
+    setShowArrivalOverlay(true)
+    localStorage.setItem('prometheus_arrival_seen', '1')
+    const timer = window.setTimeout(() => setShowArrivalOverlay(false), 3200)
+    return () => window.clearTimeout(timer)
+  }, [])
 
   return (
     <div className="min-h-screen overflow-hidden relative">
+      <AnimatePresence>
+        {showArrivalOverlay && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center px-4 prometheus-arrival-overlay"
+          >
+            <motion.div
+              initial={{ y: 24, scale: 0.97, opacity: 0 }}
+              animate={{ y: 0, scale: 1, opacity: 1 }}
+              exit={{ y: -18, scale: 0.98, opacity: 0 }}
+              transition={{ duration: 0.45 }}
+              className="prometheus-arrival-shell max-w-xl w-full px-6 py-7 text-center"
+            >
+              <p className="text-xs uppercase tracking-[0.22em] text-primary-300 mb-2">Prometheus Protocol</p>
+              <h2 className="text-3xl font-imperial text-gradient-falange mb-3">Welcome To The Fire</h2>
+              <p className="text-dark-300 text-sm md:text-base mb-5">
+                AI consensus, broker slots, and autonomous execution are ready.
+              </p>
+              <button
+                onClick={() => setShowArrivalOverlay(false)}
+                className="btn-primary px-8 py-3"
+              >
+                Enter The Platform
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Fixed header with music and login */}
       <header className="fixed top-0 left-0 right-0 z-50 px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -93,6 +137,30 @@ export default function LandingPage() {
             }}
           />
         </div>
+
+        <motion.div
+          initial={{ opacity: 0, x: -18 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.7, delay: 0.75 }}
+          className="hidden xl:block absolute left-10 top-[34%] z-10"
+        >
+          <div className="prometheus-panel-surface px-4 py-3 max-w-[210px]">
+            <p className="text-xs uppercase tracking-wider text-dark-500 mb-1">Realtime Layer</p>
+            <p className="text-sm text-dark-200">AI consensus + execution telemetry synchronized every cycle.</p>
+          </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, x: 18 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.7, delay: 0.85 }}
+          className="hidden xl:block absolute right-10 top-[40%] z-10"
+        >
+          <div className="prometheus-panel-surface px-4 py-3 max-w-[220px]">
+            <p className="text-xs uppercase tracking-wider text-dark-500 mb-1">License System</p>
+            <p className="text-sm text-dark-200">Slot-based access for multi-broker workspaces and scalable onboarding.</p>
+          </div>
+        </motion.div>
 
         {/* Main content */}
         <div className="text-center max-w-5xl mx-auto z-10 px-6 py-10 rounded-3xl hero-content-shell">
@@ -163,6 +231,26 @@ export default function LandingPage() {
             <br />
             Multi-broker support. Real-time analysis. Automated execution.
           </motion.p>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.55 }}
+            className="flex flex-wrap items-center justify-center gap-3 mb-10"
+          >
+            <span className="prometheus-chip">
+              <Shield size={12} />
+              License Slots
+            </span>
+            <span className="prometheus-chip prometheus-chip-imperial">
+              <Users size={12} />
+              Multi Broker
+            </span>
+            <span className="prometheus-chip prometheus-chip-soft">
+              <BarChart3 size={12} />
+              Live Execution
+            </span>
+          </motion.div>
 
           {/* CTA Buttons */}
           <motion.div

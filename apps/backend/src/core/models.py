@@ -7,7 +7,7 @@ import secrets
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.core.database import Base
@@ -51,6 +51,7 @@ class WhopProduct(Base):
     # License configuration for this product
     license_duration_days: Mapped[int] = mapped_column(Integer, default=30)  # How long the license lasts
     license_max_uses: Mapped[int] = mapped_column(Integer, default=1)  # Max uses per license
+    license_broker_slots: Mapped[int] = mapped_column(Integer, default=5)  # Broker/workspace slots for the license
     license_name_template: Mapped[str] = mapped_column(String(255), default="Whop License - {product_name}")
 
     # Status
@@ -151,6 +152,7 @@ class License(Base):
     # Usage limits
     max_uses: Mapped[int] = mapped_column(Integer, default=1)  # How many users can use this license
     current_uses: Mapped[int] = mapped_column(Integer, default=0)
+    broker_slots: Mapped[int] = mapped_column(Integer, default=5)  # How many broker workspaces are available
 
     # Expiration
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -223,6 +225,7 @@ class User(Base):
     license_id: Mapped[int | None] = mapped_column(ForeignKey("licenses.id"), nullable=True)
     license_activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     license: Mapped["License | None"] = relationship("License", back_populates="users")
+    broker_accounts: Mapped[list["BrokerAccount"]] = relationship("BrokerAccount", back_populates="user")
 
     # Email verification
     verification_token: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -272,8 +275,14 @@ class BrokerAccount(Base):
     Each account has its own symbols, risk settings, and runs independently.
     """
     __tablename__ = "broker_accounts"
+    __table_args__ = (
+        UniqueConstraint("user_id", "slot_index", name="uq_broker_accounts_user_slot"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    user: Mapped["User | None"] = relationship("User", back_populates="broker_accounts")
+    slot_index: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 1-based slot index within the license
 
     # Account identification
     name: Mapped[str] = mapped_column(String(100), nullable=False)  # e.g., "Ultima Markets Demo", "IC Markets Live"

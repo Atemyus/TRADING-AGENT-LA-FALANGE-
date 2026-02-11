@@ -26,53 +26,54 @@ import {
   Monitor,
   BarChart3,
   Layers,
+  Flame,
+  Sparkles,
 } from 'lucide-react'
 import { aiApi, type AIServiceStatus, type TradingViewAgentResult } from '@/lib/api'
 import { usePriceStream } from '@/hooks/useWebSocket'
 import { useChartCapture, type AIAnalysisResult } from '@/hooks/useChartCapture'
-import { ALL_SYMBOLS, CATEGORY_LABELS, findSymbol, toTradingViewSymbol, type TradingSymbol } from '@/lib/symbols'
+import { ALL_SYMBOLS, CATEGORY_LABELS, findSymbol, type TradingSymbol } from '@/lib/symbols'
 
 // Dynamic import for TradingView chart
 const TradingViewWidget = dynamic(
   () => import('@/components/charts/TradingViewWidget'),
-  { ssr: false, loading: () => <div className="h-[400px] bg-slate-900 rounded-xl animate-pulse" /> }
+  { ssr: false, loading: () => <div className="h-[400px] bg-dark-900 rounded-xl animate-pulse" /> }
 )
 
 // Provider styling for AIML API models
 const providerStyles: Record<string, { color: string; icon: string; bg: string }> = {
   // The 8 AIML models (matching backend provider names)
-  'OpenAI': { color: 'text-green-400', icon: '💬', bg: 'bg-green-500/20' },
-  'Google': { color: 'text-blue-400', icon: '💎', bg: 'bg-blue-500/20' },
-  'DeepSeek': { color: 'text-cyan-400', icon: '🔍', bg: 'bg-cyan-500/20' },
-  'xAI': { color: 'text-red-400', icon: '⚡', bg: 'bg-red-500/20' },
-  'Alibaba': { color: 'text-orange-400', icon: '🌟', bg: 'bg-orange-500/20' },
-  'Zhipu': { color: 'text-purple-400', icon: '🧪', bg: 'bg-purple-500/20' },
-  'Meta': { color: 'text-sky-400', icon: '🦙', bg: 'bg-sky-500/20' },
-  'Mistral': { color: 'text-amber-400', icon: '🌪️', bg: 'bg-amber-500/20' },
+  OpenAI: { color: 'text-green-400', icon: 'OA', bg: 'bg-green-500/20' },
+  Google: { color: 'text-blue-400', icon: 'GO', bg: 'bg-blue-500/20' },
+  DeepSeek: { color: 'text-cyan-400', icon: 'DS', bg: 'bg-cyan-500/20' },
+  xAI: { color: 'text-red-400', icon: 'XA', bg: 'bg-red-500/20' },
+  Alibaba: { color: 'text-orange-400', icon: 'AL', bg: 'bg-orange-500/20' },
+  Zhipu: { color: 'text-purple-400', icon: 'ZH', bg: 'bg-purple-500/20' },
+  Meta: { color: 'text-sky-400', icon: 'ME', bg: 'bg-sky-500/20' },
+  Mistral: { color: 'text-amber-400', icon: 'MI', bg: 'bg-amber-500/20' },
   // Also match lowercase provider keys from backend
-  'aiml_openai': { color: 'text-green-400', icon: '💬', bg: 'bg-green-500/20' },
-  'aiml_google': { color: 'text-blue-400', icon: '💎', bg: 'bg-blue-500/20' },
-  'aiml_deepseek': { color: 'text-cyan-400', icon: '🔍', bg: 'bg-cyan-500/20' },
-  'aiml_xai': { color: 'text-red-400', icon: '⚡', bg: 'bg-red-500/20' },
-  'aiml_alibaba': { color: 'text-orange-400', icon: '🌟', bg: 'bg-orange-500/20' },
-  'aiml_zhipu': { color: 'text-purple-400', icon: '🧪', bg: 'bg-purple-500/20' },
-  'aiml_meta': { color: 'text-sky-400', icon: '🦙', bg: 'bg-sky-500/20' },
-  'aiml_mistral': { color: 'text-amber-400', icon: '🌪️', bg: 'bg-amber-500/20' },
+  aiml_openai: { color: 'text-green-400', icon: 'OA', bg: 'bg-green-500/20' },
+  aiml_google: { color: 'text-blue-400', icon: 'GO', bg: 'bg-blue-500/20' },
+  aiml_deepseek: { color: 'text-cyan-400', icon: 'DS', bg: 'bg-cyan-500/20' },
+  aiml_xai: { color: 'text-red-400', icon: 'XA', bg: 'bg-red-500/20' },
+  aiml_alibaba: { color: 'text-orange-400', icon: 'AL', bg: 'bg-orange-500/20' },
+  aiml_zhipu: { color: 'text-purple-400', icon: 'ZH', bg: 'bg-purple-500/20' },
+  aiml_meta: { color: 'text-sky-400', icon: 'ME', bg: 'bg-sky-500/20' },
+  aiml_mistral: { color: 'text-amber-400', icon: 'MI', bg: 'bg-amber-500/20' },
 }
 
 // The 8 AI models we use via AIML API (exact model IDs)
 // ORDERED: Vision-capable models first (for Standard mode which uses only 5)
 const AI_MODELS = [
-  { provider: 'OpenAI', model: 'ChatGPT 5.2', icon: '💬', vision: true },
-  { provider: 'Google', model: 'Gemini 3 Pro', icon: '💎', vision: true },
-  { provider: 'xAI', model: 'Grok 4.1 Fast', icon: '⚡', vision: true },
-  { provider: 'Alibaba', model: 'Qwen3 VL', icon: '🌟', vision: true },
-  { provider: 'DeepSeek', model: 'DeepSeek V3.1', icon: '🔍', vision: false },
-  { provider: 'Zhipu', model: 'GLM 4.5 Air', icon: '🧪', vision: false },
-  { provider: 'Meta', model: 'Llama 4 Scout', icon: '🦙', vision: false },
-  { provider: 'Mistral', model: 'Mistral 7B v0.3', icon: '🌪️', vision: false },
+  { provider: 'OpenAI', model: 'ChatGPT 5.2', icon: 'OA', vision: true },
+  { provider: 'Google', model: 'Gemini 3 Pro', icon: 'GO', vision: true },
+  { provider: 'xAI', model: 'Grok 4.1 Fast', icon: 'XA', vision: true },
+  { provider: 'Alibaba', model: 'Qwen3 VL', icon: 'AL', vision: true },
+  { provider: 'DeepSeek', model: 'DeepSeek V3.1', icon: 'DS', vision: false },
+  { provider: 'Zhipu', model: 'GLM 4.5 Air', icon: 'ZH', vision: false },
+  { provider: 'Meta', model: 'Llama 4 Scout', icon: 'ME', vision: false },
+  { provider: 'Mistral', model: 'Mistral 7B v0.3', icon: 'MI', vision: false },
 ]
-
 // Group symbols by category for the dropdown
 const GROUPED_SYMBOLS = Object.entries(
   ALL_SYMBOLS.reduce((acc, symbol) => {
@@ -227,28 +228,43 @@ export default function AIAnalysisPage() {
   }, [hasInitialized, loadingStatus, aiStatus, runAnalysis])
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 prometheus-page-shell">
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between"
+        className="prometheus-hero-card p-6 md:p-7"
       >
-        <div>
-          <h1 className="text-3xl font-bold mb-2">Analisi AI</h1>
-          <p className="text-dark-400">Segnali di trading con consenso multi-modello</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-dark-400">Modelli AI:</span>
-          {loadingStatus ? (
-            <Loader2 size={16} className="animate-spin text-dark-400" />
-          ) : aiStatus ? (
-            <span className={`font-mono font-bold ${aiStatus.active_providers > 0 ? 'text-neon-green' : 'text-neon-red'}`}>
-              {aiStatus.active_providers}
-            </span>
-          ) : (
-            <span className="font-mono font-bold text-dark-400">-</span>
-          )}
+        <div className="relative z-10 flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <span className="prometheus-chip">
+                <Flame size={12} />
+                AI Analysis
+              </span>
+              <span className="prometheus-chip prometheus-chip-imperial">
+                <Sparkles size={12} />
+                TradingView Agent
+              </span>
+            </div>
+            <h1 className="text-3xl font-bold text-gradient-falange mb-2">Analisi Multi-Modello</h1>
+            <p className="text-dark-300 max-w-2xl">
+              Segnali di trading basati su consenso AI, allineamento timeframe e lettura visuale del grafico.
+            </p>
+          </div>
+          <div className="prometheus-panel-surface p-4 min-w-[210px]">
+            <p className="text-xs uppercase tracking-wider text-dark-500 mb-1">Modelli Online</p>
+            {loadingStatus ? (
+              <Loader2 size={18} className="animate-spin text-dark-300" />
+            ) : aiStatus ? (
+              <p className={`text-2xl font-bold font-mono ${aiStatus.active_providers > 0 ? 'text-profit' : 'text-loss'}`}>
+                {aiStatus.active_providers}
+              </p>
+            ) : (
+              <p className="text-2xl font-bold font-mono text-dark-400">-</p>
+            )}
+            <p className="text-xs text-dark-400 mt-1">Provider disponibili in tempo reale</p>
+          </div>
         </div>
       </motion.div>
 
@@ -257,7 +273,7 @@ export default function AIAnalysisPage() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
-        className="card p-6"
+        className="prometheus-panel-surface p-6"
       >
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           {/* Symbol Selection */}
@@ -288,7 +304,7 @@ export default function AIAnalysisPage() {
 
           {/* Mode Selection */}
           <div>
-            <label className="block text-sm font-medium mb-2">Modalità Multi-TF</label>
+            <label className="block text-sm font-medium mb-2">Modalita Multi-TF</label>
             <div className="flex gap-2">
               {MODES.map(m => {
                 const Icon = m.icon
@@ -334,7 +350,7 @@ export default function AIAnalysisPage() {
         </div>
 
         {/* Current Price Display - Real-time WebSocket */}
-        <div className="flex items-center justify-between p-4 bg-dark-800/50 rounded-lg">
+        <div className="flex items-center justify-between p-4 bg-dark-900/55 border border-dark-700/60 rounded-xl">
           <div className="flex items-center gap-4">
             <div>
               <p className="text-sm text-dark-400">Simbolo Selezionato</p>
@@ -350,7 +366,7 @@ export default function AIAnalysisPage() {
                 transition={{ duration: 0.3 }}
                 className="text-2xl font-mono font-bold tabular-nums"
               >
-                {currentPrice > 0 ? currentPrice.toFixed(symbol.includes('JPY') ? 3 : 5) : '—'}
+                {currentPrice > 0 ? currentPrice.toFixed(symbol.includes('JPY') ? 3 : 5) : '--'}
               </motion.p>
             </div>
             {/* Bid/Ask spread */}
@@ -402,7 +418,7 @@ export default function AIAnalysisPage() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
-        className="card overflow-hidden"
+        className="prometheus-panel-surface overflow-hidden"
       >
         <div className="p-4 border-b border-dark-700/50 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -415,7 +431,7 @@ export default function AIAnalysisPage() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowChart(!showChart)}
-              className="px-3 py-1.5 bg-dark-700 hover:bg-dark-600 rounded-lg text-sm transition-colors"
+              className="px-3 py-1.5 bg-dark-800 hover:bg-dark-700 border border-dark-700 rounded-lg text-sm transition-colors"
             >
               {showChart ? 'Nascondi Grafico' : 'Mostra Grafico'}
             </button>
@@ -492,12 +508,12 @@ export default function AIAnalysisPage() {
                     </div>
                     <div className="p-3 bg-dark-700/50 rounded-lg">
                       <p className="text-xs text-dark-400 mb-1">Stop Loss</p>
-                      <p className="text-lg font-mono text-neon-red">{visionResult.stop_loss || '—'}</p>
+                      <p className="text-lg font-mono text-neon-red">{visionResult.stop_loss || '--'}</p>
                     </div>
                     <div className="p-3 bg-dark-700/50 rounded-lg">
                       <p className="text-xs text-dark-400 mb-1">Take Profit</p>
                       <p className="text-lg font-mono text-neon-green">
-                        {visionResult.take_profit?.[0] || '—'}
+                        {visionResult.take_profit?.[0] || '--'}
                       </p>
                     </div>
                   </div>
@@ -538,7 +554,7 @@ export default function AIAnalysisPage() {
             <div>
               <h3 className="font-semibold text-neon-yellow mb-1">Provider AI Non Configurati</h3>
               <p className="text-dark-300 text-sm mb-3">
-                Nessun provider AI è attualmente attivo. Configura la tua chiave API AIML per abilitare l'analisi AI.
+                Nessun provider AI e attualmente attivo. Configura la tua chiave API AIML per abilitare l'analisi AI.
               </p>
               <Link
                 href="/dashboard/settings"
@@ -587,7 +603,7 @@ export default function AIAnalysisPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="card p-12"
+            className="prometheus-panel-surface p-12"
           >
             <div className="text-center">
               <motion.div
@@ -605,7 +621,7 @@ export default function AIAnalysisPage() {
                   : AI_MODELS.map(m => ({ name: m.provider, healthy: true, model: m.model }))
                 ).map((provider, i) => {
                   const providerName = provider.name
-                  const style = providerStyles[providerName] || providerStyles[providerName.toLowerCase()] || { bg: 'bg-dark-700', icon: '🤖' }
+                  const style = providerStyles[providerName] || providerStyles[providerName.toLowerCase()] || { bg: 'bg-dark-700', icon: 'AI' }
                   return (
                     <motion.div
                       key={providerName}
@@ -632,7 +648,7 @@ export default function AIAnalysisPage() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="card p-6"
+            className="prometheus-panel-surface p-6"
           >
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-4">
@@ -698,23 +714,23 @@ export default function AIAnalysisPage() {
               <div className="grid grid-cols-5 gap-4 p-4 bg-dark-800/50 rounded-xl">
                 <div>
                   <p className="text-xs text-dark-400 mb-1">Ingresso</p>
-                  <p className="font-mono font-bold">{tvAgentResult.entry_price?.toFixed(5) || '—'}</p>
+                  <p className="font-mono font-bold">{tvAgentResult.entry_price?.toFixed(5) || '--'}</p>
                 </div>
                 <div>
                   <p className="text-xs text-dark-400 mb-1">Stop Loss</p>
-                  <p className="font-mono font-bold text-neon-red">{tvAgentResult.stop_loss?.toFixed(5) || '—'}</p>
+                  <p className="font-mono font-bold text-neon-red">{tvAgentResult.stop_loss?.toFixed(5) || '--'}</p>
                 </div>
                 <div>
                   <p className="text-xs text-dark-400 mb-1">Take Profit</p>
-                  <p className="font-mono font-bold text-neon-green">{tvAgentResult.take_profit?.toFixed(5) || '—'}</p>
+                  <p className="font-mono font-bold text-neon-green">{tvAgentResult.take_profit?.toFixed(5) || '--'}</p>
                 </div>
                 <div>
                   <p className="text-xs text-dark-400 mb-1">Break Even</p>
-                  <p className="font-mono font-bold">{tvAgentResult.break_even_trigger?.toFixed(5) || '—'}</p>
+                  <p className="font-mono font-bold">{tvAgentResult.break_even_trigger?.toFixed(5) || '--'}</p>
                 </div>
                 <div>
                   <p className="text-xs text-dark-400 mb-1">Trailing SL</p>
-                  <p className="font-mono font-bold">{tvAgentResult.trailing_stop_pips ? `${tvAgentResult.trailing_stop_pips} pips` : '—'}</p>
+                  <p className="font-mono font-bold">{tvAgentResult.trailing_stop_pips ? `${tvAgentResult.trailing_stop_pips} pips` : '--'}</p>
                 </div>
               </div>
             )}
@@ -727,7 +743,7 @@ export default function AIAnalysisPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="card p-6"
+              className="prometheus-panel-surface p-6"
             >
               <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                 <BarChart3 size={20} className="text-primary-400" />
@@ -759,7 +775,7 @@ export default function AIAnalysisPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="card p-6"
+              className="prometheus-panel-surface p-6"
             >
               <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                 <Brain size={20} className="text-primary-400" />
@@ -768,7 +784,7 @@ export default function AIAnalysisPage() {
               <div className="space-y-2 mb-4">
                 {tvAgentResult.models_used.map((model, i) => (
                   <div key={i} className="flex items-center gap-2 p-2 bg-dark-800/50 rounded-lg">
-                    <span className="text-lg">{['💬', '💎', '⚡', '🌟', '🔍', '🧪', '🦙', '🌪️'][i] || '🤖'}</span>
+                    <span className="text-xs font-semibold tracking-wide text-primary-300">{['OA', 'GO', 'XA', 'AL', 'DS', 'ZH', 'ME', 'MI'][i] || 'AI'}</span>
                     <span className="text-sm">{model}</span>
                   </div>
                 ))}
@@ -788,7 +804,7 @@ export default function AIAnalysisPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
-              className="card p-6"
+              className="prometheus-panel-surface p-6"
             >
               <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                 <CheckCircle size={20} className="text-neon-green" />
@@ -816,7 +832,7 @@ export default function AIAnalysisPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4 }}
-            className="card overflow-hidden"
+            className="prometheus-panel-surface overflow-hidden"
           >
             <div className="p-4 border-b border-dark-700/50">
               <h3 className="text-lg font-semibold">Analisi AI Individuali</h3>
@@ -829,8 +845,8 @@ export default function AIAnalysisPage() {
               {/* Group results by model */}
               {tvAgentResult.models_used.map((modelName, modelIdx) => {
                 const modelResults = tvAgentResult.individual_results?.filter(r => r.model_display_name === modelName) || []
-                const icons = ['💬', '💎', '⚡', '🌟', '🔍', '🧪', '🦙', '🌪️']
-                const icon = icons[modelIdx] || '🤖'
+                const icons = ['OA', 'GO', 'XA', 'AL', 'DS', 'ZH', 'ME', 'MI']
+                const icon = icons[modelIdx] || 'AI'
                 const isExpanded = expandedTvResult === modelName
 
                 // Calculate model consensus
@@ -857,7 +873,7 @@ export default function AIAnalysisPage() {
                           <p className="font-semibold text-lg">{modelName}</p>
                           <div className="flex items-center gap-2 text-xs text-dark-400">
                             <span>{modelResults[0]?.analysis_style || 'Technical'} analysis</span>
-                            <span>•</span>
+                            <span>|</span>
                             <span>{modelResults.length} timeframe</span>
                           </div>
                         </div>
@@ -917,7 +933,7 @@ export default function AIAnalysisPage() {
                                     r.direction === 'SHORT' ? 'bg-neon-red/20 text-neon-red' :
                                     'bg-neon-yellow/20 text-neon-yellow'
                                   }`}>
-                                    {r.direction} • {r.confidence}%
+                                    {r.direction} - {r.confidence}%
                                   </span>
                                 </div>
                                 {r.error && (
@@ -991,7 +1007,7 @@ export default function AIAnalysisPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.5 }}
-              className="card overflow-hidden"
+              className="prometheus-panel-surface overflow-hidden"
             >
               <div className="p-4 border-b border-dark-700/50 bg-gradient-to-r from-primary-500/10 to-transparent">
                 <h3 className="text-lg font-semibold flex items-center gap-2">
@@ -1008,8 +1024,8 @@ export default function AIAnalysisPage() {
                   if (modelMatch) {
                     const [, modelName, timeframe, reasoning] = modelMatch
                     const modelIdx = tvAgentResult.models_used.findIndex(m => m === modelName)
-                    const icons = ['💬', '💎', '⚡', '🌟', '🔍', '🧪', '🦙', '🌪️']
-                    const icon = icons[modelIdx] || '🤖'
+                    const icons = ['OA', 'GO', 'XA', 'AL', 'DS', 'ZH', 'ME', 'MI']
+                    const icon = icons[modelIdx] || 'AI'
 
                     return (
                       <div key={idx} className="p-4 bg-dark-800/50 rounded-xl border border-dark-700/50">
@@ -1039,3 +1055,4 @@ export default function AIAnalysisPage() {
     </div>
   )
 }
+

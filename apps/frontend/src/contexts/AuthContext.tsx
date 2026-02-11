@@ -20,6 +20,11 @@ interface User {
   is_active: boolean
   is_verified: boolean
   is_superuser: boolean
+  license_id: number | null
+  license_key: string | null
+  license_expires_at: string | null
+  license_broker_slots: number | null
+  license_slots_used: number | null
   created_at: string
 }
 

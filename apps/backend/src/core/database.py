@@ -73,6 +73,7 @@ async def bootstrap_admin_and_license() -> None:
 
     # Optional bootstrap license
     license_key = (settings.BOOTSTRAP_LICENSE_KEY or "").strip().upper()
+    bootstrap_license_slots = max(1, int(getattr(settings, "BOOTSTRAP_LICENSE_BROKER_SLOTS", 5) or 5))
 
     async with async_session_maker() as session:
         if license_key:
@@ -87,6 +88,7 @@ async def bootstrap_admin_and_license() -> None:
                     is_active=True,
                     max_uses=max(1, int(settings.BOOTSTRAP_LICENSE_MAX_USES)),
                     current_uses=0,
+                    broker_slots=bootstrap_license_slots,
                     expires_at=datetime.now(UTC) + timedelta(days=max(1, int(settings.BOOTSTRAP_LICENSE_DURATION_DAYS))),
                 )
                 session.add(new_license)
@@ -187,12 +189,14 @@ async def run_compat_migrations() -> None:
             is_active BOOLEAN NOT NULL DEFAULT TRUE,
             max_uses INTEGER NOT NULL DEFAULT 1,
             current_uses INTEGER NOT NULL DEFAULT 0,
+            broker_slots INTEGER NOT NULL DEFAULT 5,
             expires_at TIMESTAMPTZ,
             created_by INTEGER,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
         """,
+        "ALTER TABLE licenses ADD COLUMN IF NOT EXISTS broker_slots INTEGER NOT NULL DEFAULT 5",
         # Bring legacy users table in sync with current User model
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name VARCHAR(255)",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(500)",
@@ -223,6 +227,40 @@ async def run_compat_migrations() -> None:
         END $$;
         """,
         "CREATE INDEX IF NOT EXISTS ix_users_license_id ON users (license_id)",
+        # Multi-broker ownership and slot support
+        "ALTER TABLE broker_accounts ADD COLUMN IF NOT EXISTS user_id INTEGER",
+        "ALTER TABLE broker_accounts ADD COLUMN IF NOT EXISTS slot_index INTEGER",
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM pg_constraint
+                WHERE conname = 'broker_accounts_user_id_fkey'
+            ) THEN
+                ALTER TABLE broker_accounts
+                ADD CONSTRAINT broker_accounts_user_id_fkey
+                FOREIGN KEY (user_id) REFERENCES users(id);
+            END IF;
+        END $$;
+        """,
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM pg_constraint
+                WHERE conname = 'uq_broker_accounts_user_slot'
+            ) THEN
+                ALTER TABLE broker_accounts
+                ADD CONSTRAINT uq_broker_accounts_user_slot
+                UNIQUE (user_id, slot_index);
+            END IF;
+        END $$;
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_broker_accounts_user_id ON broker_accounts (user_id)",
+        # Whop product -> license slot mapping support
+        "ALTER TABLE whop_products ADD COLUMN IF NOT EXISTS license_broker_slots INTEGER NOT NULL DEFAULT 5",
     ]
 
     async with engine.begin() as conn:

@@ -43,7 +43,33 @@ export default function DashboardLayout({
   const [accountData, setAccountData] = useState<{ balance: number; todayPnl: number } | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [connectionError, setConnectionError] = useState<string | null>(null)
+  const [selectedBrokerId, setSelectedBrokerId] = useState<number | null>(null)
   const { user, logout } = useAuth()
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const updateSelectedBroker = () => {
+      const raw = localStorage.getItem('selected_broker_id')
+      const parsed = Number(raw || '')
+      if (!Number.isNaN(parsed) && parsed > 0) {
+        setSelectedBrokerId(parsed)
+      } else {
+        setSelectedBrokerId(null)
+      }
+    }
+    updateSelectedBroker()
+    window.addEventListener('storage', updateSelectedBroker)
+    window.addEventListener('selected-broker-changed', updateSelectedBroker)
+    return () => {
+      window.removeEventListener('storage', updateSelectedBroker)
+      window.removeEventListener('selected-broker-changed', updateSelectedBroker)
+    }
+  }, [pathname])
+
+  const withBrokerContext = (href: string) => {
+    if (!selectedBrokerId) return href
+    return `${href}?brokerId=${selectedBrokerId}`
+  }
 
   useEffect(() => {
     const fetchAccountData = async () => {
@@ -165,7 +191,7 @@ export default function DashboardLayout({
                 return (
                   <li key={item.href}>
                     <Link
-                      href={item.href}
+                      href={withBrokerContext(item.href)}
                       className={`
                         nav-link relative
                         ${isActive ? 'active' : ''}
