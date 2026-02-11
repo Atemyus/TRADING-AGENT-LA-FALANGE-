@@ -161,7 +161,10 @@ def broker_to_response(broker: BrokerAccount) -> dict:
 
 def _sorted_brokers_query(current_user: User):
     query = select(BrokerAccount)
-    if not current_user.is_superuser:
+    if current_user.is_superuser:
+        # Superuser sees only system/admin workspaces, not customer-linked accounts.
+        query = query.where(BrokerAccount.user_id.is_(None))
+    else:
         query = query.where(BrokerAccount.user_id == current_user.id)
     return query.order_by(BrokerAccount.slot_index.is_(None), BrokerAccount.slot_index, BrokerAccount.id)
 
@@ -172,7 +175,9 @@ async def _get_user_broker_or_404(
     current_user: User,
 ) -> BrokerAccount:
     query = select(BrokerAccount).where(BrokerAccount.id == broker_id)
-    if not current_user.is_superuser:
+    if current_user.is_superuser:
+        query = query.where(BrokerAccount.user_id.is_(None))
+    else:
         query = query.where(BrokerAccount.user_id == current_user.id)
 
     result = await db.execute(query)
