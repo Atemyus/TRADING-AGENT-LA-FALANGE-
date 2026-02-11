@@ -909,3 +909,186 @@
       0 0 50px rgba(255, 147, 0, 0.4);
   }
 }
+
+/* Landing hero refinements - light animation profile */
+.hero-content-shell {
+  background:
+    linear-gradient(135deg, rgba(9, 9, 11, 0.38) 0%, rgba(24, 24, 27, 0.24) 100%);
+  border: 1px solid rgba(245, 158, 11, 0.14);
+  box-shadow:
+    0 16px 50px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.edge-fire-rail {
+  overflow: hidden;
+}
+
+.edge-fire-rail-left .edge-rail-backdrop {
+  background: linear-gradient(to right, rgba(245, 158, 11, 0.08), transparent);
+}
+
+.edge-fire-rail-right .edge-rail-backdrop {
+  background: linear-gradient(to left, rgba(245, 158, 11, 0.08), transparent);
+}
+
+.edge-rail-backdrop {
+  position: absolute;
+  inset: 0;
+}
+
+.edge-rail-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(to bottom, transparent, rgba(245, 158, 11, 0.58), transparent);
+}
+
+.edge-rail-line-main {
+  opacity: 0.95;
+}
+
+.edge-rail-line-soft {
+  opacity: 0.45;
+}
+
+.edge-fire-rail-left .edge-rail-line-main {
+  left: 2px;
+}
+
+.edge-fire-rail-left .edge-rail-line-soft {
+  left: 7px;
+}
+
+.edge-fire-rail-right .edge-rail-line-main {
+  right: 2px;
+}
+
+.edge-fire-rail-right .edge-rail-line-soft {
+  right: 7px;
+}
+
+.edge-rail-energy {
+  position: absolute;
+  width: 2px;
+  height: 30vh;
+  border-radius: 999px;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 215, 0, 0),
+    rgba(255, 215, 0, 0.85),
+    rgba(245, 158, 11, 0)
+  );
+  animation: edgeEnergySweep 7.5s linear infinite;
+  opacity: 0.78;
+}
+
+.edge-rail-energy-soft {
+  width: 1px;
+  height: 24vh;
+  opacity: 0.44;
+  animation-duration: 9.8s;
+  animation-delay: 1.4s;
+}
+
+.edge-fire-rail-left .edge-rail-energy {
+  left: 4px;
+}
+
+.edge-fire-rail-left .edge-rail-energy-soft {
+  left: 10px;
+}
+
+.edge-fire-rail-right .edge-rail-energy {
+  right: 4px;
+}
+
+.edge-fire-rail-right .edge-rail-energy-soft {
+  right: 10px;
+}
+
+.edge-rail-particle {
+  position: absolute;
+  left: var(--particle-x);
+  bottom: -6%;
+  width: var(--particle-size);
+  height: var(--particle-size);
+  margin-left: calc(var(--particle-size) / -2);
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(255, 215, 0, 1) 0%, rgba(245, 158, 11, 0) 75%);
+  opacity: var(--particle-opacity);
+  transform: translateY(0) translateX(0) scale(0.65);
+  animation: edgeParticleFloat var(--particle-duration) linear infinite;
+  animation-delay: var(--particle-delay);
+  pointer-events: none;
+}
+
+.legion-card {
+  transition:
+    transform 240ms ease,
+    border-color 240ms ease,
+    box-shadow 240ms ease;
+}
+
+.legion-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(245, 158, 11, 0.28);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.42),
+    0 0 16px rgba(245, 158, 11, 0.1);
+}
+
+.legion-logo-mark {
+  opacity: 0.94;
+}
+
+@keyframes edgeEnergySweep {
+  0% {
+    transform: translateY(120vh);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.82;
+  }
+  80% {
+    opacity: 0.62;
+  }
+  100% {
+    transform: translateY(-40vh);
+    opacity: 0;
+  }
+}
+
+@keyframes edgeParticleFloat {
+  0% {
+    transform: translateY(0) translateX(0) scale(0.65);
+    opacity: 0;
+  }
+  10% {
+    opacity: var(--particle-opacity);
+  }
+  70% {
+    opacity: calc(var(--particle-opacity) * 0.7);
+  }
+  100% {
+    transform: translateY(-120vh) translateX(10px) scale(1.05);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .edge-rail-energy,
+  .edge-rail-energy-soft,
+  .edge-rail-particle {
+    animation: none !important;
+  }
+
+  .legion-card {
+    transition: none !important;
+  }
+
+  .legion-card:hover {
+    transform: none !important;
+  }
+}
