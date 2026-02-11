@@ -549,8 +549,12 @@ export default function DashboardPage() {
       'selected_broker_snapshot',
       JSON.stringify({
         brokerId: selectedBrokerId,
-        balance: snapshot.balance ?? null,
-        todayPnl: snapshot.dailyPnl ?? snapshot.unrealizedPnl ?? null,
+        isDisabled: snapshot.status === 'disabled',
+        balance: snapshot.status === 'disabled' ? null : (snapshot.balance ?? null),
+        todayPnl:
+          snapshot.status === 'disabled'
+            ? null
+            : (snapshot.dailyPnl ?? snapshot.unrealizedPnl ?? null),
       }),
     )
     window.dispatchEvent(new Event('selected-broker-snapshot-changed'))
@@ -588,12 +592,23 @@ export default function DashboardPage() {
     }).format(abs)
   }
 
+  const isSelectedWorkspaceDisabled = selectedSnapshot?.status === 'disabled'
   const scopedCurrency = selectedSnapshot?.currency || aggregatedStats?.currency || 'USD'
-  const scopedBalance = selectedSnapshot?.balance ?? aggregatedStats?.totalBalance ?? null
-  const scopedUnrealizedPnl = selectedSnapshot?.unrealizedPnl ?? aggregatedStats?.totalUnrealizedPnl ?? null
-  const scopedMarginUsed = selectedSnapshot?.marginUsed ?? aggregatedStats?.totalMarginUsed ?? null
-  const scopedOpenPositions = selectedSnapshot?.openPositions ?? aggregatedStats?.totalOpenPositions ?? 0
-  const scopedTodayPnl = selectedSnapshot?.dailyPnl ?? selectedSnapshot?.unrealizedPnl ?? null
+  const scopedBalance = isSelectedWorkspaceDisabled
+    ? null
+    : (selectedSnapshot?.balance ?? aggregatedStats?.totalBalance ?? null)
+  const scopedUnrealizedPnl = isSelectedWorkspaceDisabled
+    ? null
+    : (selectedSnapshot?.unrealizedPnl ?? aggregatedStats?.totalUnrealizedPnl ?? null)
+  const scopedMarginUsed = isSelectedWorkspaceDisabled
+    ? null
+    : (selectedSnapshot?.marginUsed ?? aggregatedStats?.totalMarginUsed ?? null)
+  const scopedOpenPositions = isSelectedWorkspaceDisabled
+    ? 0
+    : (selectedSnapshot?.openPositions ?? aggregatedStats?.totalOpenPositions ?? 0)
+  const scopedTodayPnl = isSelectedWorkspaceDisabled
+    ? null
+    : (selectedSnapshot?.dailyPnl ?? selectedSnapshot?.unrealizedPnl ?? null)
 
   return (
     <motion.div

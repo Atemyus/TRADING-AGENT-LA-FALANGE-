@@ -46,6 +46,7 @@ export default function DashboardLayout({
   const [selectedBrokerId, setSelectedBrokerId] = useState<number | null>(null)
   const [selectedBrokerSnapshot, setSelectedBrokerSnapshot] = useState<{
     brokerId: number
+    isDisabled: boolean
     balance: number | null
     todayPnl: number | null
   } | null>(null)
@@ -71,6 +72,7 @@ export default function DashboardLayout({
       try {
         const parsedSnapshot = JSON.parse(rawSnapshot) as {
           brokerId?: number
+          isDisabled?: boolean
           balance?: number | null
           todayPnl?: number | null
         }
@@ -83,6 +85,7 @@ export default function DashboardLayout({
         ) {
           setSelectedBrokerSnapshot({
             brokerId: parsedSnapshot.brokerId,
+            isDisabled: Boolean(parsedSnapshot.isDisabled),
             balance: parsedSnapshot.balance ?? null,
             todayPnl: parsedSnapshot.todayPnl ?? null,
           })
@@ -115,6 +118,13 @@ export default function DashboardLayout({
         const fallbackSnapshot = selectedBrokerSnapshot?.brokerId === selectedBrokerId
           ? selectedBrokerSnapshot
           : null
+
+        if (fallbackSnapshot?.isDisabled) {
+          setAccountData({ balance: null, todayPnl: null })
+          setIsConnected(false)
+          setConnectionError('Selected workspace is disabled')
+          return
+        }
 
         const [accountResult, statusResult] = await Promise.allSettled([
           brokerAccountsApi.getAccountInfo(selectedBrokerId),
@@ -333,6 +343,22 @@ export default function DashboardLayout({
           </div>
         </div>
       </motion.aside>
+
+      {/* Sidebar -> Main blending seam */}
+      <motion.div
+        aria-hidden="true"
+        initial={false}
+        animate={{
+          opacity: sidebarOpen ? 1 : 0,
+          x: sidebarOpen ? 0 : -280,
+        }}
+        transition={{ duration: 0.28, ease: 'easeOut' }}
+        className="pointer-events-none fixed top-0 bottom-0 left-[280px] w-20 z-[35]"
+      >
+        <div className="absolute inset-0 bg-gradient-to-r from-dark-950/85 via-primary-500/10 to-transparent" />
+        <div className="absolute inset-y-0 left-0 w-px bg-gradient-to-b from-transparent via-primary-400/45 to-transparent" />
+        <div className="absolute inset-y-0 left-0 w-9 bg-[radial-gradient(circle_at_left,rgba(245,158,11,0.2),transparent_72%)] blur-md" />
+      </motion.div>
 
       {/* Main content */}
       <div className={`flex-1 transition-all duration-300 overflow-x-hidden max-w-full ${sidebarOpen ? 'ml-[280px]' : 'ml-0'}`}>
