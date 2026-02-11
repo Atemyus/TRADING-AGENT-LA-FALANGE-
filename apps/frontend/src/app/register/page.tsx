@@ -16,6 +16,7 @@ import {
   ArrowLeft,
   AlertCircle,
   Check,
+  Key,
 } from 'lucide-react'
 import { MusicPlayer } from '@/components/common/MusicPlayer'
 
@@ -29,6 +30,7 @@ export default function RegisterPage() {
     password: '',
     confirmPassword: '',
     fullName: '',
+    licenseKey: '',
   })
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
@@ -75,6 +77,7 @@ export default function RegisterPage() {
           username: formData.username,
           password: formData.password,
           full_name: formData.fullName || null,
+          license_key: formData.licenseKey,
         }),
       })
 
@@ -171,6 +174,26 @@ export default function RegisterPage() {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* License Key - Required */}
+            <div>
+              <label className="block text-sm font-medium text-dark-300 mb-2">
+                License Key <span className="text-imperial-400">*</span>
+              </label>
+              <div className="relative">
+                <Key size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-dark-500" />
+                <input
+                  type="text"
+                  name="licenseKey"
+                  value={formData.licenseKey}
+                  onChange={handleChange}
+                  className="input pl-11 uppercase font-mono tracking-wider"
+                  placeholder="LIC-XXXX-XXXX-XXXX-XXXX"
+                  required
+                />
+              </div>
+              <p className="text-xs text-dark-500 mt-1">Enter your license key to register</p>
+            </div>
+
             {/* Full Name (Optional) */}
             <div>
               <label className="block text-sm font-medium text-dark-300 mb-2">

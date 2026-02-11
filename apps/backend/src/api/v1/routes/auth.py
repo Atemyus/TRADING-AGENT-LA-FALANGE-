@@ -10,6 +10,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from src.core.database import get_db
 from src.core.email import (
@@ -17,7 +18,7 @@ from src.core.email import (
     generate_verification_token,
     get_token_expiry,
 )
-from src.core.models import User
+from src.core.models import License, LicenseStatus, User
 from src.core.security import (
     create_access_token,
     create_refresh_token,
@@ -41,6 +42,7 @@ class UserCreate(BaseModel):
     username: str = Field(..., min_length=3, max_length=50, pattern=r"^[a-zA-Z0-9_]+$")
     password: str = Field(..., min_length=8, max_length=100)
     full_name: str | None = None
+    license_key: str = Field(..., min_length=10, max_length=64, description="Valid license key required for registration")
 
 
 class UserLogin(BaseModel):
@@ -121,7 +123,12 @@ async def get_current_user(
     if user_id is None:
         raise credentials_exception
 
-    result = await db.execute(select(User).where(User.id == int(user_id)))
+    # Load user with license relationship
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.license))
+        .where(User.id == int(user_id))
+    )
     user = result.scalar_one_or_none()
 
     if user is None:
@@ -148,6 +155,41 @@ async def get_current_active_user(
     return current_user
 
 
+async def get_licensed_user(
+    current_user: User = Depends(get_current_user)
+) -> User:
+    """
+    Get current user and verify they have a valid license.
+    Use this dependency for routes that require an active license.
+    Superusers bypass license check.
+    """
+    # Superusers bypass license check
+    if current_user.is_superuser:
+        return current_user
+
+    if not current_user.license_id or not current_user.license:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No license associated with this account"
+        )
+
+    license = current_user.license
+
+    if not license.is_active or license.status != LicenseStatus.ACTIVE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your license has been revoked"
+        )
+
+    if license.is_expired:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your license has expired. Please contact support."
+        )
+
+    return current_user
+
+
 # ============================================================================
 # Routes
 # ============================================================================
@@ -165,7 +207,38 @@ async def register(
     - **username**: Username (3-50 chars, alphanumeric + underscore)
     - **password**: Password (min 8 characters)
     - **full_name**: Optional full name
+    - **license_key**: Valid license key (required)
     """
+    # Validate license key first
+    result = await db.execute(
+        select(License).where(License.key == user_data.license_key.strip().upper())
+    )
+    license = result.scalar_one_or_none()
+
+    if not license:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid license key"
+        )
+
+    if not license.is_active or license.status != LicenseStatus.ACTIVE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="License is not active"
+        )
+
+    if license.is_expired:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="License has expired"
+        )
+
+    if license.current_uses >= license.max_uses:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="License has reached maximum number of users"
+        )
+
     # Check if email already exists
     result = await db.execute(select(User).where(User.email == user_data.email))
     if result.scalar_one_or_none():
@@ -185,7 +258,7 @@ async def register(
     # Generate verification token
     verification_token = generate_verification_token()
 
-    # Create new user
+    # Create new user with license
     user = User(
         email=user_data.email,
         username=user_data.username,
@@ -195,7 +268,12 @@ async def register(
         is_verified=False,
         verification_token=verification_token,
         verification_token_expires=get_token_expiry(hours=24),
+        license_id=license.id,
+        license_activated_at=datetime.now(UTC),
     )
+
+    # Increment license usage
+    license.current_uses += 1
 
     db.add(user)
     await db.flush()

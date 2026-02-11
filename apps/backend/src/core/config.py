@@ -148,6 +148,11 @@ class Settings(BaseSettings):
     TELEGRAM_CHAT_ID: str | None = None
     DISCORD_WEBHOOK_URL: str | None = None
 
+    # Whop Integration
+    WHOP_API_KEY: str | None = None
+    WHOP_WEBHOOK_SECRET: str | None = None
+    WHOP_COMPANY_ID: str | None = None
+
 
 @lru_cache
 def get_settings() -> Settings:

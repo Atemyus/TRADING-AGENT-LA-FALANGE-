@@ -249,20 +249,35 @@ export interface TradingViewAgentStatus {
 
 // ============ API Client ============
 
+function getAuthToken(): string | null {
+  if (typeof window !== 'undefined') {
+    return localStorage.getItem('access_token')
+  }
+  return null
+}
+
 async function fetchApi<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`
+  const token = getAuthToken()
+
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+    ...options.headers,
+  }
+
+  // Add auth token if available
+  if (token) {
+    (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`
+  }
 
   let response: Response
   try {
     response = await fetch(url, {
       ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
+      headers,
     })
   } catch (networkError) {
     // Network error (server down, CORS, etc.)
