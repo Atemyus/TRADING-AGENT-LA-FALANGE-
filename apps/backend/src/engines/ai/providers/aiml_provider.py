@@ -22,7 +22,6 @@ import os
 import re
 import time
 from decimal import Decimal
-from typing import List, Optional
 
 from openai import AsyncOpenAI
 
@@ -33,8 +32,10 @@ from src.engines.ai.base_ai import (
     MarketContext,
     TradeDirection,
 )
-from src.engines.ai.prompts.templates import build_analysis_prompt, get_system_prompt, ANALYSIS_MODES
-
+from src.engines.ai.prompts.templates import (
+    build_analysis_prompt,
+    get_system_prompt,
+)
 
 # AIML API model mappings - EXACT model IDs from AIML API documentation
 # Updated 2026-01-26 - Vision capability verified against AIML API docs
@@ -114,12 +115,12 @@ class AIMLProvider(BaseAIProvider):
     def __init__(
         self,
         model_name: str = "chatgpt-5.2",
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
     ):
         # Get API key: explicit > environment > settings
         key = api_key or os.environ.get('AIML_API_KEY') or getattr(settings, 'AIML_API_KEY', None)
         super().__init__(model_name, key)
-        self._client: Optional[AsyncOpenAI] = None
+        self._client: AsyncOpenAI | None = None
 
         # Get model info
         self._model_info = AIML_MODELS.get(model_name, {
@@ -133,7 +134,7 @@ class AIMLProvider(BaseAIProvider):
         return f"aiml_{self._model_info['provider'].lower()}"
 
     @property
-    def supported_models(self) -> List[str]:
+    def supported_models(self) -> list[str]:
         return list(AIML_MODELS.keys())
 
     @property
@@ -251,7 +252,7 @@ class AIMLProvider(BaseAIProvider):
         except Exception as e:
             return self._create_error_response(str(e))
 
-    def _extract_json(self, content: str) -> Optional[dict]:
+    def _extract_json(self, content: str) -> dict | None:
         """
         Extract JSON from response content.
         Handles cases where model returns JSON wrapped in markdown or extra text.

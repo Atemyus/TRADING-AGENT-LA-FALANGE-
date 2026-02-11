@@ -4,8 +4,9 @@ Bot configuration is persisted to database.
 """
 
 import json
-from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Depends
+from datetime import UTC
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,19 +14,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.database import get_db
 from src.core.models import AppSettings
 from src.engines.trading.auto_trader import (
-    get_auto_trader,
-    BotConfig,
-    BotStatus,
     AnalysisMode,
+    BotStatus,
+    get_auto_trader,
 )
-
 
 router = APIRouter(prefix="/bot", tags=["Bot Control"])
 
 
 # ============ Database Helper Functions ============
 
-async def get_bot_config_from_db(db: AsyncSession) -> Optional[dict]:
+async def get_bot_config_from_db(db: AsyncSession) -> dict | None:
     """Load bot config from database."""
     result = await db.execute(
         select(AppSettings).where(AppSettings.key == "bot_config")
@@ -159,44 +158,44 @@ def apply_config_to_bot(config_dict: dict) -> None:
 
 class BotConfigRequest(BaseModel):
     """Request model for bot configuration."""
-    symbols: Optional[List[str]] = None
-    analysis_mode: Optional[str] = None
-    analysis_interval_seconds: Optional[int] = None
-    min_confidence: Optional[float] = None
-    min_models_agree: Optional[int] = None
-    min_confluence: Optional[float] = None
-    risk_per_trade_percent: Optional[float] = None
-    max_open_positions: Optional[int] = None
-    max_daily_trades: Optional[int] = None
-    max_daily_loss_percent: Optional[float] = None
-    trading_start_hour: Optional[int] = None
-    trading_end_hour: Optional[int] = None
-    trade_on_weekends: Optional[bool] = None
-    telegram_enabled: Optional[bool] = None
-    discord_enabled: Optional[bool] = None
+    symbols: list[str] | None = None
+    analysis_mode: str | None = None
+    analysis_interval_seconds: int | None = None
+    min_confidence: float | None = None
+    min_models_agree: int | None = None
+    min_confluence: float | None = None
+    risk_per_trade_percent: float | None = None
+    max_open_positions: int | None = None
+    max_daily_trades: int | None = None
+    max_daily_loss_percent: float | None = None
+    trading_start_hour: int | None = None
+    trading_end_hour: int | None = None
+    trade_on_weekends: bool | None = None
+    telegram_enabled: bool | None = None
+    discord_enabled: bool | None = None
     # Autonomous Analysis settings
-    use_autonomous_analysis: Optional[bool] = None
-    autonomous_timeframe: Optional[str] = None
+    use_autonomous_analysis: bool | None = None
+    autonomous_timeframe: str | None = None
     # TradingView AI Agent settings
-    use_tradingview_agent: Optional[bool] = None
-    tradingview_headless: Optional[bool] = None
-    tradingview_max_indicators: Optional[int] = None
+    use_tradingview_agent: bool | None = None
+    tradingview_headless: bool | None = None
+    tradingview_max_indicators: int | None = None
     # AI Models - enable/disable individual models
-    enabled_models: Optional[List[str]] = None
+    enabled_models: list[str] | None = None
     # News Filter settings
-    news_filter_enabled: Optional[bool] = None
-    news_filter_high_impact: Optional[bool] = None
-    news_filter_medium_impact: Optional[bool] = None
-    news_filter_low_impact: Optional[bool] = None
-    news_minutes_before: Optional[int] = None
-    news_minutes_after: Optional[int] = None
+    news_filter_enabled: bool | None = None
+    news_filter_high_impact: bool | None = None
+    news_filter_medium_impact: bool | None = None
+    news_filter_low_impact: bool | None = None
+    news_minutes_before: int | None = None
+    news_minutes_after: int | None = None
 
 
 class BotStatusResponse(BaseModel):
     """Response model for bot status."""
     status: str
-    started_at: Optional[str]
-    last_analysis_at: Optional[str]
+    started_at: str | None
+    last_analysis_at: str | None
     config: dict
     statistics: dict
     open_positions: list
@@ -535,8 +534,9 @@ async def get_trades(limit: int = 50, db: AsyncSession = Depends(get_db)):
         from src.services.trading_service import get_trading_service
         service = await get_trading_service()
         if hasattr(service._broker, 'get_deals_history'):
-            from datetime import datetime as dt, timezone, timedelta
-            start = dt.now(timezone.utc) - timedelta(days=30)
+            from datetime import datetime as dt
+            from datetime import timedelta
+            start = dt.now(UTC) - timedelta(days=30)
             deals = await service._broker.get_deals_history(start.isoformat())
             for deal in deals:
                 deal_id = str(deal.get("id", deal.get("dealId", "")))
@@ -631,7 +631,7 @@ async def get_analysis_logs(limit: int = 30):
 
 
 @router.get("/news/upcoming")
-async def get_upcoming_news(hours: int = 24, impact: Optional[str] = None):
+async def get_upcoming_news(hours: int = 24, impact: str | None = None):
     """
     Get upcoming economic news events.
 
@@ -640,8 +640,8 @@ async def get_upcoming_news(hours: int = 24, impact: Optional[str] = None):
         impact: Filter by impact level ("high", "medium", "low", or None for all)
     """
     from src.services.economic_calendar_service import (
-        get_economic_calendar_service,
         NewsImpact,
+        get_economic_calendar_service,
     )
 
     service = get_economic_calendar_service()

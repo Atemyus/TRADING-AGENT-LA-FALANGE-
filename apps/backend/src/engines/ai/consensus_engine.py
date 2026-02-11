@@ -5,12 +5,11 @@ Aggregates analysis from multiple AI providers and produces a unified trading de
 based on weighted voting, confidence levels, and agreement metrics.
 """
 
+import statistics
 from collections import defaultdict
 from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
-import statistics
 
 from src.engines.ai.base_ai import AIAnalysis, TradeDirection
 
@@ -43,7 +42,7 @@ class ProviderVote:
     weight: float = 1.0
     reasoning: str = ""
     is_valid: bool = True
-    error: Optional[str] = None
+    error: str | None = None
 
 
 @dataclass
@@ -70,17 +69,17 @@ class ConsensusResult:
     confidence_std_dev: float
 
     # Price levels (aggregated from providers)
-    suggested_entry: Optional[Decimal] = None
-    suggested_stop_loss: Optional[Decimal] = None
-    suggested_take_profit: Optional[Decimal] = None
-    suggested_risk_reward: Optional[float] = None
+    suggested_entry: Decimal | None = None
+    suggested_stop_loss: Decimal | None = None
+    suggested_take_profit: Decimal | None = None
+    suggested_risk_reward: float | None = None
 
     # Individual analyses
-    individual_votes: List[ProviderVote] = field(default_factory=list)
+    individual_votes: list[ProviderVote] = field(default_factory=list)
 
     # Aggregated insights
-    key_factors: List[str] = field(default_factory=list)
-    risks: List[str] = field(default_factory=list)
+    key_factors: list[str] = field(default_factory=list)
+    risks: list[str] = field(default_factory=list)
     reasoning_summary: str = ""
 
     # Costs
@@ -89,8 +88,8 @@ class ConsensusResult:
     total_processing_time_ms: int = 0
 
     # Metadata
-    providers_used: List[str] = field(default_factory=list)
-    failed_providers: List[str] = field(default_factory=list)
+    providers_used: list[str] = field(default_factory=list)
+    failed_providers: list[str] = field(default_factory=list)
 
 
 class ConsensusEngine:
@@ -126,7 +125,7 @@ class ConsensusEngine:
         self.min_risk_reward = min_risk_reward
 
         # Provider weights (can be customized)
-        self._provider_weights: Dict[str, float] = {
+        self._provider_weights: dict[str, float] = {
             "openai": 1.0,
             "anthropic": 1.0,
             "google": 1.0,
@@ -141,7 +140,7 @@ class ConsensusEngine:
 
     def calculate_consensus(
         self,
-        analyses: List[AIAnalysis],
+        analyses: list[AIAnalysis],
     ) -> ConsensusResult:
         """
         Calculate consensus from multiple AI analyses.
@@ -229,7 +228,7 @@ class ConsensusEngine:
             failed_providers=[v.provider_name for v in votes if not v.is_valid],
         )
 
-    def _convert_to_votes(self, analyses: List[AIAnalysis]) -> List[ProviderVote]:
+    def _convert_to_votes(self, analyses: list[AIAnalysis]) -> list[ProviderVote]:
         """Convert AIAnalysis objects to ProviderVotes."""
         votes = []
         for analysis in analyses:
@@ -256,20 +255,20 @@ class ConsensusEngine:
         return votes
 
     def _count_directions(
-        self, votes: List[ProviderVote]
-    ) -> Dict[TradeDirection, int]:
+        self, votes: list[ProviderVote]
+    ) -> dict[TradeDirection, int]:
         """Count votes for each direction."""
-        counts: Dict[TradeDirection, int] = defaultdict(int)
+        counts: dict[TradeDirection, int] = defaultdict(int)
         for vote in votes:
             if vote.confidence >= self.min_confidence_threshold:
                 counts[vote.direction] += 1
         return dict(counts)
 
     def _calculate_weighted_scores(
-        self, votes: List[ProviderVote]
-    ) -> Dict[TradeDirection, float]:
+        self, votes: list[ProviderVote]
+    ) -> dict[TradeDirection, float]:
         """Calculate weighted scores for each direction."""
-        scores: Dict[TradeDirection, float] = defaultdict(float)
+        scores: dict[TradeDirection, float] = defaultdict(float)
 
         for vote in votes:
             if vote.confidence >= self.min_confidence_threshold:
@@ -281,10 +280,10 @@ class ConsensusEngine:
 
     def _determine_winner(
         self,
-        votes: List[ProviderVote],
-        direction_counts: Dict[TradeDirection, int],
-        weighted_scores: Dict[TradeDirection, float],
-    ) -> Tuple[TradeDirection, float]:
+        votes: list[ProviderVote],
+        direction_counts: dict[TradeDirection, int],
+        weighted_scores: dict[TradeDirection, float],
+    ) -> tuple[TradeDirection, float]:
         """Determine the winning direction based on voting method."""
 
         if not votes:
@@ -313,7 +312,7 @@ class ConsensusEngine:
             if not high_conf_votes:
                 return TradeDirection.HOLD, 0.0
 
-            counts: Dict[TradeDirection, int] = defaultdict(int)
+            counts: dict[TradeDirection, int] = defaultdict(int)
             for v in high_conf_votes:
                 counts[v.direction] += 1
 
@@ -347,7 +346,7 @@ class ConsensusEngine:
         return TradeDirection.HOLD, 0.0
 
     def _calculate_agreement(
-        self, votes: List[ProviderVote], winner: TradeDirection
+        self, votes: list[ProviderVote], winner: TradeDirection
     ) -> float:
         """Calculate what percentage agrees with the winner."""
         if not votes:
@@ -371,10 +370,10 @@ class ConsensusEngine:
 
     def _aggregate_price_levels(
         self,
-        votes: List[ProviderVote],
-        analyses: List[AIAnalysis],
+        votes: list[ProviderVote],
+        analyses: list[AIAnalysis],
         direction: TradeDirection,
-    ) -> Tuple[Optional[Decimal], Optional[Decimal], Optional[Decimal], Optional[float]]:
+    ) -> tuple[Decimal | None, Decimal | None, Decimal | None, float | None]:
         """Aggregate entry, SL, TP from analyses that agree with direction."""
 
         # Filter analyses that agree with winning direction
@@ -400,7 +399,7 @@ class ConsensusEngine:
 
         return entry, sl, tp, rr
 
-    def _median_decimal(self, values: List[Decimal]) -> Decimal:
+    def _median_decimal(self, values: list[Decimal]) -> Decimal:
         """Calculate median of Decimal values."""
         sorted_vals = sorted(values)
         n = len(sorted_vals)
@@ -410,10 +409,10 @@ class ConsensusEngine:
             return (sorted_vals[n // 2 - 1] + sorted_vals[n // 2]) / 2
 
     def _aggregate_factors(
-        self, analyses: List[AIAnalysis], direction: TradeDirection
-    ) -> List[str]:
+        self, analyses: list[AIAnalysis], direction: TradeDirection
+    ) -> list[str]:
         """Aggregate key factors from agreeing analyses."""
-        factor_counts: Dict[str, int] = defaultdict(int)
+        factor_counts: dict[str, int] = defaultdict(int)
 
         for analysis in analyses:
             if analysis.direction == direction:
@@ -428,9 +427,9 @@ class ConsensusEngine:
         )
         return [f[0] for f in sorted_factors[:5]]
 
-    def _aggregate_risks(self, analyses: List[AIAnalysis]) -> List[str]:
+    def _aggregate_risks(self, analyses: list[AIAnalysis]) -> list[str]:
         """Aggregate risks from all analyses."""
-        risk_counts: Dict[str, int] = defaultdict(int)
+        risk_counts: dict[str, int] = defaultdict(int)
 
         for analysis in analyses:
             for risk in analysis.risks:
@@ -444,7 +443,7 @@ class ConsensusEngine:
         return [r[0] for r in sorted_risks[:5]]
 
     def _summarize_reasoning(
-        self, analyses: List[AIAnalysis], direction: TradeDirection
+        self, analyses: list[AIAnalysis], direction: TradeDirection
     ) -> str:
         """Create a summary of reasoning from agreeing analyses."""
         agreeing = [
@@ -472,7 +471,7 @@ class ConsensusEngine:
         direction: TradeDirection,
         confidence: float,
         agreement: float,
-        risk_reward: Optional[float],
+        risk_reward: float | None,
     ) -> bool:
         """Determine if conditions are met to execute the trade."""
 

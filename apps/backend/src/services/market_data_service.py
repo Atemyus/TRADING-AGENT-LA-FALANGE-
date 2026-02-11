@@ -10,10 +10,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
+
 import httpx
 import pandas as pd
-import numpy as np
 
 
 class DataSource(str, Enum):
@@ -34,7 +34,7 @@ class OHLCV:
     close: Decimal
     volume: float = 0.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "timestamp": self.timestamp.isoformat(),
             "open": float(self.open),
@@ -50,16 +50,16 @@ class MarketData:
     """Complete market data package."""
     symbol: str
     timeframe: str
-    candles: List[OHLCV]
+    candles: list[OHLCV]
     current_price: Decimal
-    bid: Optional[Decimal] = None
-    ask: Optional[Decimal] = None
-    spread: Optional[Decimal] = None
-    daily_high: Optional[Decimal] = None
-    daily_low: Optional[Decimal] = None
-    daily_change: Optional[float] = None
-    daily_change_percent: Optional[float] = None
-    volume_24h: Optional[float] = None
+    bid: Decimal | None = None
+    ask: Decimal | None = None
+    spread: Decimal | None = None
+    daily_high: Decimal | None = None
+    daily_low: Decimal | None = None
+    daily_change: float | None = None
+    daily_change_percent: float | None = None
+    volume_24h: float | None = None
     last_updated: datetime = field(default_factory=datetime.utcnow)
     source: DataSource = DataSource.YAHOO
 
@@ -137,12 +137,12 @@ class MarketDataService:
 
     def __init__(
         self,
-        twelve_data_api_key: Optional[str] = None,
-        alpha_vantage_api_key: Optional[str] = None,
+        twelve_data_api_key: str | None = None,
+        alpha_vantage_api_key: str | None = None,
     ):
         self.twelve_data_api_key = twelve_data_api_key
         self.alpha_vantage_api_key = alpha_vantage_api_key
-        self._cache: Dict[str, Tuple[MarketData, datetime]] = {}
+        self._cache: dict[str, tuple[MarketData, datetime]] = {}
         self._cache_ttl = timedelta(seconds=30)  # Cache for 30 seconds
 
     def _normalize_symbol(self, symbol: str) -> str:
@@ -178,7 +178,7 @@ class MarketDataService:
         symbol: str,
         timeframe: str = "5m",
         bars: int = 200,
-        source: Optional[DataSource] = None,
+        source: DataSource | None = None,
     ) -> MarketData:
         """
         Fetch market data for a symbol.
@@ -371,7 +371,7 @@ class MarketDataService:
             source=DataSource.TWELVE_DATA,
         )
 
-    def _aggregate_candles(self, candles: List[OHLCV], hours: int) -> List[OHLCV]:
+    def _aggregate_candles(self, candles: list[OHLCV], hours: int) -> list[OHLCV]:
         """Aggregate hourly candles to larger timeframe."""
         if not candles:
             return []
@@ -428,9 +428,9 @@ class MarketDataService:
     async def get_multiple_timeframes(
         self,
         symbol: str,
-        timeframes: List[str] = ["5m", "15m", "1h", "4h"],
+        timeframes: list[str] = ["5m", "15m", "1h", "4h"],
         bars: int = 100,
-    ) -> Dict[str, MarketData]:
+    ) -> dict[str, MarketData]:
         """Fetch data for multiple timeframes in parallel."""
         tasks = [
             self.get_market_data(symbol, tf, bars)
@@ -447,7 +447,7 @@ class MarketDataService:
 
 
 # Singleton instance
-_market_data_service: Optional[MarketDataService] = None
+_market_data_service: MarketDataService | None = None
 
 
 def get_market_data_service() -> MarketDataService:

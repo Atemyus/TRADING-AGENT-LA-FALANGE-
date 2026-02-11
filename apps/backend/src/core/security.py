@@ -3,8 +3,7 @@ Security utilities for authentication and authorization.
 JWT token handling and password hashing.
 """
 
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -39,7 +38,7 @@ def get_password_hash(password: str) -> str:
 
 def create_access_token(
     subject: str | int,
-    expires_delta: Optional[timedelta] = None
+    expires_delta: timedelta | None = None
 ) -> str:
     """
     Create a JWT access token.
@@ -52,16 +51,16 @@ def create_access_token(
         Encoded JWT token string
     """
     if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
+        expire = datetime.now(UTC) + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(
+        expire = datetime.now(UTC) + timedelta(
             minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
         )
 
     to_encode = {
         "sub": str(subject),
         "exp": expire,
-        "iat": datetime.now(timezone.utc),
+        "iat": datetime.now(UTC),
         "type": "access"
     }
 
@@ -71,7 +70,7 @@ def create_access_token(
 
 def create_refresh_token(
     subject: str | int,
-    expires_delta: Optional[timedelta] = None
+    expires_delta: timedelta | None = None
 ) -> str:
     """
     Create a JWT refresh token (longer lived).
@@ -84,15 +83,15 @@ def create_refresh_token(
         Encoded JWT refresh token string
     """
     if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
+        expire = datetime.now(UTC) + expires_delta
     else:
         # Refresh tokens last 7 days by default
-        expire = datetime.now(timezone.utc) + timedelta(days=7)
+        expire = datetime.now(UTC) + timedelta(days=7)
 
     to_encode = {
         "sub": str(subject),
         "exp": expire,
-        "iat": datetime.now(timezone.utc),
+        "iat": datetime.now(UTC),
         "type": "refresh"
     }
 
@@ -100,7 +99,7 @@ def create_refresh_token(
     return encoded_jwt
 
 
-def decode_token(token: str) -> Optional[TokenPayload]:
+def decode_token(token: str) -> TokenPayload | None:
     """
     Decode and validate a JWT token.
 
@@ -114,15 +113,15 @@ def decode_token(token: str) -> Optional[TokenPayload]:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
         return TokenPayload(
             sub=payload["sub"],
-            exp=datetime.fromtimestamp(payload["exp"], tz=timezone.utc),
-            iat=datetime.fromtimestamp(payload["iat"], tz=timezone.utc),
+            exp=datetime.fromtimestamp(payload["exp"], tz=UTC),
+            iat=datetime.fromtimestamp(payload["iat"], tz=UTC),
             type=payload.get("type", "access")
         )
     except JWTError:
         return None
 
 
-def verify_token(token: str, token_type: str = "access") -> Optional[str]:
+def verify_token(token: str, token_type: str = "access") -> str | None:
     """
     Verify a token and return the subject (user_id) if valid.
 
@@ -140,7 +139,7 @@ def verify_token(token: str, token_type: str = "access") -> Optional[str]:
     if payload.type != token_type:
         return None
 
-    if payload.exp < datetime.now(timezone.utc):
+    if payload.exp < datetime.now(UTC):
         return None
 
     return payload.sub

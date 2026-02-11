@@ -11,12 +11,11 @@ Uses AIML API gateway to access AI models:
 """
 
 import asyncio
-import json
 import re
-from typing import Optional, List, Dict, Any
-from dataclasses import dataclass, field
-from enum import Enum
+from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
+from typing import Any
 
 import httpx
 
@@ -52,19 +51,19 @@ class VisionAnalysisResult:
     model_display_name: str
     direction: str  # LONG, SHORT, HOLD
     confidence: float  # 0-100
-    entry_zone: Optional[Dict[str, float]] = None  # {"min": x, "max": y}
-    stop_loss: Optional[float] = None
-    take_profit: Optional[List[float]] = None
-    break_even_trigger: Optional[float] = None  # Price to move SL to entry
-    trailing_stop: Optional[Dict[str, Any]] = None  # {"enabled": bool, "distance_pips": x}
-    risk_reward: Optional[float] = None
-    patterns_detected: Optional[List[str]] = None
-    trend_analysis: Optional[Dict[str, str]] = None  # per timeframe
-    key_levels: Optional[Dict[str, List[float]]] = None  # support/resistance
-    reasoning: Optional[str] = None
-    raw_response: Optional[str] = None
-    latency_ms: Optional[int] = None
-    error: Optional[str] = None
+    entry_zone: dict[str, float] | None = None  # {"min": x, "max": y}
+    stop_loss: float | None = None
+    take_profit: list[float] | None = None
+    break_even_trigger: float | None = None  # Price to move SL to entry
+    trailing_stop: dict[str, Any] | None = None  # {"enabled": bool, "distance_pips": x}
+    risk_reward: float | None = None
+    patterns_detected: list[str] | None = None
+    trend_analysis: dict[str, str] | None = None  # per timeframe
+    key_levels: dict[str, list[float]] | None = None  # support/resistance
+    reasoning: str | None = None
+    raw_response: str | None = None
+    latency_ms: int | None = None
+    error: str | None = None
 
 
 class VisionAnalyzer:
@@ -145,7 +144,7 @@ IMPORTANT: Be PRECISE with price levels. Read them directly from the chart. Refe
     async def analyze_with_model(
         self,
         model: VisionModel,
-        images_base64: Dict[str, str],
+        images_base64: dict[str, str],
         prompt: str,
     ) -> VisionAnalysisResult:
         """Analyze charts using a specific model via AIML API."""
@@ -241,11 +240,11 @@ IMPORTANT: Be PRECISE with price levels. Read them directly from the chart. Refe
 
     async def analyze_all_models(
         self,
-        images_base64: Dict[str, str],
+        images_base64: dict[str, str],
         prompt: str,
-        models: Optional[List[VisionModel]] = None,
+        models: list[VisionModel] | None = None,
         max_models: int = 6,
-    ) -> List[VisionAnalysisResult]:
+    ) -> list[VisionAnalysisResult]:
         """
         Run analysis on all specified vision models in parallel via AIML API.
 
@@ -516,8 +515,8 @@ IMPORTANT: Be PRECISE with price levels. Read them directly from the chart. Refe
 
     def calculate_consensus(
         self,
-        results: List[VisionAnalysisResult]
-    ) -> Dict[str, Any]:
+        results: list[VisionAnalysisResult]
+    ) -> dict[str, Any]:
         """
         Calculate consensus from multiple AI analysis results.
 
@@ -637,7 +636,7 @@ IMPORTANT: Be PRECISE with price levels. Read them directly from the chart. Refe
 
 
 # Singleton instance
-_vision_analyzer: Optional[VisionAnalyzer] = None
+_vision_analyzer: VisionAnalyzer | None = None
 
 
 def get_vision_analyzer() -> VisionAnalyzer:

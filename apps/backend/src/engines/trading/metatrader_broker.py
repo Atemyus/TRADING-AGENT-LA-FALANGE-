@@ -11,10 +11,11 @@ Setup:
 """
 
 import asyncio
-from datetime import datetime, timedelta
-from decimal import Decimal
-from typing import Any, AsyncIterator, Dict, List, Optional
 import time
+from collections.abc import AsyncIterator
+from datetime import UTC, datetime
+from decimal import Decimal
+from typing import Any
 
 import httpx
 
@@ -216,8 +217,8 @@ class MetaTraderBroker(BaseBroker):
 
     def __init__(
         self,
-        access_token: Optional[str] = None,
-        account_id: Optional[str] = None,
+        access_token: str | None = None,
+        account_id: str | None = None,
     ):
         """
         Initialize MetaTrader broker.
@@ -229,17 +230,17 @@ class MetaTraderBroker(BaseBroker):
         super().__init__()
         self.access_token = access_token or getattr(settings, 'METAAPI_ACCESS_TOKEN', None)
         self.account_id = account_id or getattr(settings, 'METAAPI_ACCOUNT_ID', None)
-        self._client: Optional[httpx.AsyncClient] = None
-        self._account_info: Optional[Dict[str, Any]] = None
+        self._client: httpx.AsyncClient | None = None
+        self._account_info: dict[str, Any] | None = None
         self._connected = False
-        self._symbol_map: Dict[str, str] = {}  # Maps our symbols to broker symbols
-        self._broker_symbols: List[str] = []  # List of available broker symbols
-        self._client_api_url: Optional[str] = None  # Set during connect based on region
+        self._symbol_map: dict[str, str] = {}  # Maps our symbols to broker symbols
+        self._broker_symbols: list[str] = []  # List of available broker symbols
+        self._client_api_url: str | None = None  # Set during connect based on region
 
         # Cache for API responses to avoid rate limiting
-        self._cache: Dict[str, Dict[str, Any]] = {}  # key -> {"data": ..., "expires": timestamp}
-        self._rate_limit_until: Optional[float] = None  # Timestamp until which we should not make API calls
-        self._rate_limit_endpoint: Optional[str] = None  # Which endpoint is rate limited
+        self._cache: dict[str, dict[str, Any]] = {}  # key -> {"data": ..., "expires": timestamp}
+        self._rate_limit_until: float | None = None  # Timestamp until which we should not make API calls
+        self._rate_limit_endpoint: str | None = None  # Which endpoint is rate limited
 
     async def _ensure_client(self) -> None:
         """Ensure HTTP client is initialized."""
@@ -255,7 +256,7 @@ class MetaTraderBroker(BaseBroker):
                 verify=False,
             )
 
-    def _get_cache(self, key: str) -> Optional[Any]:
+    def _get_cache(self, key: str) -> Any | None:
         """Get cached data if not expired."""
         if key in self._cache:
             cached = self._cache[key]
@@ -302,9 +303,9 @@ class MetaTraderBroker(BaseBroker):
         self,
         method: str,
         endpoint: str,
-        base_url: Optional[str] = None,
+        base_url: str | None = None,
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Make API request with rate limit handling."""
         await self._ensure_client()
 
@@ -553,14 +554,14 @@ class MetaTraderBroker(BaseBroker):
             state = account.get("state", "UNKNOWN")
 
             # Log full diagnostic info for debugging
-            print(f"[MetaTrader] === ACCOUNT DIAGNOSTICS ===")
+            print("[MetaTrader] === ACCOUNT DIAGNOSTICS ===")
             print(f"[MetaTrader] state={state} | connectionStatus={conn_status}")
             print(f"[MetaTrader] platform={account.get('platform')} | type={account.get('type')}")
             print(f"[MetaTrader] server={account.get('server')} | login={account.get('login')}")
             print(f"[MetaTrader] region={account.get('region')} | reliability={account.get('reliability')}")
             print(f"[MetaTrader] manualTrades={account.get('manualTrades')} | magic={account.get('magic')}")
             print(f"[MetaTrader] accessRights={account.get('accessRights')} | tradeMode={account.get('tradeMode')}")
-            print(f"[MetaTrader] === END DIAGNOSTICS ===")
+            print("[MetaTrader] === END DIAGNOSTICS ===")
 
             if state != "DEPLOYED":
                 print(f"[MetaTrader] Account not deployed (state={state}), deploying...")
@@ -611,7 +612,7 @@ class MetaTraderBroker(BaseBroker):
         return "metatrader"
 
     @property
-    def supported_markets(self) -> List[str]:
+    def supported_markets(self) -> list[str]:
         """List of supported market types."""
         return ["forex", "indices", "commodities", "metals", "futures"]
 
@@ -678,7 +679,7 @@ class MetaTraderBroker(BaseBroker):
                 return self._cache[cache_key]["data"]
             raise
 
-    async def get_positions(self) -> List[Position]:
+    async def get_positions(self) -> list[Position]:
         """Get all open positions with caching."""
         if not self._connected:
             await self.connect()
@@ -734,7 +735,7 @@ class MetaTraderBroker(BaseBroker):
             print("[MetaTrader] Rate limited and no cached positions, returning empty list")
             return []
 
-    async def get_position(self, symbol: str) -> Optional[Position]:
+    async def get_position(self, symbol: str) -> Position | None:
         """Get position for a specific symbol."""
         broker_symbol = self._resolve_symbol(symbol)
         positions = await self.get_positions()
@@ -744,7 +745,7 @@ class MetaTraderBroker(BaseBroker):
                 return pos
         return None
 
-    async def get_symbol_specification(self, symbol: str) -> Dict[str, Any]:
+    async def get_symbol_specification(self, symbol: str) -> dict[str, Any]:
         """Get symbol specification (fillingModes, volume limits, etc.)."""
         if not self._connected:
             await self.connect()
@@ -766,7 +767,7 @@ class MetaTraderBroker(BaseBroker):
             print(f"[MetaTrader] Could not fetch symbol specification for {symbol}: {e}")
             return {}
 
-    def _normalize_volume(self, volume: float, spec: Dict[str, Any]) -> float:
+    def _normalize_volume(self, volume: float, spec: dict[str, Any]) -> float:
         """Normalize volume to broker's min/max/step constraints."""
         min_vol = spec.get("minVolume", 0.01)
         max_vol = spec.get("maxVolume", 100.0)
@@ -1063,7 +1064,7 @@ class MetaTraderBroker(BaseBroker):
     async def close_position(
         self,
         symbol: str,
-        size: Optional[Decimal] = None
+        size: Decimal | None = None
     ) -> OrderResult:
         """Close a position."""
         if not self._connected:
@@ -1128,8 +1129,8 @@ class MetaTraderBroker(BaseBroker):
     async def modify_position(
         self,
         symbol: str,
-        stop_loss: Optional[Decimal] = None,
-        take_profit: Optional[Decimal] = None,
+        stop_loss: Decimal | None = None,
+        take_profit: Decimal | None = None,
     ) -> bool:
         """Modify position SL/TP."""
         if not self._connected:
@@ -1177,7 +1178,7 @@ class MetaTraderBroker(BaseBroker):
         except Exception:
             return False
 
-    async def get_open_orders(self, symbol: Optional[str] = None) -> List[OrderResult]:
+    async def get_open_orders(self, symbol: str | None = None) -> list[OrderResult]:
         """Get all open/pending orders with caching."""
         if not self._connected:
             await self.connect()
@@ -1251,7 +1252,7 @@ class MetaTraderBroker(BaseBroker):
                 return all_orders
             return []
 
-    async def get_order(self, order_id: str) -> Optional[OrderResult]:
+    async def get_order(self, order_id: str) -> OrderResult | None:
         """Get order by ID."""
         if not self._connected:
             await self.connect()
@@ -1265,7 +1266,7 @@ class MetaTraderBroker(BaseBroker):
 
     DEALS_CACHE_TTL = 60  # Cache deals for 60 seconds
 
-    async def get_deals_history(self, start_time: Optional[str] = None) -> List[Dict]:
+    async def get_deals_history(self, start_time: str | None = None) -> list[dict]:
         """
         Get closed deal history from MetaApi.
 
@@ -1290,8 +1291,8 @@ class MetaTraderBroker(BaseBroker):
 
         try:
             if not start_time:
-                from datetime import datetime as dt, timezone
-                today = dt.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+                from datetime import datetime as dt
+                today = dt.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
                 start_time = today.isoformat()
 
             result = await self._request(
@@ -1309,7 +1310,7 @@ class MetaTraderBroker(BaseBroker):
                 return self._cache[cache_key]["data"]
             return []
 
-    def get_supported_symbols(self) -> List[str]:
+    def get_supported_symbols(self) -> list[str]:
         """Get list of internal symbols that have been successfully mapped to broker symbols."""
         supported = []
         for our_symbol, broker_sym in self._symbol_map.items():
@@ -1318,7 +1319,7 @@ class MetaTraderBroker(BaseBroker):
                 supported.append(our_symbol)
         return supported
 
-    async def get_prices(self, symbols: List[str]) -> Dict[str, Tick]:
+    async def get_prices(self, symbols: list[str]) -> dict[str, Tick]:
         """Get current prices for multiple symbols with rate-limit-safe batching."""
         if not self._connected:
             await self.connect()
@@ -1350,7 +1351,7 @@ class MetaTraderBroker(BaseBroker):
 
         return prices
 
-    async def get_instruments(self) -> List[Instrument]:
+    async def get_instruments(self) -> list[Instrument]:
         """Get list of available trading instruments."""
         if not self._connected:
             await self.connect()
@@ -1443,7 +1444,7 @@ class MetaTraderBroker(BaseBroker):
 
     async def stream_prices(
         self,
-        symbols: List[str],
+        symbols: list[str],
     ) -> AsyncIterator[Tick]:
         """
         Stream live prices.
@@ -1456,7 +1457,7 @@ class MetaTraderBroker(BaseBroker):
 
         while True:
             # Fetch all prices in PARALLEL instead of sequentially
-            async def safe_get_price(symbol: str) -> Optional[Tick]:
+            async def safe_get_price(symbol: str) -> Tick | None:
                 try:
                     return await self.get_current_price(symbol)
                 except Exception:
@@ -1475,7 +1476,7 @@ class MetaTraderBroker(BaseBroker):
 
             await asyncio.sleep(0.5)  # Poll every 500ms for smoother updates
 
-    async def get_symbols(self) -> List[Dict[str, Any]]:
+    async def get_symbols(self) -> list[dict[str, Any]]:
         """Get available trading symbols."""
         if not self._connected:
             await self.connect()
@@ -1492,7 +1493,7 @@ class MetaTraderBroker(BaseBroker):
         symbol: str,
         timeframe: str = "1h",
         count: int = 100,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Get historical candles.
 

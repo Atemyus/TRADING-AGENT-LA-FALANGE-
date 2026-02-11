@@ -19,6 +19,7 @@ from .consensus_engine import (
     create_consensus_engine,
 )
 from .providers import (
+    PROVIDERS,
     AIMLProvider,
     AnthropicProvider,
     GoogleProvider,
@@ -26,7 +27,6 @@ from .providers import (
     MistralProvider,
     OllamaProvider,
     OpenAIProvider,
-    PROVIDERS,
 )
 
 __all__ = [

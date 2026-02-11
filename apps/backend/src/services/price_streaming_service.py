@@ -6,10 +6,11 @@ Integrates with WebSocket for live price updates to frontend.
 """
 
 import asyncio
+import random
+from collections.abc import Callable
 from datetime import datetime
 from decimal import Decimal
-from typing import Dict, List, Optional, Set, Callable, Any
-import random
+from typing import Any
 
 from src.engines.trading.base_broker import BaseBroker, Tick
 from src.engines.trading.broker_factory import get_broker
@@ -32,15 +33,15 @@ class PriceStreamingService:
             disable_simulation: If True, only real broker data will be used.
                                No simulated prices will be generated.
         """
-        self._broker: Optional[BaseBroker] = None
+        self._broker: BaseBroker | None = None
         self._streaming = False
         self._initialized = False  # Flag to track if initialization is complete
-        self._subscribers: Dict[str, Set[Callable]] = {}  # symbol -> callbacks
-        self._current_prices: Dict[str, Tick] = {}
-        self._stream_task: Optional[asyncio.Task] = None
+        self._subscribers: dict[str, set[Callable]] = {}  # symbol -> callbacks
+        self._current_prices: dict[str, Tick] = {}
+        self._stream_task: asyncio.Task | None = None
         self._rate_limited = False  # Track if broker is rate limited
-        self._failed_symbols: Set[str] = set()  # Symbols that failed to get from broker
-        self._available_symbols: Set[str] = set()  # Symbols successfully fetched from broker
+        self._failed_symbols: set[str] = set()  # Symbols that failed to get from broker
+        self._available_symbols: set[str] = set()  # Symbols successfully fetched from broker
         self._disable_simulation = disable_simulation  # If True, no simulated data
 
         # Base prices for simulation (when no broker) - ALL 74 symbols
@@ -189,12 +190,12 @@ class PriceStreamingService:
         return self._disable_simulation
 
     @property
-    def available_symbols(self) -> Set[str]:
+    def available_symbols(self) -> set[str]:
         """Get symbols that are available from the broker (real prices)."""
         return self._available_symbols.copy()
 
     @property
-    def failed_symbols(self) -> Set[str]:
+    def failed_symbols(self) -> set[str]:
         """Get symbols that failed to fetch from broker (use simulation)."""
         return self._failed_symbols.copy()
 
@@ -202,11 +203,11 @@ class PriceStreamingService:
         """Check if a symbol is available from the broker."""
         return symbol in self._available_symbols
 
-    def get_current_price(self, symbol: str) -> Optional[Tick]:
+    def get_current_price(self, symbol: str) -> Tick | None:
         """Get the latest cached price for a symbol."""
         return self._current_prices.get(symbol)
 
-    def get_all_prices(self) -> Dict[str, Tick]:
+    def get_all_prices(self) -> dict[str, Tick]:
         """Get all current prices."""
         return self._current_prices.copy()
 
@@ -366,7 +367,7 @@ class PriceStreamingService:
 
                         # Check if it's a rate limit error
                         if "rate limit" in error_str.lower() or "429" in error_str or "RateLimitError" in error_str:
-                            print(f"[PriceStreaming] Rate limit detected! Switching to simulation mode for 5 minutes...")
+                            print("[PriceStreaming] Rate limit detected! Switching to simulation mode for 5 minutes...")
                             self._rate_limited = True
                             # Schedule to re-enable broker after 5 minutes
                             asyncio.create_task(self._re_enable_broker_after_delay(300))
@@ -402,7 +403,7 @@ class PriceStreamingService:
         self._rate_limited = False
         print("[PriceStreaming] Re-enabled broker polling")
 
-    def _generate_simulated_tick(self, symbol: str) -> Optional[Tick]:
+    def _generate_simulated_tick(self, symbol: str) -> Tick | None:
         """Generate a simulated tick for a single symbol."""
         base = self._base_prices.get(symbol)
         if base is None:
@@ -580,7 +581,7 @@ class PriceStreamingService:
 
 
 # Singleton instance
-_price_service: Optional[PriceStreamingService] = None
+_price_service: PriceStreamingService | None = None
 _init_lock: asyncio.Lock = None  # Lock to prevent race condition during initialization
 _init_complete: asyncio.Event = None  # Event to signal initialization is complete
 

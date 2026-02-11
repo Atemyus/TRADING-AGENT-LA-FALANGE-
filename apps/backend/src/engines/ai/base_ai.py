@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Dict, List, Optional, Any
+from typing import Any
 
 
 class TradeDirection(str, Enum):
@@ -31,31 +31,31 @@ class MarketContext:
     current_price: Decimal
 
     # Price data (optional - computed from current_price if not provided)
-    bid: Optional[Decimal] = None
-    ask: Optional[Decimal] = None
-    spread: Optional[Decimal] = None
+    bid: Decimal | None = None
+    ask: Decimal | None = None
+    spread: Decimal | None = None
 
     # Technical indicators
-    indicators: Dict[str, Any] = field(default_factory=dict)
+    indicators: dict[str, Any] = field(default_factory=dict)
 
     # Historical candles
-    candles: List[Dict[str, Any]] = field(default_factory=list)
+    candles: list[dict[str, Any]] = field(default_factory=list)
 
     # Support/Resistance levels
-    support_levels: List[Decimal] = field(default_factory=list)
-    resistance_levels: List[Decimal] = field(default_factory=list)
+    support_levels: list[Decimal] = field(default_factory=list)
+    resistance_levels: list[Decimal] = field(default_factory=list)
 
     # Additional context
-    news_sentiment: Optional[float] = None
-    market_session: Optional[str] = None  # "London", "New York", "Tokyo", "Sydney"
-    volatility: Optional[str] = None  # "low", "medium", "high"
+    news_sentiment: float | None = None
+    market_session: str | None = None  # "London", "New York", "Tokyo", "Sydney"
+    volatility: str | None = None  # "low", "medium", "high"
 
     # Economic events
-    economic_events: List[Dict[str, Any]] = field(default_factory=list)
+    economic_events: list[dict[str, Any]] = field(default_factory=list)
 
     # Account context
-    account_balance: Optional[Decimal] = None
-    open_positions: List[Dict] = field(default_factory=list)
+    account_balance: Decimal | None = None
+    open_positions: list[dict] = field(default_factory=list)
 
     # Timestamp
     timestamp: datetime = field(default_factory=datetime.utcnow)
@@ -184,15 +184,15 @@ class AIAnalysis:
     confidence: float  # 0-100
 
     # Price targets
-    entry_price: Optional[Decimal] = None
-    stop_loss: Optional[Decimal] = None
-    take_profit: Optional[Decimal] = None
-    risk_reward_ratio: Optional[float] = None
+    entry_price: Decimal | None = None
+    stop_loss: Decimal | None = None
+    take_profit: Decimal | None = None
+    risk_reward_ratio: float | None = None
 
     # Reasoning
     reasoning: str = ""
-    key_factors: List[str] = field(default_factory=list)
-    risks: List[str] = field(default_factory=list)
+    key_factors: list[str] = field(default_factory=list)
+    risks: list[str] = field(default_factory=list)
 
     # Timing
     suggested_timeframe: str = ""  # How long to hold
@@ -203,13 +203,13 @@ class AIAnalysis:
     tokens_used: int = 0
     cost_usd: float = 0.0
     timestamp: datetime = field(default_factory=datetime.utcnow)
-    raw_response: Optional[str] = None
+    raw_response: str | None = None
 
     # Error handling
-    error: Optional[str] = None
+    error: str | None = None
     is_valid: bool = True
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """Convert to dictionary."""
         return {
             "provider": self.provider_name,
@@ -234,7 +234,7 @@ class BaseAIProvider(ABC):
     This ensures consistent behavior across different AI services.
     """
 
-    def __init__(self, model_name: str, api_key: Optional[str] = None):
+    def __init__(self, model_name: str, api_key: str | None = None):
         """
         Initialize the AI provider.
 
@@ -254,7 +254,7 @@ class BaseAIProvider(ABC):
 
     @property
     @abstractmethod
-    def supported_models(self) -> List[str]:
+    def supported_models(self) -> list[str]:
         """List of supported model names for this provider."""
         pass
 

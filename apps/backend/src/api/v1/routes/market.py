@@ -4,13 +4,11 @@ Market Data Routes
 Endpoints for real-time market data, technical analysis, and price information.
 """
 
-from decimal import Decimal
-from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from src.services.market_data_service import get_market_data_service, SYMBOL_MAPPINGS
+from src.services.market_data_service import SYMBOL_MAPPINGS, get_market_data_service
 from src.services.technical_analysis_service import get_technical_analysis_service
 
 router = APIRouter()
@@ -23,12 +21,12 @@ class PriceResponse(BaseModel):
     """Current price response."""
     symbol: str
     price: float
-    bid: Optional[float] = None
-    ask: Optional[float] = None
-    spread: Optional[float] = None
-    daily_high: Optional[float] = None
-    daily_low: Optional[float] = None
-    daily_change_percent: Optional[float] = None
+    bid: float | None = None
+    ask: float | None = None
+    spread: float | None = None
+    daily_high: float | None = None
+    daily_low: float | None = None
+    daily_change_percent: float | None = None
     source: str
     timestamp: str
 
@@ -46,33 +44,33 @@ class CandleResponse(BaseModel):
 class IndicatorsResponse(BaseModel):
     """Technical indicators response."""
     # Trend
-    ema_9: Optional[float] = None
-    ema_21: Optional[float] = None
-    ema_50: Optional[float] = None
-    ema_200: Optional[float] = None
-    sma_20: Optional[float] = None
-    sma_50: Optional[float] = None
-    sma_200: Optional[float] = None
+    ema_9: float | None = None
+    ema_21: float | None = None
+    ema_50: float | None = None
+    ema_200: float | None = None
+    sma_20: float | None = None
+    sma_50: float | None = None
+    sma_200: float | None = None
 
     # Momentum
-    rsi_14: Optional[float] = None
-    rsi_7: Optional[float] = None
-    stoch_k: Optional[float] = None
-    stoch_d: Optional[float] = None
-    macd: Optional[float] = None
-    macd_signal: Optional[float] = None
-    macd_histogram: Optional[float] = None
+    rsi_14: float | None = None
+    rsi_7: float | None = None
+    stoch_k: float | None = None
+    stoch_d: float | None = None
+    macd: float | None = None
+    macd_signal: float | None = None
+    macd_histogram: float | None = None
 
     # Volatility
-    atr_14: Optional[float] = None
-    bb_upper: Optional[float] = None
-    bb_middle: Optional[float] = None
-    bb_lower: Optional[float] = None
+    atr_14: float | None = None
+    bb_upper: float | None = None
+    bb_middle: float | None = None
+    bb_lower: float | None = None
 
     # Trend Strength
-    adx: Optional[float] = None
-    plus_di: Optional[float] = None
-    minus_di: Optional[float] = None
+    adx: float | None = None
+    plus_di: float | None = None
+    minus_di: float | None = None
 
 
 class ZoneResponse(BaseModel):
@@ -91,16 +89,16 @@ class SMCResponse(BaseModel):
     trend: str
     trend_strength: float
     institutional_bias: str
-    last_structure: Optional[str] = None
-    order_blocks: List[ZoneResponse]
-    fair_value_gaps: List[ZoneResponse]
-    supply_zones: List[ZoneResponse]
-    demand_zones: List[ZoneResponse]
-    liquidity_pools: List[ZoneResponse]
-    support_levels: List[float]
-    resistance_levels: List[float]
-    pivot_points: Dict[str, float]
-    retail_trap_warning: Optional[str] = None
+    last_structure: str | None = None
+    order_blocks: list[ZoneResponse]
+    fair_value_gaps: list[ZoneResponse]
+    supply_zones: list[ZoneResponse]
+    demand_zones: list[ZoneResponse]
+    liquidity_pools: list[ZoneResponse]
+    support_levels: list[float]
+    resistance_levels: list[float]
+    pivot_points: dict[str, float]
+    retail_trap_warning: str | None = None
 
 
 class FullAnalysisResponse(BaseModel):
@@ -111,8 +109,8 @@ class FullAnalysisResponse(BaseModel):
     timestamp: str
     indicators: IndicatorsResponse
     smc: SMCResponse
-    candle_patterns: List[str]
-    mtf_trend: Dict[str, str]
+    candle_patterns: list[str]
+    mtf_trend: dict[str, str]
     mtf_bias: str
 
 
@@ -453,9 +451,10 @@ async def get_streaming_status():
     Debug endpoint to check price streaming status.
     Shows broker connection, data source, and cached prices.
     """
-    from src.services.price_streaming_service import get_price_streaming_service
-    from src.engines.trading.broker_factory import BrokerFactory
     import os
+
+    from src.engines.trading.broker_factory import BrokerFactory
+    from src.services.price_streaming_service import get_price_streaming_service
 
     try:
         # Get price streaming service status

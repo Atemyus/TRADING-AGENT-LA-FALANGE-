@@ -8,7 +8,6 @@ import asyncio
 import json
 from datetime import datetime
 from decimal import Decimal
-from typing import Dict, Set, List
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -19,9 +18,9 @@ class ConnectionManager:
     """Manages WebSocket connections and price streaming."""
 
     def __init__(self):
-        self.active_connections: Set[WebSocket] = set()
-        self.subscriptions: Dict[WebSocket, Set[str]] = {}
-        self.price_subscriptions: Dict[WebSocket, Set[str]] = {}  # Symbol subscriptions
+        self.active_connections: set[WebSocket] = set()
+        self.subscriptions: dict[WebSocket, set[str]] = {}
+        self.price_subscriptions: dict[WebSocket, set[str]] = {}  # Symbol subscriptions
         self._streaming_task = None
         self._price_service = None
 
@@ -43,7 +42,7 @@ class ConnectionManager:
         if websocket in self.subscriptions:
             self.subscriptions[websocket].add(channel)
 
-    async def subscribe_prices(self, websocket: WebSocket, symbols: List[str]):
+    async def subscribe_prices(self, websocket: WebSocket, symbols: list[str]):
         """Subscribe to price updates for specific symbols."""
         if websocket in self.price_subscriptions:
             self.price_subscriptions[websocket].update(symbols)
@@ -92,7 +91,7 @@ class ConnectionManager:
 
         try:
             self._price_service = await get_price_streaming_service()
-            subscribed_symbols: Set[str] = set()
+            subscribed_symbols: set[str] = set()
 
             print(f"[WebSocket] Starting price streaming. Broker connected: {self._price_service.is_broker_connected}")
             print(f"[WebSocket] Data source: {self._price_service.data_source}")
@@ -101,7 +100,7 @@ class ConnectionManager:
             while any(self.price_subscriptions.values()):
                 # Collect all subscribed symbols from all clients
                 # Create a copy to avoid "dictionary changed size during iteration" error
-                all_symbols: Set[str] = set()
+                all_symbols: set[str] = set()
                 subscriptions_values = list(self.price_subscriptions.values())
                 for symbols in subscriptions_values:
                     all_symbols.update(symbols)

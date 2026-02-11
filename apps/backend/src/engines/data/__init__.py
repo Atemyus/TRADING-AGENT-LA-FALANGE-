@@ -1,13 +1,13 @@
 """Data engine module."""
 
 from .alpha_vantage import (
-    AlphaVantageClient,
-    ForexQuote,
     OHLCV,
-    TechnicalIndicator,
+    AlphaVantageClient,
     EconomicIndicator,
+    ForexQuote,
     Interval,
     OutputSize,
+    TechnicalIndicator,
     get_alpha_vantage_client,
 )
 from .indicators import TechnicalIndicators

@@ -8,7 +8,6 @@ Each broker account runs independently with its own:
 """
 
 import asyncio
-from typing import Dict, Optional, List
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -16,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.models import BrokerAccount
-from src.engines.trading.auto_trader import AutoTrader, BotConfig, BotStatus, AnalysisMode
+from src.engines.trading.auto_trader import AnalysisMode, AutoTrader, BotConfig, BotStatus
 
 
 @dataclass
@@ -30,7 +29,7 @@ class BrokerInstance:
     broker_id: int
     broker_name: str
     broker_type: str
-    symbols: List[str]
+    symbols: list[str]
     metaapi_account_id: str
 
     # AutoTrader instance
@@ -38,8 +37,8 @@ class BrokerInstance:
 
     # Status tracking
     status: str = "stopped"
-    started_at: Optional[datetime] = None
-    last_error: Optional[str] = None
+    started_at: datetime | None = None
+    last_error: str | None = None
 
 
 class MultiBrokerManager:
@@ -55,10 +54,10 @@ class MultiBrokerManager:
     """
 
     def __init__(self):
-        self._instances: Dict[int, BrokerInstance] = {}
+        self._instances: dict[int, BrokerInstance] = {}
         self._lock = asyncio.Lock()
 
-    async def load_brokers(self, db: AsyncSession) -> List[BrokerAccount]:
+    async def load_brokers(self, db: AsyncSession) -> list[BrokerAccount]:
         """Load all broker accounts from database."""
         result = await db.execute(select(BrokerAccount).order_by(BrokerAccount.id))
         return list(result.scalars().all())
@@ -308,7 +307,7 @@ class MultiBrokerManager:
             "results": results
         }
 
-    def get_broker_status(self, broker_id: int) -> Optional[dict]:
+    def get_broker_status(self, broker_id: int) -> dict | None:
         """Get status of a specific broker instance."""
         if broker_id not in self._instances:
             return None
@@ -336,7 +335,7 @@ class MultiBrokerManager:
             }
         }
 
-    async def get_broker_account_info(self, broker_id: int) -> Optional[dict]:
+    async def get_broker_account_info(self, broker_id: int) -> dict | None:
         """Get account info (balance, equity) for a specific broker."""
         if broker_id not in self._instances:
             return None
@@ -365,7 +364,7 @@ class MultiBrokerManager:
                 "error": str(e)
             }
 
-    async def get_broker_positions(self, broker_id: int) -> Optional[list]:
+    async def get_broker_positions(self, broker_id: int) -> list | None:
         """Get open positions for a specific broker."""
         if broker_id not in self._instances:
             return None
@@ -399,21 +398,21 @@ class MultiBrokerManager:
                 }
                 for p in positions
             ]
-        except Exception as e:
+        except Exception:
             return []
 
-    def get_all_statuses(self) -> List[dict]:
+    def get_all_statuses(self) -> list[dict]:
         """Get status of all broker instances."""
         return [
             self.get_broker_status(broker_id)
             for broker_id in self._instances
         ]
 
-    def get_instance(self, broker_id: int) -> Optional[BrokerInstance]:
+    def get_instance(self, broker_id: int) -> BrokerInstance | None:
         """Get a specific broker instance."""
         return self._instances.get(broker_id)
 
-    def get_broker_logs(self, broker_id: int, limit: int = 50) -> Optional[dict]:
+    def get_broker_logs(self, broker_id: int, limit: int = 50) -> dict | None:
         """Get analysis logs for a specific broker."""
         if broker_id not in self._instances:
             return None
@@ -472,7 +471,7 @@ class MultiBrokerManager:
 
 
 # Singleton instance
-_multi_broker_manager: Optional[MultiBrokerManager] = None
+_multi_broker_manager: MultiBrokerManager | None = None
 
 
 def get_multi_broker_manager() -> MultiBrokerManager:

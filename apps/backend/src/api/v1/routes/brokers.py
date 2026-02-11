@@ -3,15 +3,15 @@ Broker Accounts API - Endpoints for managing multiple broker accounts.
 Each broker account runs independently with its own trading configuration.
 """
 
-from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Depends
+from datetime import UTC
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_db
 from src.core.models import BrokerAccount
-
 
 router = APIRouter(prefix="/brokers", tags=["Broker Accounts"])
 
@@ -23,12 +23,12 @@ class BrokerAccountCreate(BaseModel):
     name: str
     broker_type: str = "metaapi"
     # MetaApi credentials
-    metaapi_account_id: Optional[str] = None
-    metaapi_token: Optional[str] = None
+    metaapi_account_id: str | None = None
+    metaapi_token: str | None = None
     # Status
     is_enabled: bool = True
     # Trading configuration
-    symbols: Optional[List[str]] = None
+    symbols: list[str] | None = None
     # Risk settings
     risk_per_trade_percent: float = 1.0
     max_open_positions: int = 3
@@ -40,7 +40,7 @@ class BrokerAccountCreate(BaseModel):
     min_confidence: float = 75.0
     min_models_agree: int = 4
     # AI models
-    enabled_models: Optional[List[str]] = None
+    enabled_models: list[str] | None = None
     # Trading hours
     trading_start_hour: int = 7
     trading_end_hour: int = 21
@@ -49,31 +49,31 @@ class BrokerAccountCreate(BaseModel):
 
 class BrokerAccountUpdate(BaseModel):
     """Request model for updating a broker account."""
-    name: Optional[str] = None
-    broker_type: Optional[str] = None
+    name: str | None = None
+    broker_type: str | None = None
     # MetaApi credentials
-    metaapi_account_id: Optional[str] = None
-    metaapi_token: Optional[str] = None
+    metaapi_account_id: str | None = None
+    metaapi_token: str | None = None
     # Status
-    is_enabled: Optional[bool] = None
+    is_enabled: bool | None = None
     # Trading configuration
-    symbols: Optional[List[str]] = None
+    symbols: list[str] | None = None
     # Risk settings
-    risk_per_trade_percent: Optional[float] = None
-    max_open_positions: Optional[int] = None
-    max_daily_trades: Optional[int] = None
-    max_daily_loss_percent: Optional[float] = None
+    risk_per_trade_percent: float | None = None
+    max_open_positions: int | None = None
+    max_daily_trades: int | None = None
+    max_daily_loss_percent: float | None = None
     # Analysis settings
-    analysis_mode: Optional[str] = None
-    analysis_interval_seconds: Optional[int] = None
-    min_confidence: Optional[float] = None
-    min_models_agree: Optional[int] = None
+    analysis_mode: str | None = None
+    analysis_interval_seconds: int | None = None
+    min_confidence: float | None = None
+    min_models_agree: int | None = None
     # AI models
-    enabled_models: Optional[List[str]] = None
+    enabled_models: list[str] | None = None
     # Trading hours
-    trading_start_hour: Optional[int] = None
-    trading_end_hour: Optional[int] = None
-    trade_on_weekends: Optional[bool] = None
+    trading_start_hour: int | None = None
+    trading_end_hour: int | None = None
+    trade_on_weekends: bool | None = None
 
 
 class BrokerAccountResponse(BaseModel):
@@ -81,12 +81,12 @@ class BrokerAccountResponse(BaseModel):
     id: int
     name: str
     broker_type: str
-    metaapi_account_id: Optional[str] = None
-    metaapi_token: Optional[str] = None  # Will be masked
+    metaapi_account_id: str | None = None
+    metaapi_token: str | None = None  # Will be masked
     is_enabled: bool
     is_connected: bool
-    last_connected_at: Optional[str] = None
-    symbols: List[str]
+    last_connected_at: str | None = None
+    symbols: list[str]
     risk_per_trade_percent: float
     max_open_positions: int
     max_daily_trades: int
@@ -95,7 +95,7 @@ class BrokerAccountResponse(BaseModel):
     analysis_interval_seconds: int
     min_confidence: float
     min_models_agree: int
-    enabled_models: List[str]
+    enabled_models: list[str]
     trading_start_hour: int
     trading_end_hour: int
     trade_on_weekends: bool
@@ -105,14 +105,14 @@ class BrokerAccountResponse(BaseModel):
 
 # ============ Helper Functions ============
 
-def mask_key(key: Optional[str]) -> Optional[str]:
+def mask_key(key: str | None) -> str | None:
     """Mask sensitive data - show only last 4 chars."""
     if key and len(key) > 4:
         return "***" + key[-4:]
     return key
 
 
-def preserve_if_masked(new_val: Optional[str], old_val: Optional[str]) -> Optional[str]:
+def preserve_if_masked(new_val: str | None, old_val: str | None) -> str | None:
     """Don't overwrite with masked values."""
     if new_val and new_val.startswith("***"):
         return old_val
@@ -150,7 +150,7 @@ def broker_to_response(broker: BrokerAccount) -> dict:
 
 # ============ API Routes ============
 
-@router.get("", response_model=List[BrokerAccountResponse])
+@router.get("", response_model=list[BrokerAccountResponse])
 async def list_brokers(db: AsyncSession = Depends(get_db)):
     """Get all broker accounts."""
     result = await db.execute(select(BrokerAccount).order_by(BrokerAccount.id))
@@ -309,9 +309,9 @@ async def test_broker_connection(broker_id: int, db: AsyncSession = Depends(get_
                 if response.status_code == 200:
                     account_info = response.json()
                     # Update connection status
-                    from datetime import datetime, timezone
+                    from datetime import datetime
                     broker.is_connected = True
-                    broker.last_connected_at = datetime.now(timezone.utc)
+                    broker.last_connected_at = datetime.now(UTC)
                     await db.flush()
 
                     return {

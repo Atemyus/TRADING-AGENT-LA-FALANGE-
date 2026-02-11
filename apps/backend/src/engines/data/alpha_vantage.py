@@ -8,12 +8,11 @@ Free tier: 25 requests/day
 Premium tier: Unlimited requests
 """
 
-import asyncio
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 
@@ -65,7 +64,7 @@ class TechnicalIndicator:
     """Technical indicator value."""
     timestamp: datetime
     value: float
-    additional_values: Dict[str, float] = None
+    additional_values: dict[str, float] = None
 
 
 @dataclass
@@ -91,10 +90,10 @@ class AlphaVantageClient:
 
     BASE_URL = "https://www.alphavantage.co/query"
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: str | None = None):
         """Initialize Alpha Vantage client."""
         self.api_key = api_key or getattr(settings, 'ALPHA_VANTAGE_API_KEY', None)
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
         self._rate_limit_remaining = 25  # Free tier limit
 
     async def _ensure_client(self) -> None:
@@ -102,7 +101,7 @@ class AlphaVantageClient:
         if self._client is None:
             self._client = httpx.AsyncClient(timeout=30.0)
 
-    async def _request(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _request(self, params: dict[str, Any]) -> dict[str, Any]:
         """Make API request with rate limiting."""
         await self._ensure_client()
 
@@ -166,7 +165,7 @@ class AlphaVantageClient:
         to_symbol: str,
         interval: Interval = Interval.MIN_5,
         outputsize: OutputSize = OutputSize.COMPACT,
-    ) -> List[OHLCV]:
+    ) -> list[OHLCV]:
         """
         Get intraday forex data.
 
@@ -207,7 +206,7 @@ class AlphaVantageClient:
         from_symbol: str,
         to_symbol: str,
         outputsize: OutputSize = OutputSize.COMPACT,
-    ) -> List[OHLCV]:
+    ) -> list[OHLCV]:
         """Get daily forex data."""
         data = await self._request({
             "function": "FX_DAILY",
@@ -238,7 +237,7 @@ class AlphaVantageClient:
         interval: Interval = Interval.DAILY,
         time_period: int = 14,
         series_type: str = "close",
-    ) -> List[TechnicalIndicator]:
+    ) -> list[TechnicalIndicator]:
         """Get RSI indicator values."""
         data = await self._request({
             "function": "RSI",
@@ -265,7 +264,7 @@ class AlphaVantageClient:
         fastperiod: int = 12,
         slowperiod: int = 26,
         signalperiod: int = 9,
-    ) -> List[TechnicalIndicator]:
+    ) -> list[TechnicalIndicator]:
         """Get MACD indicator values."""
         data = await self._request({
             "function": "MACD",
@@ -296,7 +295,7 @@ class AlphaVantageClient:
         interval: Interval = Interval.DAILY,
         time_period: int = 20,
         series_type: str = "close",
-    ) -> List[TechnicalIndicator]:
+    ) -> list[TechnicalIndicator]:
         """Get SMA indicator values."""
         data = await self._request({
             "function": "SMA",
@@ -321,7 +320,7 @@ class AlphaVantageClient:
         interval: Interval = Interval.DAILY,
         time_period: int = 20,
         series_type: str = "close",
-    ) -> List[TechnicalIndicator]:
+    ) -> list[TechnicalIndicator]:
         """Get EMA indicator values."""
         data = await self._request({
             "function": "EMA",
@@ -348,7 +347,7 @@ class AlphaVantageClient:
         series_type: str = "close",
         nbdevup: int = 2,
         nbdevdn: int = 2,
-    ) -> List[TechnicalIndicator]:
+    ) -> list[TechnicalIndicator]:
         """Get Bollinger Bands indicator values."""
         data = await self._request({
             "function": "BBANDS",
@@ -378,7 +377,7 @@ class AlphaVantageClient:
         symbol: str,
         interval: Interval = Interval.DAILY,
         time_period: int = 14,
-    ) -> List[TechnicalIndicator]:
+    ) -> list[TechnicalIndicator]:
         """Get ATR indicator values."""
         data = await self._request({
             "function": "ATR",
@@ -403,7 +402,7 @@ class AlphaVantageClient:
         fastkperiod: int = 5,
         slowkperiod: int = 3,
         slowdperiod: int = 3,
-    ) -> List[TechnicalIndicator]:
+    ) -> list[TechnicalIndicator]:
         """Get Stochastic oscillator values."""
         data = await self._request({
             "function": "STOCH",
@@ -428,7 +427,7 @@ class AlphaVantageClient:
 
     # ========== Economic Indicators ==========
 
-    async def get_real_gdp(self, interval: str = "annual") -> List[EconomicIndicator]:
+    async def get_real_gdp(self, interval: str = "annual") -> list[EconomicIndicator]:
         """Get US Real GDP data."""
         data = await self._request({
             "function": "REAL_GDP",
@@ -446,7 +445,7 @@ class AlphaVantageClient:
 
         return indicators
 
-    async def get_inflation(self) -> List[EconomicIndicator]:
+    async def get_inflation(self) -> list[EconomicIndicator]:
         """Get US inflation data (CPI)."""
         data = await self._request({
             "function": "INFLATION",
@@ -463,7 +462,7 @@ class AlphaVantageClient:
 
         return indicators
 
-    async def get_federal_funds_rate(self) -> List[EconomicIndicator]:
+    async def get_federal_funds_rate(self) -> list[EconomicIndicator]:
         """Get Federal Funds Rate data."""
         data = await self._request({
             "function": "FEDERAL_FUNDS_RATE",
@@ -481,7 +480,7 @@ class AlphaVantageClient:
 
         return indicators
 
-    async def get_unemployment(self) -> List[EconomicIndicator]:
+    async def get_unemployment(self) -> list[EconomicIndicator]:
         """Get unemployment rate data."""
         data = await self._request({
             "function": "UNEMPLOYMENT",
@@ -500,7 +499,7 @@ class AlphaVantageClient:
 
     # ========== Market Status ==========
 
-    async def get_market_status(self) -> Dict[str, Any]:
+    async def get_market_status(self) -> dict[str, Any]:
         """Get global market status (open/closed)."""
         data = await self._request({
             "function": "MARKET_STATUS",
@@ -518,7 +517,7 @@ class AlphaVantageClient:
 
 
 # Singleton instance
-_alpha_vantage_client: Optional[AlphaVantageClient] = None
+_alpha_vantage_client: AlphaVantageClient | None = None
 
 
 def get_alpha_vantage_client() -> AlphaVantageClient:

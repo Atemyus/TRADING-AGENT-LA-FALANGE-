@@ -7,7 +7,6 @@ Supports GPT-4o, GPT-4o-mini, GPT-4-turbo models.
 import json
 import time
 from decimal import Decimal
-from typing import List, Optional
 
 from openai import AsyncOpenAI
 
@@ -42,17 +41,17 @@ class OpenAIProvider(BaseAIProvider):
     def __init__(
         self,
         model_name: str = "gpt-4o",
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
     ):
         super().__init__(model_name, api_key or settings.OPENAI_API_KEY)
-        self._client: Optional[AsyncOpenAI] = None
+        self._client: AsyncOpenAI | None = None
 
     @property
     def provider_name(self) -> str:
         return "openai"
 
     @property
-    def supported_models(self) -> List[str]:
+    def supported_models(self) -> list[str]:
         return ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4"]
 
     @property

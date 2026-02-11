@@ -2,18 +2,16 @@
 Analytics routes - Performance metrics and reporting.
 """
 
-from datetime import date
-from decimal import Decimal
-from typing import List, Optional
+from datetime import UTC, date
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel
 
-from src.services.trading_service import get_trading_service
-from src.engines.data.market_data import get_market_data_service
 from src.engines.data.indicators import TechnicalIndicators
+from src.engines.data.market_data import get_market_data_service
 from src.engines.trading.broker_factory import NoBrokerConfiguredError
 from src.engines.trading.metatrader_broker import RateLimitError
+from src.services.trading_service import get_trading_service
 
 router = APIRouter()
 
@@ -32,8 +30,8 @@ class PerformanceMetrics(BaseModel):
     largest_loss: str
     max_drawdown: str
     max_drawdown_percent: str
-    sharpe_ratio: Optional[str] = None
-    sortino_ratio: Optional[str] = None
+    sharpe_ratio: str | None = None
+    sortino_ratio: str | None = None
     expectancy: str
     average_hold_time: str
 
@@ -66,7 +64,7 @@ class AccountSummary(BaseModel):
     realized_pnl_today: str
     currency: str
     leverage: int
-    margin_level: Optional[str] = None
+    margin_level: str | None = None
     open_positions: int
     pending_orders: int
 
@@ -100,16 +98,16 @@ class AnalysisResponse(BaseModel):
     trend_strength: float
     recommendation: str
     confidence: float
-    support_levels: List[float]
-    resistance_levels: List[float]
+    support_levels: list[float]
+    resistance_levels: list[float]
     indicators: dict
 
 
 @router.get("/account", response_model=AccountSummary)
 async def get_account_summary():
     """Get current account summary."""
-    import os
     import logging
+    import os
     logger = logging.getLogger(__name__)
 
     # Debug: Log environment variables
@@ -172,8 +170,8 @@ async def get_account_summary():
 
 @router.get("/performance", response_model=PerformanceMetrics)
 async def get_performance_metrics(
-    start_date: Optional[date] = None,
-    end_date: Optional[date] = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ):
     """Get overall performance metrics from bot trade history and broker deals."""
     from src.engines.trading.auto_trader import get_auto_trader
@@ -185,9 +183,10 @@ async def get_performance_metrics(
     try:
         service = await get_trading_service()
         if hasattr(service._broker, 'get_deals_history'):
-            from datetime import datetime as dt, timezone, timedelta
+            from datetime import datetime as dt
+            from datetime import timedelta
             # Get last 30 days of deals
-            start = dt.now(timezone.utc) - timedelta(days=30)
+            start = dt.now(UTC) - timedelta(days=30)
             deals = await service._broker.get_deals_history(start.isoformat())
             # Extract profit from deals that have a profit field
             for deal in deals:
@@ -203,7 +202,7 @@ async def get_performance_metrics(
                             direction=deal.get("type", "UNKNOWN"),
                             entry_price=float(deal.get("price", 0)),
                             units=float(deal.get("volume", 0)),
-                            timestamp=dt.now(timezone.utc),
+                            timestamp=dt.now(UTC),
                             profit_loss=float(profit) + float(deal.get("swap", 0)) + float(deal.get("commission", 0)),
                             status="closed",
                         )
@@ -280,20 +279,20 @@ async def get_performance_metrics(
     )
 
 
-@router.get("/daily", response_model=List[DailyPerformance])
+@router.get("/daily", response_model=list[DailyPerformance])
 async def get_daily_performance(
-    start_date: Optional[date] = None,
-    end_date: Optional[date] = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ):
     """Get daily P&L breakdown."""
     # TODO: Calculate from database
     return []
 
 
-@router.get("/equity-curve", response_model=List[EquityPoint])
+@router.get("/equity-curve", response_model=list[EquityPoint])
 async def get_equity_curve(
-    start_date: Optional[date] = None,
-    end_date: Optional[date] = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
     resolution: str = Query("1h", pattern="^(1m|5m|15m|1h|4h|1d)$"),
 ):
     """Get equity curve data."""

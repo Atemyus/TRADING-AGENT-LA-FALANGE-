@@ -7,7 +7,6 @@ Supports Gemini Pro, Gemini Flash models.
 import json
 import time
 from decimal import Decimal
-from typing import List, Optional
 
 from src.core.config import settings
 from src.engines.ai.base_ai import (
@@ -44,7 +43,7 @@ class GoogleProvider(BaseAIProvider):
     def __init__(
         self,
         model_name: str = "gemini-flash",
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
     ):
         resolved_model = self.MODEL_ALIASES.get(model_name, model_name)
         super().__init__(resolved_model, api_key)
@@ -55,7 +54,7 @@ class GoogleProvider(BaseAIProvider):
         return "google"
 
     @property
-    def supported_models(self) -> List[str]:
+    def supported_models(self) -> list[str]:
         return ["gemini-pro", "gemini-flash", "gemini-1.5-pro", "gemini-1.5-flash"]
 
     @property

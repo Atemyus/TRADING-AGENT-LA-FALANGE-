@@ -11,23 +11,23 @@ This bot:
 """
 
 import asyncio
-from typing import Optional, List, Dict, Any, Callable, Tuple
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
-import json
+from typing import Any
 
+from src.engines.ai.autonomous_analyst import (
+    AutonomousAnalysisResult,
+    AutonomousAnalyst,
+)
 from src.engines.ai.multi_timeframe_analyzer import (
+    AnalysisMode,
     MultiTimeframeAnalyzer,
     MultiTimeframeResult,
-    AnalysisMode,
     get_multi_timeframe_analyzer,
 )
-from src.engines.ai.autonomous_analyst import (
-    AutonomousAnalyst,
-    AutonomousAnalysisResult,
-    get_autonomous_analyst,
-)
+
 try:
     from src.engines.ai.tradingview_agent import (
         TradingViewAIAgent,
@@ -38,15 +38,14 @@ try:
 except ImportError:
     TRADINGVIEW_AGENT_AVAILABLE = False
     TradingViewAIAgent = None
-from src.engines.trading.broker_factory import BrokerFactory
-from src.engines.trading.base_broker import BaseBroker, OrderRequest, OrderType, OrderSide
 from src.core.config import settings
+from src.engines.trading.base_broker import BaseBroker, OrderRequest, OrderSide, OrderType
+from src.engines.trading.broker_factory import BrokerFactory
 from src.services.economic_calendar_service import (
     EconomicCalendarService,
+    EconomicEvent,
     NewsFilterConfig,
     get_economic_calendar_service,
-    EconomicEvent,
-    NewsImpact,
 )
 
 
@@ -71,27 +70,27 @@ class TradeRecord:
     units: float
     timestamp: datetime
     confidence: float
-    timeframes_analyzed: List[str]
+    timeframes_analyzed: list[str]
     models_agreed: int
     total_models: int
     status: str = "open"  # open, closed_tp, closed_sl, closed_manual, closed_be
-    exit_price: Optional[float] = None
-    exit_timestamp: Optional[datetime] = None
-    profit_loss: Optional[float] = None
+    exit_price: float | None = None
+    exit_timestamp: datetime | None = None
+    profit_loss: float | None = None
 
     # Advanced trade management
-    break_even_trigger: Optional[float] = None  # Move SL to entry when price hits this
-    trailing_stop_pips: Optional[float] = None  # Trail SL by this many pips
-    partial_tp_percent: Optional[float] = None  # Close this % at TP1
+    break_even_trigger: float | None = None  # Move SL to entry when price hits this
+    trailing_stop_pips: float | None = None  # Trail SL by this many pips
+    partial_tp_percent: float | None = None  # Close this % at TP1
     is_break_even: bool = False  # Has SL been moved to entry?
-    current_trailing_sl: Optional[float] = None  # Current trailing SL level
+    current_trailing_sl: float | None = None  # Current trailing SL level
 
 
 @dataclass
 class BotConfig:
     """Configuration for the auto trading bot."""
     # Assets to trade
-    symbols: List[str] = field(default_factory=lambda: ["EUR/USD", "GBP/USD", "XAU/USD"])
+    symbols: list[str] = field(default_factory=lambda: ["EUR/USD", "GBP/USD", "XAU/USD"])
 
     # Analysis settings
     analysis_mode: AnalysisMode = AnalysisMode.PREMIUM
@@ -104,7 +103,7 @@ class BotConfig:
     tradingview_max_indicators: int = 3   # Max indicators (3=Basic, 5=Essential, 10=Plus, 25=Premium)
 
     # AI Models - abilita/disabilita singoli modelli
-    enabled_models: List[str] = field(default_factory=lambda: [
+    enabled_models: list[str] = field(default_factory=lambda: [
         "chatgpt", "gemini", "grok", "qwen", "llama", "ernie", "kimi", "mistral"
     ])
 
@@ -138,9 +137,9 @@ class BotConfig:
 
     # Broker credentials (optional - for multi-broker support)
     # If set, these override environment variables
-    broker_type: Optional[str] = None
-    metaapi_token: Optional[str] = None
-    metaapi_account_id: Optional[str] = None
+    broker_type: str | None = None
+    metaapi_token: str | None = None
+    metaapi_account_id: str | None = None
 
 
 @dataclass
@@ -150,22 +149,22 @@ class AnalysisLogEntry:
     symbol: str
     log_type: str  # "info", "analysis", "trade", "skip", "error", "news"
     message: str
-    details: Optional[Dict[str, Any]] = None
+    details: dict[str, Any] | None = None
 
 
 @dataclass
 class BotState:
     """Current state of the bot."""
     status: BotStatus = BotStatus.STOPPED
-    started_at: Optional[datetime] = None
-    last_analysis_at: Optional[datetime] = None
+    started_at: datetime | None = None
+    last_analysis_at: datetime | None = None
     analyses_today: int = 0
     trades_today: int = 0
     daily_pnl: float = 0.0
-    open_positions: List[TradeRecord] = field(default_factory=list)
-    trade_history: List[TradeRecord] = field(default_factory=list)
-    errors: List[Dict[str, Any]] = field(default_factory=list)
-    analysis_logs: List[AnalysisLogEntry] = field(default_factory=list)  # AI reasoning logs
+    open_positions: list[TradeRecord] = field(default_factory=list)
+    trade_history: list[TradeRecord] = field(default_factory=list)
+    errors: list[dict[str, Any]] = field(default_factory=list)
+    analysis_logs: list[AnalysisLogEntry] = field(default_factory=list)  # AI reasoning logs
 
 
 class AutoTrader:
@@ -183,21 +182,21 @@ class AutoTrader:
     def __init__(self):
         self.config = BotConfig()
         self.state = BotState()
-        self.analyzer: Optional[MultiTimeframeAnalyzer] = None
-        self.autonomous_analyst: Optional[AutonomousAnalyst] = None
-        self.tradingview_agent: Optional[TradingViewAIAgent] = None
-        self.broker: Optional[BaseBroker] = None
-        self.calendar_service: Optional[EconomicCalendarService] = None
-        self._task: Optional[asyncio.Task] = None
+        self.analyzer: MultiTimeframeAnalyzer | None = None
+        self.autonomous_analyst: AutonomousAnalyst | None = None
+        self.tradingview_agent: TradingViewAIAgent | None = None
+        self.broker: BaseBroker | None = None
+        self.calendar_service: EconomicCalendarService | None = None
+        self._task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
-        self._callbacks: List[Callable] = []
-        self._last_news_refresh: Optional[datetime] = None
+        self._callbacks: list[Callable] = []
+        self._last_news_refresh: datetime | None = None
 
     def configure(self, config: BotConfig):
         """Update bot configuration."""
         self.config = config
 
-    def _log_analysis(self, symbol: str, log_type: str, message: str, details: Optional[Dict[str, Any]] = None):
+    def _log_analysis(self, symbol: str, log_type: str, message: str, details: dict[str, Any] | None = None):
         """Add an analysis log entry visible from the frontend."""
         entry = AnalysisLogEntry(
             timestamp=datetime.utcnow(),
@@ -248,7 +247,7 @@ class AutoTrader:
         # Forex standard: 1 pip = 0.0001
         return 0.0001
 
-    def _calculate_pip_info(self, symbol: str, current_price: float, sl_distance: float, broker_spec: Optional[Dict[str, Any]] = None) -> tuple:
+    def _calculate_pip_info(self, symbol: str, current_price: float, sl_distance: float, broker_spec: dict[str, Any] | None = None) -> tuple:
         """
         Calcola la distanza SL in pips e il valore di 1 pip per 1 lotto standard.
         Restituisce (sl_pips, pip_value_per_lot).
@@ -414,7 +413,7 @@ class AutoTrader:
             self.state.status = BotStatus.RUNNING
 
             await self._notify(f"🤖 Bot started (TradingView AI Agent). Monitoring: {', '.join(self.config.symbols)}")
-            print(f"[AutoTrader] Bot started successfully with TradingView AI Agent")
+            print("[AutoTrader] Bot started successfully with TradingView AI Agent")
 
         except Exception as e:
             import traceback
@@ -451,7 +450,7 @@ class AutoTrader:
         self.state.status = BotStatus.RUNNING
         await self._notify("▶️ Bot resumed. Trading active.")
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """Get current bot status and statistics."""
         return {
             "status": self.state.status.value,
@@ -657,7 +656,7 @@ class AutoTrader:
             self._last_news_refresh = now
             print("[AutoTrader] Economic calendar refreshed")
 
-    def _is_news_blocked(self, symbol: str) -> Tuple[bool, Optional[EconomicEvent]]:
+    def _is_news_blocked(self, symbol: str) -> tuple[bool, EconomicEvent | None]:
         """
         Check if trading is blocked due to upcoming/recent news.
 
@@ -785,7 +784,7 @@ class AutoTrader:
 
         return True
 
-    def _should_enter_tradingview_trade(self, consensus: Dict[str, Any]) -> bool:
+    def _should_enter_tradingview_trade(self, consensus: dict[str, Any]) -> bool:
         """Check if TradingView AI agent consensus meets trading criteria."""
         # Base checks from autonomous trade
         if not self._should_enter_autonomous_trade(consensus):
@@ -805,13 +804,13 @@ class AutoTrader:
     async def _execute_tradingview_trade(
         self,
         symbol: str,
-        consensus: Dict[str, Any],
-        results: List[TradingViewAnalysisResult]
+        consensus: dict[str, Any],
+        results: list[TradingViewAnalysisResult]
     ):
         """Execute a trade based on TradingView AI agent consensus."""
         try:
-            from decimal import Decimal
             import traceback
+            from decimal import Decimal
 
             direction = consensus.get("direction", "HOLD")
             self._log_analysis(symbol, "trade", f"📋 Esecuzione trade {direction} su {symbol}...")
@@ -1070,8 +1069,8 @@ class AutoTrader:
     async def _notify_tradingview_trade(
         self,
         trade: TradeRecord,
-        consensus: Dict[str, Any],
-        results: List[TradingViewAnalysisResult]
+        consensus: dict[str, Any],
+        results: list[TradingViewAnalysisResult]
     ):
         """Send notification for TradingView AI agent trade."""
         # Get key observations
@@ -1114,7 +1113,7 @@ class AutoTrader:
 """
         await self._notify(message)
 
-    def _should_enter_autonomous_trade(self, consensus: Dict[str, Any]) -> bool:
+    def _should_enter_autonomous_trade(self, consensus: dict[str, Any]) -> bool:
         """Check if autonomous analysis consensus meets trading criteria."""
         # Must have a direction (not HOLD)
         if consensus.get("direction") == "HOLD":
@@ -1141,8 +1140,8 @@ class AutoTrader:
     async def _execute_autonomous_trade(
         self,
         symbol: str,
-        consensus: Dict[str, Any],
-        results: List[AutonomousAnalysisResult]
+        consensus: dict[str, Any],
+        results: list[AutonomousAnalysisResult]
     ):
         """Execute a trade based on autonomous AI consensus."""
         try:
@@ -1223,8 +1222,8 @@ class AutoTrader:
     async def _notify_autonomous_trade(
         self,
         trade: TradeRecord,
-        consensus: Dict[str, Any],
-        results: List[AutonomousAnalysisResult]
+        consensus: dict[str, Any],
+        results: list[AutonomousAnalysisResult]
     ):
         """Send notification for autonomous trade with detailed AI analysis."""
         # Get reasoning from the top confident model
@@ -1436,7 +1435,7 @@ _Trade ID: {trade.id}_
 
 
 # Global bot instance
-_auto_trader: Optional[AutoTrader] = None
+_auto_trader: AutoTrader | None = None
 
 
 def get_auto_trader() -> AutoTrader:

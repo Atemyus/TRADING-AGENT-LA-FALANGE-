@@ -10,14 +10,13 @@ Sources:
 3. FXStreet calendar
 """
 
-import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import List, Optional, Dict, Any, Tuple
+from typing import Any
+
 import httpx
 from bs4 import BeautifulSoup
-import json
 
 
 class NewsImpact(str, Enum):
@@ -35,11 +34,11 @@ class EconomicEvent:
     currency: str  # e.g., "USD", "EUR", "GBP"
     impact: NewsImpact
     datetime_utc: datetime
-    actual: Optional[str] = None
-    forecast: Optional[str] = None
-    previous: Optional[str] = None
+    actual: str | None = None
+    forecast: str | None = None
+    previous: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "title": self.title,
             "currency": self.currency,
@@ -60,7 +59,7 @@ class NewsFilterConfig:
     filter_low_impact: bool = False
     minutes_before: int = 30  # Don't trade X minutes before news
     minutes_after: int = 30   # Don't trade X minutes after news
-    currencies_to_filter: List[str] = field(default_factory=lambda: [
+    currencies_to_filter: list[str] = field(default_factory=lambda: [
         "USD", "EUR", "GBP", "JPY", "CHF", "AUD", "NZD", "CAD"
     ])
 
@@ -71,8 +70,8 @@ class EconomicCalendarService:
     """
 
     def __init__(self):
-        self._events: List[EconomicEvent] = []
-        self._last_fetch: Optional[datetime] = None
+        self._events: list[EconomicEvent] = []
+        self._last_fetch: datetime | None = None
         self._cache_duration = timedelta(hours=1)  # Refresh every hour
         self._filter_config = NewsFilterConfig()
 
@@ -85,7 +84,7 @@ class EconomicCalendarService:
         """Get current filter configuration."""
         return self._filter_config
 
-    async def fetch_events(self, force_refresh: bool = False) -> List[EconomicEvent]:
+    async def fetch_events(self, force_refresh: bool = False) -> list[EconomicEvent]:
         """
         Fetch economic events from calendar sources.
 
@@ -129,7 +128,7 @@ class EconomicCalendarService:
 
         return self._events
 
-    async def _fetch_from_forex_factory(self) -> List[EconomicEvent]:
+    async def _fetch_from_forex_factory(self) -> list[EconomicEvent]:
         """Fetch events from Forex Factory calendar."""
         events = []
 
@@ -222,12 +221,12 @@ class EconomicCalendarService:
                             previous=previous if previous else None,
                         ))
 
-                except Exception as e:
+                except Exception:
                     continue
 
         return events
 
-    async def _fetch_from_fxstreet(self) -> List[EconomicEvent]:
+    async def _fetch_from_fxstreet(self) -> list[EconomicEvent]:
         """Fetch events from FXStreet economic calendar API."""
         events = []
 
@@ -235,7 +234,7 @@ class EconomicCalendarService:
         today = datetime.utcnow().date()
         tomorrow = today + timedelta(days=1)
 
-        url = f"https://www.fxstreet.com/economic-calendar"
+        url = "https://www.fxstreet.com/economic-calendar"
 
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -278,7 +277,7 @@ class EconomicCalendarService:
 
         return events
 
-    async def _fetch_from_trading_economics(self) -> List[EconomicEvent]:
+    async def _fetch_from_trading_economics(self) -> list[EconomicEvent]:
         """Fetch events from Trading Economics (backup source)."""
         events = []
 
@@ -340,8 +339,8 @@ class EconomicCalendarService:
     def should_avoid_trading(
         self,
         symbol: str,
-        check_time: Optional[datetime] = None
-    ) -> Tuple[bool, Optional[EconomicEvent]]:
+        check_time: datetime | None = None
+    ) -> tuple[bool, EconomicEvent | None]:
         """
         Check if trading should be avoided due to upcoming news.
 
@@ -389,7 +388,7 @@ class EconomicCalendarService:
 
         return False, None
 
-    def _extract_currencies(self, symbol: str) -> List[str]:
+    def _extract_currencies(self, symbol: str) -> list[str]:
         """Extract currency codes from a trading symbol."""
         # Clean symbol
         symbol = symbol.upper().replace("/", "").replace("_", "").replace("-", "")
@@ -421,8 +420,8 @@ class EconomicCalendarService:
     def get_upcoming_events(
         self,
         hours_ahead: int = 24,
-        impact_filter: Optional[List[NewsImpact]] = None
-    ) -> List[EconomicEvent]:
+        impact_filter: list[NewsImpact] | None = None
+    ) -> list[EconomicEvent]:
         """
         Get upcoming economic events.
 
@@ -444,13 +443,13 @@ class EconomicCalendarService:
 
         return sorted(upcoming, key=lambda e: e.datetime_utc)
 
-    def get_events_for_currency(self, currency: str) -> List[EconomicEvent]:
+    def get_events_for_currency(self, currency: str) -> list[EconomicEvent]:
         """Get all events for a specific currency."""
         return [e for e in self._events if e.currency.upper() == currency.upper()]
 
 
 # Singleton instance
-_calendar_service: Optional[EconomicCalendarService] = None
+_calendar_service: EconomicCalendarService | None = None
 
 
 def get_economic_calendar_service() -> EconomicCalendarService:

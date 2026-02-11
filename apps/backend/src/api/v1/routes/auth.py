@@ -3,16 +3,20 @@ Authentication routes.
 Handles user registration, login, token refresh, email verification, and password reset.
 """
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_db
+from src.core.email import (
+    email_service,
+    generate_verification_token,
+    get_token_expiry,
+)
 from src.core.models import User
 from src.core.security import (
     create_access_token,
@@ -20,11 +24,6 @@ from src.core.security import (
     get_password_hash,
     verify_password,
     verify_token,
-)
-from src.core.email import (
-    email_service,
-    generate_verification_token,
-    get_token_expiry,
 )
 
 router = APIRouter()
@@ -41,7 +40,7 @@ class UserCreate(BaseModel):
     email: EmailStr
     username: str = Field(..., min_length=3, max_length=50, pattern=r"^[a-zA-Z0-9_]+$")
     password: str = Field(..., min_length=8, max_length=100)
-    full_name: Optional[str] = None
+    full_name: str | None = None
 
 
 class UserLogin(BaseModel):
@@ -55,8 +54,8 @@ class UserResponse(BaseModel):
     id: int
     email: str
     username: str
-    full_name: Optional[str]
-    avatar_url: Optional[str]
+    full_name: str | None
+    avatar_url: str | None
     is_active: bool
     is_verified: bool
     created_at: datetime
@@ -235,7 +234,7 @@ async def verify_email(
         )
 
     # Check if token is expired
-    if user.verification_token_expires and user.verification_token_expires < datetime.now(timezone.utc):
+    if user.verification_token_expires and user.verification_token_expires < datetime.now(UTC):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Verification token has expired. Please request a new one."
@@ -346,7 +345,7 @@ async def reset_password(
         )
 
     # Check if token is expired
-    if user.reset_token_expires and user.reset_token_expires < datetime.now(timezone.utc):
+    if user.reset_token_expires and user.reset_token_expires < datetime.now(UTC):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Reset token has expired. Please request a new one."
@@ -391,7 +390,7 @@ async def login(
         )
 
     # Update last login
-    user.last_login_at = datetime.now(timezone.utc)
+    user.last_login_at = datetime.now(UTC)
     await db.flush()
 
     # Generate tokens
@@ -430,7 +429,7 @@ async def login_json(
         )
 
     # Update last login
-    user.last_login_at = datetime.now(timezone.utc)
+    user.last_login_at = datetime.now(UTC)
     await db.flush()
 
     # Generate tokens
@@ -486,8 +485,8 @@ async def get_me(current_user: User = Depends(get_current_user)):
 
 @router.put("/me", response_model=UserResponse)
 async def update_me(
-    full_name: Optional[str] = None,
-    avatar_url: Optional[str] = None,
+    full_name: str | None = None,
+    avatar_url: str | None = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):

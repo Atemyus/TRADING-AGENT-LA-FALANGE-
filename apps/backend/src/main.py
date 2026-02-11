@@ -4,10 +4,22 @@ FastAPI application entry point
 """
 
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.api.v1.routes import ai, auth, trading, positions, analytics, websocket, bot, chart_analysis, market, brokers
+from src.api.v1.routes import (
+    ai,
+    analytics,
+    auth,
+    bot,
+    brokers,
+    chart_analysis,
+    market,
+    positions,
+    trading,
+    websocket,
+)
 from src.api.v1.routes import settings as settings_routes
 from src.core.config import settings
 from src.core.database import init_db
@@ -21,8 +33,8 @@ async def lifespan(app: FastAPI):
 
     # Load settings from database and apply to environment
     try:
+        from src.api.v1.routes.settings import apply_settings_to_env, load_settings_from_db
         from src.core.database import async_session_maker
-        from src.api.v1.routes.settings import load_settings_from_db, apply_settings_to_env
 
         async with async_session_maker() as session:
             db_settings = await load_settings_from_db(session)
@@ -33,8 +45,8 @@ async def lifespan(app: FastAPI):
 
     # Load bot configuration from database
     try:
+        from src.api.v1.routes.bot import apply_config_to_bot, get_bot_config_from_db
         from src.core.database import async_session_maker
-        from src.api.v1.routes.bot import get_bot_config_from_db, apply_config_to_bot
 
         async with async_session_maker() as session:
             bot_config = await get_bot_config_from_db(session)

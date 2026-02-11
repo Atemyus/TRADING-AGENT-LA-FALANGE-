@@ -5,20 +5,19 @@ Settings are stored in PostgreSQL database for persistence across deployments.
 
 import json
 import os
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.config import clear_settings_cache
 from src.core.database import get_db
 from src.core.models import AppSettings
-from src.core.config import clear_settings_cache
-from src.services.ai_service import reset_ai_service
 from src.engines.trading.broker_factory import BrokerFactory
-from src.services.trading_service import reset_trading_service
+from src.services.ai_service import reset_ai_service
 from src.services.price_streaming_service import reset_price_streaming_service
+from src.services.trading_service import reset_trading_service
 
 router = APIRouter()
 
@@ -28,33 +27,33 @@ router = APIRouter()
 class BrokerSettings(BaseModel):
     broker_type: str = "metatrader"  # oanda, metatrader, ig, alpaca
     # OANDA
-    oanda_api_key: Optional[str] = None
-    oanda_account_id: Optional[str] = None
+    oanda_api_key: str | None = None
+    oanda_account_id: str | None = None
     oanda_environment: str = "practice"
     # MetaTrader (via MetaApi)
-    metaapi_token: Optional[str] = None
-    metaapi_account_id: Optional[str] = None
+    metaapi_token: str | None = None
+    metaapi_account_id: str | None = None
     metaapi_platform: str = "mt5"
     # IG Markets
-    ig_api_key: Optional[str] = None
-    ig_username: Optional[str] = None
-    ig_password: Optional[str] = None
-    ig_account_id: Optional[str] = None
+    ig_api_key: str | None = None
+    ig_username: str | None = None
+    ig_password: str | None = None
+    ig_account_id: str | None = None
     ig_environment: str = "demo"
     # Alpaca
-    alpaca_api_key: Optional[str] = None
-    alpaca_secret_key: Optional[str] = None
+    alpaca_api_key: str | None = None
+    alpaca_secret_key: str | None = None
     alpaca_paper: bool = True
 
 
 class AIProviderSettings(BaseModel):
-    aiml_api_key: Optional[str] = None
-    nvidia_api_key: Optional[str] = None
-    openai_api_key: Optional[str] = None
-    anthropic_api_key: Optional[str] = None
-    google_api_key: Optional[str] = None
-    groq_api_key: Optional[str] = None
-    mistral_api_key: Optional[str] = None
+    aiml_api_key: str | None = None
+    nvidia_api_key: str | None = None
+    openai_api_key: str | None = None
+    anthropic_api_key: str | None = None
+    google_api_key: str | None = None
+    groq_api_key: str | None = None
+    mistral_api_key: str | None = None
 
 
 class RiskSettings(BaseModel):
@@ -68,10 +67,10 @@ class RiskSettings(BaseModel):
 
 class NotificationSettings(BaseModel):
     telegram_enabled: bool = False
-    telegram_bot_token: Optional[str] = None
-    telegram_chat_id: Optional[str] = None
+    telegram_bot_token: str | None = None
+    telegram_chat_id: str | None = None
     discord_enabled: bool = False
-    discord_webhook: Optional[str] = None
+    discord_webhook: str | None = None
 
 
 class AllSettings(BaseModel):
@@ -83,7 +82,7 @@ class AllSettings(BaseModel):
 
 # ============ Database Helper Functions ============
 
-async def get_setting(db: AsyncSession, key: str) -> Optional[str]:
+async def get_setting(db: AsyncSession, key: str) -> str | None:
     """Get a setting value from database."""
     result = await db.execute(
         select(AppSettings).where(AppSettings.key == key)
@@ -92,7 +91,7 @@ async def get_setting(db: AsyncSession, key: str) -> Optional[str]:
     return setting.value if setting else None
 
 
-async def set_setting(db: AsyncSession, key: str, value: Optional[str]) -> None:
+async def set_setting(db: AsyncSession, key: str, value: str | None) -> None:
     """Set a setting value in database."""
     result = await db.execute(
         select(AppSettings).where(AppSettings.key == key)
@@ -201,14 +200,14 @@ def apply_settings_to_env(settings: AllSettings) -> None:
         os.environ["DISCORD_WEBHOOK_URL"] = notif.discord_webhook
 
 
-def mask_key(key: Optional[str]) -> Optional[str]:
+def mask_key(key: str | None) -> str | None:
     """Mask sensitive data - show only last 4 chars."""
     if key and len(key) > 4:
         return "***" + key[-4:]
     return key
 
 
-def preserve_if_masked(new_val: Optional[str], old_val: Optional[str]) -> Optional[str]:
+def preserve_if_masked(new_val: str | None, old_val: str | None) -> str | None:
     """Don't overwrite with masked values."""
     if new_val and new_val.startswith("***"):
         return old_val
