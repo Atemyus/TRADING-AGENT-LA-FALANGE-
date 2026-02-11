@@ -79,6 +79,10 @@ interface WorkspaceSnapshot {
   currency: string
 }
 
+interface WorkspaceSymbolSelectionEventDetail {
+  symbol: string
+}
+
 export default function DashboardPage() {
   const searchParams = useSearchParams()
   const { user } = useAuth()
@@ -129,6 +133,21 @@ export default function DashboardPage() {
     }
     window.dispatchEvent(new Event('selected-broker-changed'))
   }, [selectedBrokerId])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handler = (event: Event) => {
+      const customEvent = event as CustomEvent<WorkspaceSymbolSelectionEventDetail>
+      const symbol = customEvent?.detail?.symbol
+      if (symbol) {
+        setSelectedSymbol(symbol)
+      }
+    }
+    window.addEventListener('workspace-symbol-selected', handler)
+    return () => {
+      window.removeEventListener('workspace-symbol-selected', handler)
+    }
+  }, [])
 
   // Fetch all dashboard data
   const fetchAccountData = useCallback(async () => {
@@ -456,7 +475,10 @@ export default function DashboardPage() {
   }, [brokers, selectedBrokerId])
 
   const selectedBroker = brokers.find((b) => b.id === selectedBrokerId) || null
-  const totalSlots = user?.is_superuser ? Math.max(3, brokers.length) : Math.max(1, user?.license_broker_slots || 1)
+  const licenseSlots = Math.max(1, user?.license_broker_slots || 1)
+  const totalSlots = user?.is_superuser
+    ? (user?.license_broker_slots ? licenseSlots : Math.max(1, brokers.length))
+    : licenseSlots
   const brokersBySlot = new Map<number, BrokerAccountData>()
   for (const broker of brokers) {
     if (broker.slot_index && broker.slot_index >= 1 && broker.slot_index <= totalSlots) {
@@ -473,14 +495,6 @@ export default function DashboardPage() {
       fallbackSlot += 1
     }
   }
-
-  const commandSymbols = (() => {
-    if (selectedBroker?.symbols?.length) {
-      return selectedBroker.symbols.slice(0, 10)
-    }
-    const all = Array.from(new Set(brokers.flatMap((b) => b.symbols || [])))
-    return all.slice(0, 12)
-  })()
 
   const formatSigned = (value: number | null | undefined, currency = 'USD') => {
     if (value === null || value === undefined) return '--'
@@ -500,6 +514,11 @@ export default function DashboardPage() {
       animate="visible"
       className="space-y-6 prometheus-page-shell"
     >
+      {/* Asset Price Cards (top priority) */}
+      <motion.div variants={itemVariants}>
+        <PriceTicker selectedSymbol={selectedSymbol} onSelect={setSelectedSymbol} />
+      </motion.div>
+
       <motion.div variants={itemVariants} className="prometheus-hero-card p-6 md:p-7">
         <div className="relative z-10 flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
           <div>
@@ -536,27 +555,6 @@ export default function DashboardPage() {
               </p>
             </div>
           </div>
-        </div>
-      </motion.div>
-
-      <motion.div variants={itemVariants} className="prometheus-panel-surface p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs uppercase tracking-wider text-dark-500">Asset Command Strip</p>
-          <p className="text-xs text-dark-400">{commandSymbols.length} mapped instruments</p>
-        </div>
-        <div className="flex flex-wrap gap-2 mt-3">
-          {commandSymbols.map((asset) => (
-            <button
-              key={asset}
-              onClick={() => setSelectedSymbol(asset)}
-              className={`workspace-symbol-chip ${selectedSymbol === asset ? 'workspace-symbol-chip-active' : ''}`}
-            >
-              {asset}
-            </button>
-          ))}
-          {commandSymbols.length === 0 && (
-            <span className="text-xs text-dark-500">No instruments configured yet.</span>
-          )}
         </div>
       </motion.div>
 
@@ -728,7 +726,24 @@ export default function DashboardPage() {
 
                 <div className="flex flex-wrap gap-2 mt-4">
                   {(broker.symbols || []).slice(0, 5).map((symbol) => (
-                    <span key={symbol} className="workspace-symbol-chip workspace-symbol-chip-soft">{symbol}</span>
+                    <button
+                      key={symbol}
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        setSelectedSymbol(symbol)
+                        if (typeof window !== 'undefined') {
+                          window.dispatchEvent(
+                            new CustomEvent<WorkspaceSymbolSelectionEventDetail>('workspace-symbol-selected', {
+                              detail: { symbol },
+                            }),
+                          )
+                        }
+                      }}
+                      className={`workspace-symbol-chip ${selectedSymbol === symbol ? 'workspace-symbol-chip-active' : 'workspace-symbol-chip-soft'}`}
+                    >
+                      {symbol}
+                    </button>
                   ))}
                 </div>
 
@@ -742,208 +757,216 @@ export default function DashboardPage() {
         </div>
       </motion.div>
 
-      {/* Error Banner */}
-      {error && (
+      {!selectedBrokerId ? (
         <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-primary-500/10 border border-primary-500/30 rounded-2xl p-4 flex items-center gap-3"
+          variants={itemVariants}
+          className="prometheus-panel-surface p-6 text-center"
         >
-          <div className="w-10 h-10 rounded-xl bg-primary-500/20 flex items-center justify-center">
-            <AlertCircle className="text-primary-400" size={20} />
-          </div>
-          <span className="text-sm flex-1">{error}</span>
-          <button
-            onClick={fetchAccountData}
-            className="p-2.5 hover:bg-dark-800 rounded-xl transition-colors border border-transparent hover:border-primary-500/20"
+          <p className="text-sm text-dark-300">
+            Select a broker workspace card to open its dedicated Command Center.
+          </p>
+        </motion.div>
+      ) : (
+        <>
+          {/* Error Banner */}
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-primary-500/10 border border-primary-500/30 rounded-2xl p-4 flex items-center gap-3"
+            >
+              <div className="w-10 h-10 rounded-xl bg-primary-500/20 flex items-center justify-center">
+                <AlertCircle className="text-primary-400" size={20} />
+              </div>
+              <span className="text-sm flex-1">{error}</span>
+              <button
+                onClick={fetchAccountData}
+                className="p-2.5 hover:bg-dark-800 rounded-xl transition-colors border border-transparent hover:border-primary-500/20"
+              >
+                <RefreshCw size={16} className="text-primary-400" />
+              </button>
+            </motion.div>
+          )}
+
+          {/* Stats Row - Real Data (scoped to selected workspace) */}
+          <motion.div
+            variants={itemVariants}
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
           >
-            <RefreshCw size={16} className="text-primary-400" />
-          </button>
-        </motion.div>
-      )}
-
-      {/* Price Ticker Row */}
-      <motion.div variants={itemVariants}>
-        <PriceTicker selectedSymbol={selectedSymbol} onSelect={setSelectedSymbol} />
-      </motion.div>
-
-      {/* Stats Row - Real Data (uses aggregated multi-broker data when available) */}
-      <motion.div
-        variants={itemVariants}
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
-      >
-        <StatCard
-          label={aggregatedStats && aggregatedStats.brokerCount > 1 ? `Total Balance (${aggregatedStats.brokerCount} brokers)` : "Account Balance"}
-          value={
-            aggregatedStats
-              ? formatCurrency(aggregatedStats.totalBalance)
-              : account
-                ? formatCurrency(account.balance)
-                : isLoading ? 'Loading...' : '$0.00'
-          }
-          change={account ? `${formatCurrency(account.realized_pnl_today)} today` : ''}
-          isPositive={account ? parseFloat(account.realized_pnl_today) >= 0 : true}
-          icon={DollarSign}
-        />
-        <StatCard
-          label="Unrealized P&L"
-          value={
-            aggregatedStats
-              ? formatCurrency(aggregatedStats.totalUnrealizedPnl)
-              : account
-                ? formatCurrency(account.unrealized_pnl)
-                : isLoading ? 'Loading...' : '$0.00'
-          }
-          change={
-            aggregatedStats
-              ? `${aggregatedStats.totalOpenPositions} positions`
-              : account
-                ? `${account.open_positions} positions`
-                : ''
-          }
-          isPositive={
-            aggregatedStats
-              ? aggregatedStats.totalUnrealizedPnl >= 0
-              : account
-                ? parseFloat(account.unrealized_pnl) >= 0
-                : true
-          }
-          icon={
-            (aggregatedStats && aggregatedStats.totalUnrealizedPnl >= 0) ||
-            (account && parseFloat(account.unrealized_pnl) >= 0)
-              ? TrendingUp
-              : TrendingDown
-          }
-        />
-        <StatCard
-          label="Open Positions"
-          value={
-            aggregatedStats
-              ? String(aggregatedStats.totalOpenPositions)
-              : account
-                ? String(account.open_positions)
-                : isLoading ? '...' : '0'
-          }
-          subtext={
-            aggregatedStats
-              ? `${formatCurrency(aggregatedStats.totalMarginUsed)} margin`
-              : account
-                ? `${formatCurrency(account.margin_used)} margin`
-                : ''
-          }
-          icon={Activity}
-        />
-        <StatCard
-          label="Win Rate"
-          value={performance ? formatPercent(performance.win_rate) : isLoading ? '...' : '0%'}
-          subtext={performance ? `${performance.total_trades} trades` : ''}
-          icon={Target}
-        />
-      </motion.div>
-
-      {/* TradingView Real-Time Chart - Full Width */}
-      <motion.div variants={itemVariants}>
-        <div className="prometheus-panel-surface p-3">
-          <TradingViewWidget
-            symbol={selectedSymbol}
-            interval="60"
-            height={500}
-            theme="dark"
-            allowSymbolChange={true}
-            showToolbar={true}
-            showDrawingTools={true}
-          />
-        </div>
-      </motion.div>
-
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        {/* Performance Chart - Takes 2 columns */}
-        <motion.div variants={itemVariants} className="xl:col-span-2">
-          <PerformanceChart height={350} />
-        </motion.div>
-
-        {/* AI Consensus Panel - Now with real data */}
-        <motion.div variants={itemVariants}>
-          <AIConsensusPanel
-            result={consensusResult}
-            isLoading={isAnalyzing}
-            onAnalyze={handleAnalyze}
-          />
-        </motion.div>
-      </div>
-
-      {/* Positions & Orders Grid */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        {/* Positions Table */}
-        <motion.div variants={itemVariants}>
-          <PositionsTable
-            positions={positions}
-            onClose={(id) => {
-              // Find position symbol by id
-              const pos = positions.find(p => p.id === id)
-              if (pos) {
-                tradingApi.closePosition(pos.symbol).then(() => {
-                  fetchAccountData()
-                }).catch(console.error)
+            <StatCard
+              label="Account Balance"
+              value={
+                aggregatedStats
+                  ? formatCurrency(aggregatedStats.totalBalance)
+                  : account
+                    ? formatCurrency(account.balance)
+                    : isLoading ? 'Loading...' : '$0.00'
               }
-            }}
-            onModify={(id) => console.log('Modify position:', id)}
-          />
-        </motion.div>
+              change={account ? `${formatCurrency(account.realized_pnl_today)} today` : ''}
+              isPositive={account ? parseFloat(account.realized_pnl_today) >= 0 : true}
+              icon={DollarSign}
+            />
+            <StatCard
+              label="Unrealized P&L"
+              value={
+                aggregatedStats
+                  ? formatCurrency(aggregatedStats.totalUnrealizedPnl)
+                  : account
+                    ? formatCurrency(account.unrealized_pnl)
+                    : isLoading ? 'Loading...' : '$0.00'
+              }
+              change={
+                aggregatedStats
+                  ? `${aggregatedStats.totalOpenPositions} positions`
+                  : account
+                    ? `${account.open_positions} positions`
+                    : ''
+              }
+              isPositive={
+                aggregatedStats
+                  ? aggregatedStats.totalUnrealizedPnl >= 0
+                  : account
+                    ? parseFloat(account.unrealized_pnl) >= 0
+                    : true
+              }
+              icon={
+                (aggregatedStats && aggregatedStats.totalUnrealizedPnl >= 0) ||
+                (account && parseFloat(account.unrealized_pnl) >= 0)
+                  ? TrendingUp
+                  : TrendingDown
+              }
+            />
+            <StatCard
+              label="Open Positions"
+              value={
+                aggregatedStats
+                  ? String(aggregatedStats.totalOpenPositions)
+                  : account
+                    ? String(account.open_positions)
+                    : isLoading ? '...' : '0'
+              }
+              subtext={
+                aggregatedStats
+                  ? `${formatCurrency(aggregatedStats.totalMarginUsed)} margin`
+                  : account
+                    ? `${formatCurrency(account.margin_used)} margin`
+                    : ''
+              }
+              icon={Activity}
+            />
+            <StatCard
+              label="Win Rate"
+              value={performance ? formatPercent(performance.win_rate) : isLoading ? '...' : '0%'}
+              subtext={performance ? `${performance.total_trades} trades` : ''}
+              icon={Target}
+            />
+          </motion.div>
 
-        {/* Order History */}
-        <motion.div variants={itemVariants}>
-          <OrderHistory orders={orders} />
-        </motion.div>
-      </div>
+          {/* TradingView Real-Time Chart - Full Width */}
+          <motion.div variants={itemVariants}>
+            <div className="prometheus-panel-surface p-3">
+              <TradingViewWidget
+                symbol={selectedSymbol}
+                interval="60"
+                height={500}
+                theme="dark"
+                allowSymbolChange={true}
+                showToolbar={true}
+                showDrawingTools={true}
+              />
+            </div>
+          </motion.div>
 
-      {/* Quick Stats Footer - Real Data */}
-      <motion.div
-        variants={itemVariants}
-        className="grid grid-cols-2 md:grid-cols-4 gap-4"
-      >
-        <div className="card-gold p-5 flex items-center gap-4">
-          <div className="p-3 bg-imperial-500/20 rounded-xl">
-            <Zap size={22} className="text-imperial-400" />
+          {/* Main Content Grid */}
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+            {/* Performance Chart - Takes 2 columns */}
+            <motion.div variants={itemVariants} className="xl:col-span-2">
+              <PerformanceChart height={350} />
+            </motion.div>
+
+            {/* AI Consensus Panel - Now with real data */}
+            <motion.div variants={itemVariants}>
+              <AIConsensusPanel
+                result={consensusResult}
+                isLoading={isAnalyzing}
+                onAnalyze={handleAnalyze}
+              />
+            </motion.div>
           </div>
-          <div>
-            <p className="text-xs text-dark-500 uppercase tracking-wider">Symbol</p>
-            <p className="font-mono font-bold text-lg text-gradient-gold">{selectedSymbol}</p>
+
+          {/* Positions & Orders Grid */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            {/* Positions Table */}
+            <motion.div variants={itemVariants}>
+              <PositionsTable
+                positions={positions}
+                onClose={(id) => {
+                  // Find position symbol by id
+                  const pos = positions.find((p) => p.id === id)
+                  if (pos) {
+                    tradingApi.closePosition(pos.symbol).then(() => {
+                      fetchAccountData()
+                    }).catch(console.error)
+                  }
+                }}
+                onModify={(id) => console.log('Modify position:', id)}
+              />
+            </motion.div>
+
+            {/* Order History */}
+            <motion.div variants={itemVariants}>
+              <OrderHistory orders={orders} />
+            </motion.div>
           </div>
-        </div>
-        <div className="card-gold p-5 flex items-center gap-4">
-          <div className="p-3 bg-primary-500/20 rounded-xl">
-            <BarChart3 size={22} className="text-primary-400" />
-          </div>
-          <div>
-            <p className="text-xs text-dark-500 uppercase tracking-wider">Total Trades</p>
-            <p className="font-mono font-bold text-lg text-gradient-gold">{performance?.total_trades ?? 0}</p>
-          </div>
-        </div>
-        <div className="card-gold p-5 flex items-center gap-4">
-          <div className="p-3 bg-profit/20 rounded-xl">
-            <TrendingUp size={22} className="text-profit" />
-          </div>
-          <div>
-            <p className="text-xs text-dark-500 uppercase tracking-wider">Best Trade</p>
-            <p className="font-mono font-bold text-lg text-profit">
-              {performance ? formatCurrency(performance.largest_win) : '$0.00'}
-            </p>
-          </div>
-        </div>
-        <div className="card-gold p-5 flex items-center gap-4">
-          <div className="p-3 bg-loss/20 rounded-xl">
-            <TrendingDown size={22} className="text-loss" />
-          </div>
-          <div>
-            <p className="text-xs text-dark-500 uppercase tracking-wider">Worst Trade</p>
-            <p className="font-mono font-bold text-lg text-loss">
-              {performance ? formatCurrency(performance.largest_loss) : '$0.00'}
-            </p>
-          </div>
-        </div>
-      </motion.div>
+
+          {/* Quick Stats Footer - Real Data */}
+          <motion.div
+            variants={itemVariants}
+            className="grid grid-cols-2 md:grid-cols-4 gap-4"
+          >
+            <div className="card-gold p-5 flex items-center gap-4">
+              <div className="p-3 bg-imperial-500/20 rounded-xl">
+                <Zap size={22} className="text-imperial-400" />
+              </div>
+              <div>
+                <p className="text-xs text-dark-500 uppercase tracking-wider">Symbol</p>
+                <p className="font-mono font-bold text-lg text-gradient-gold">{selectedSymbol}</p>
+              </div>
+            </div>
+            <div className="card-gold p-5 flex items-center gap-4">
+              <div className="p-3 bg-primary-500/20 rounded-xl">
+                <BarChart3 size={22} className="text-primary-400" />
+              </div>
+              <div>
+                <p className="text-xs text-dark-500 uppercase tracking-wider">Total Trades</p>
+                <p className="font-mono font-bold text-lg text-gradient-gold">{performance?.total_trades ?? 0}</p>
+              </div>
+            </div>
+            <div className="card-gold p-5 flex items-center gap-4">
+              <div className="p-3 bg-profit/20 rounded-xl">
+                <TrendingUp size={22} className="text-profit" />
+              </div>
+              <div>
+                <p className="text-xs text-dark-500 uppercase tracking-wider">Best Trade</p>
+                <p className="font-mono font-bold text-lg text-profit">
+                  {performance ? formatCurrency(performance.largest_win) : '$0.00'}
+                </p>
+              </div>
+            </div>
+            <div className="card-gold p-5 flex items-center gap-4">
+              <div className="p-3 bg-loss/20 rounded-xl">
+                <TrendingDown size={22} className="text-loss" />
+              </div>
+              <div>
+                <p className="text-xs text-dark-500 uppercase tracking-wider">Worst Trade</p>
+                <p className="font-mono font-bold text-lg text-loss">
+                  {performance ? formatCurrency(performance.largest_loss) : '$0.00'}
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        </>
+      )}
     </motion.div>
   )
 }

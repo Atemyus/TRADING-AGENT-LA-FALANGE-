@@ -20,7 +20,7 @@ import {
   Shield,
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
-import { analyticsApi } from '@/lib/api'
+import { analyticsApi, brokerAccountsApi } from '@/lib/api'
 import { MusicPlayer } from '@/components/common/MusicPlayer'
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
 import { useAuth } from '@/contexts/AuthContext'
@@ -40,7 +40,7 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname()
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [accountData, setAccountData] = useState<{ balance: number; todayPnl: number } | null>(null)
+  const [accountData, setAccountData] = useState<{ balance: number | null; todayPnl: number | null } | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [connectionError, setConnectionError] = useState<string | null>(null)
   const [selectedBrokerId, setSelectedBrokerId] = useState<number | null>(null)
@@ -73,6 +73,27 @@ export default function DashboardLayout({
 
   useEffect(() => {
     const fetchAccountData = async () => {
+      if (selectedBrokerId) {
+        try {
+          const [scopedAccount, scopedStatus] = await Promise.all([
+            brokerAccountsApi.getAccountInfo(selectedBrokerId),
+            brokerAccountsApi.getBotStatus(selectedBrokerId).catch(() => null),
+          ])
+
+          setAccountData({
+            balance: scopedAccount.balance ?? null,
+            todayPnl: scopedStatus?.statistics?.daily_pnl ?? scopedAccount.unrealized_pnl ?? null,
+          })
+          setIsConnected(true)
+          setConnectionError(null)
+        } catch {
+          setIsConnected(false)
+          setConnectionError('Unable to connect to selected workspace')
+          setAccountData(null)
+        }
+        return
+      }
+
       try {
         const data = await analyticsApi.getAccount()
         setAccountData({
@@ -91,7 +112,12 @@ export default function DashboardLayout({
     fetchAccountData()
     const interval = setInterval(fetchAccountData, 30000) // Update every 30s
     return () => clearInterval(interval)
-  }, [])
+  }, [selectedBrokerId])
+
+  const balanceValue = accountData?.balance ?? null
+  const todayPnlValue = accountData?.todayPnl ?? null
+  const hasBalanceValue = typeof balanceValue === 'number'
+  const hasTodayPnlValue = typeof todayPnlValue === 'number'
 
   return (
     <ProtectedRoute>
@@ -333,10 +359,9 @@ export default function DashboardLayout({
                 <div className="text-right">
                   <p className="text-xs text-dark-500 uppercase tracking-wider mb-1">Balance</p>
                   <p className="text-xl font-bold font-mono text-gradient-gold">
-                    {accountData
-                      ? `$${accountData.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                      : '—'
-                    }
+                    {hasBalanceValue
+                      ? `$${balanceValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                      : '--'}
                   </p>
                 </div>
 
@@ -345,16 +370,19 @@ export default function DashboardLayout({
                 <div className="text-right">
                   <p className="text-xs text-dark-500 uppercase tracking-wider mb-1">Today P&L</p>
                   <div className="flex items-center gap-2 justify-end">
-                    {accountData && (
-                      accountData.todayPnl >= 0
+                    {hasTodayPnlValue && (
+                      todayPnlValue >= 0
                         ? <TrendingUp size={18} className="text-profit" />
                         : <TrendingDown size={18} className="text-loss" />
                     )}
-                    <p className={`text-xl font-bold font-mono ${accountData && accountData.todayPnl >= 0 ? 'text-profit' : 'text-loss'}`}>
-                      {accountData
-                        ? `${accountData.todayPnl >= 0 ? '+' : ''}$${accountData.todayPnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                        : '—'
-                      }
+                    <p className={`text-xl font-bold font-mono ${
+                      hasTodayPnlValue
+                        ? (todayPnlValue >= 0 ? 'text-profit' : 'text-loss')
+                        : 'text-dark-300'
+                    }`}>
+                      {hasTodayPnlValue
+                        ? `${todayPnlValue >= 0 ? '+' : ''}$${todayPnlValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        : '--'}
                     </p>
                   </div>
                 </div>
