@@ -14,9 +14,9 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.config import settings
 from src.core.database import get_db
 from src.core.models import License, LicenseStatus, WhopOrder, WhopOrderStatus, WhopProduct
-from src.core.config import settings
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
