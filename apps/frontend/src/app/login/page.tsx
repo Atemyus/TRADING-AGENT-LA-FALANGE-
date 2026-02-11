@@ -16,8 +16,9 @@ import {
   AlertCircle,
 } from 'lucide-react'
 import { MusicPlayer } from '@/components/common/MusicPlayer'
+import { getApiBaseUrl, getErrorMessageFromPayload, parseJsonResponse } from '@/lib/http'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+const API_URL = getApiBaseUrl()
 
 export default function LoginPage() {
   const router = useRouter()
@@ -41,10 +42,19 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       })
 
-      const data = await response.json()
+      const data = await parseJsonResponse<{
+        access_token: string
+        refresh_token: string
+        detail?: string
+        message?: string
+      }>(response)
 
       if (!response.ok) {
-        throw new Error(data.detail || 'Login failed')
+        throw new Error(getErrorMessageFromPayload(data, 'Login failed'))
+      }
+
+      if (!data?.access_token || !data?.refresh_token) {
+        throw new Error('Invalid login response from server')
       }
 
       // Store tokens

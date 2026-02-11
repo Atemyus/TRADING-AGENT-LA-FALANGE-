@@ -3,32 +3,7 @@
  * Connects to real backend endpoints for live data
  */
 
-// Dynamically determine API URL based on current page location
-function getApiBaseUrl(): string {
-  // First check environment variable
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL;
-  }
-
-  // If running in browser, derive from current location
-  if (typeof window !== 'undefined') {
-    const protocol = window.location.protocol;
-    const host = window.location.host;
-
-    // If we're on localhost with a specific port (like 3000 for Next.js dev),
-    // assume backend is on port 8000
-    if (host.includes('localhost') || host.includes('127.0.0.1')) {
-      const hostname = window.location.hostname;
-      return `http://${hostname}:8000`;
-    }
-
-    // For production (Railway, etc.), use same host
-    return `${protocol}//${host}`;
-  }
-
-  // Fallback for SSR
-  return 'http://localhost:8000';
-}
+import { getApiBaseUrl, getErrorMessageFromPayload, parseJsonResponse } from './http'
 
 const API_BASE_URL = getApiBaseUrl()
 
@@ -295,18 +270,15 @@ async function fetchApi<T>(
     } else if (response.status === 500) {
       errorMessage = 'Internal server error. Please check the backend logs.'
     } else {
-      try {
-        const error = await response.json()
-        errorMessage = error.detail || error.message || errorMessage
-      } catch {
-        // Response is not JSON, use default message
-      }
+      const errorPayload = await parseJsonResponse<Record<string, unknown>>(response)
+      errorMessage = getErrorMessageFromPayload(errorPayload, errorMessage)
     }
 
     throw new Error(errorMessage)
   }
 
-  return response.json()
+  const payload = await parseJsonResponse<T>(response)
+  return (payload ?? ({} as T))
 }
 
 // ============ AI Analysis API ============

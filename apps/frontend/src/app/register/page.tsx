@@ -19,8 +19,9 @@ import {
   Key,
 } from 'lucide-react'
 import { MusicPlayer } from '@/components/common/MusicPlayer'
+import { getApiBaseUrl, getErrorMessageFromPayload, parseJsonResponse } from '@/lib/http'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+const API_URL = getApiBaseUrl()
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -81,10 +82,10 @@ export default function RegisterPage() {
         }),
       })
 
-      const data = await response.json()
+      const data = await parseJsonResponse<Record<string, unknown>>(response)
 
       if (!response.ok) {
-        throw new Error(data.detail || 'Registration failed')
+        throw new Error(getErrorMessageFromPayload(data, 'Registration failed'))
       }
 
       // Auto-login after registration
@@ -99,9 +100,12 @@ export default function RegisterPage() {
         }),
       })
 
-      const loginData = await loginResponse.json()
+      const loginData = await parseJsonResponse<{
+        access_token: string
+        refresh_token: string
+      }>(loginResponse)
 
-      if (loginResponse.ok) {
+      if (loginResponse.ok && loginData?.access_token && loginData?.refresh_token) {
         localStorage.setItem('access_token', loginData.access_token)
         localStorage.setItem('refresh_token', loginData.refresh_token)
       }

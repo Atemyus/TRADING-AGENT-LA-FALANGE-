@@ -13,8 +13,9 @@ import {
   Send,
 } from 'lucide-react'
 import { MusicPlayer } from '@/components/common/MusicPlayer'
+import { getApiBaseUrl, getErrorMessageFromPayload, parseJsonResponse } from '@/lib/http'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+const API_URL = getApiBaseUrl()
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
@@ -35,14 +36,14 @@ export default function ForgotPasswordPage() {
         body: JSON.stringify({ email }),
       })
 
-      const data = await response.json()
+      const data = await parseJsonResponse<{ message?: string; detail?: string }>(response)
 
       if (response.ok) {
         setStatus('success')
-        setMessage(data.message)
+        setMessage(data?.message || 'Reset link sent successfully')
       } else {
         setStatus('error')
-        setMessage(data.detail || 'An error occurred')
+        setMessage(getErrorMessageFromPayload(data, 'An error occurred'))
       }
     } catch {
       setStatus('error')

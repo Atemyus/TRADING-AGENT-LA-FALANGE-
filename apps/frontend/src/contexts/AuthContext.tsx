@@ -2,8 +2,14 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
+import { getApiBaseUrl, getErrorMessageFromPayload, parseJsonResponse } from '@/lib/http'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+const API_URL = getApiBaseUrl()
+
+type TokenResponse = {
+  access_token: string
+  refresh_token: string
+}
 
 interface User {
   id: number
@@ -83,7 +89,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error('Token refresh failed')
       }
 
-      const data = await response.json()
+      const data = await parseJsonResponse<TokenResponse>(response)
+      if (!data?.access_token || !data?.refresh_token) {
+        throw new Error('Invalid token refresh response')
+      }
+
       setTokens(data.access_token, data.refresh_token)
       return true
     } catch {
@@ -119,7 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             },
           })
           if (retryResponse.ok) {
-            const data = await retryResponse.json()
+            const data = await parseJsonResponse<User>(retryResponse)
             setUser(data)
           } else {
             setUser(null)
@@ -130,7 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           clearTokens()
         }
       } else if (response.ok) {
-        const data = await response.json()
+        const data = await parseJsonResponse<User>(response)
         setUser(data)
       } else {
         setUser(null)
@@ -156,10 +166,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ email, password }),
     })
 
-    const data = await response.json()
+    const data = await parseJsonResponse<TokenResponse>(response)
 
     if (!response.ok) {
-      throw new Error(data.detail || 'Login failed')
+      throw new Error(getErrorMessageFromPayload(data, 'Login failed'))
+    }
+
+    if (!data?.access_token || !data?.refresh_token) {
+      throw new Error('Invalid login response from server')
     }
 
     setTokens(data.access_token, data.refresh_token)
@@ -182,10 +196,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }),
     })
 
-    const data = await response.json()
+    const data = await parseJsonResponse<Record<string, unknown>>(response)
 
     if (!response.ok) {
-      throw new Error(data.detail || 'Registration failed')
+      throw new Error(getErrorMessageFromPayload(data, 'Registration failed'))
     }
 
     // Auto-login after registration

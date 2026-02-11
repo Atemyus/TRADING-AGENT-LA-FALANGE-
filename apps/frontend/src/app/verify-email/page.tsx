@@ -13,8 +13,9 @@ import {
   ArrowLeft,
 } from 'lucide-react'
 import { MusicPlayer } from '@/components/common/MusicPlayer'
+import { getApiBaseUrl, getErrorMessageFromPayload, parseJsonResponse } from '@/lib/http'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+const API_URL = getApiBaseUrl()
 
 function VerifyEmailContent() {
   const searchParams = useSearchParams()
@@ -41,18 +42,18 @@ function VerifyEmailContent() {
           body: JSON.stringify({ token }),
         })
 
-        const data = await response.json()
+        const data = await parseJsonResponse<{ message?: string; detail?: string }>(response)
 
         if (response.ok) {
           setStatus('success')
-          setMessage(data.message)
+          setMessage(data?.message || 'Email verified successfully')
           // Redirect to login after 3 seconds
           setTimeout(() => {
             router.push('/login')
           }, 3000)
         } else {
           setStatus('error')
-          setMessage(data.detail || 'Verification failed')
+          setMessage(getErrorMessageFromPayload(data, 'Verification failed'))
         }
       } catch {
         setStatus('error')

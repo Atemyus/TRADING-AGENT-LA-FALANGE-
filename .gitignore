@@ -227,6 +227,8 @@ out/
 apps/frontend/.next/
 apps/frontend/out/
 apps/frontend/node_modules/
+!apps/frontend/src/lib/
+!apps/frontend/src/lib/*.ts
 
 # Testing
 coverage/

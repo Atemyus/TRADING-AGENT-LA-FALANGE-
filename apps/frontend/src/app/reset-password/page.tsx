@@ -18,8 +18,9 @@ import {
   Loader2,
 } from 'lucide-react'
 import { MusicPlayer } from '@/components/common/MusicPlayer'
+import { getApiBaseUrl, getErrorMessageFromPayload, parseJsonResponse } from '@/lib/http'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+const API_URL = getApiBaseUrl()
 
 function ResetPasswordContent() {
   const searchParams = useSearchParams()
@@ -73,18 +74,18 @@ function ResetPasswordContent() {
         body: JSON.stringify({ token, password }),
       })
 
-      const data = await response.json()
+      const data = await parseJsonResponse<{ message?: string; detail?: string }>(response)
 
       if (response.ok) {
         setStatus('success')
-        setMessage(data.message)
+        setMessage(data?.message || 'Password reset successfully')
         // Redirect to login after 3 seconds
         setTimeout(() => {
           router.push('/login')
         }, 3000)
       } else {
         setStatus('error')
-        setMessage(data.detail || 'An error occurred')
+        setMessage(getErrorMessageFromPayload(data, 'An error occurred'))
       }
     } catch {
       setStatus('error')
