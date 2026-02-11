@@ -97,6 +97,16 @@ async def bootstrap_admin_and_license() -> None:
             print("ℹ️ Admin bootstrap skipped (set ADMIN_EMAIL and ADMIN_PASSWORD)")
             return
 
+        # bcrypt has a hard 72-byte input limit.
+        password_bytes_len = len(admin_password.encode("utf-8"))
+        if password_bytes_len > 72:
+            await session.commit()
+            print(
+                "⚠️ Admin bootstrap skipped: ADMIN_PASSWORD is longer than "
+                "72 bytes (bcrypt limit)."
+            )
+            return
+
         result = await session.execute(select(User).where(User.email == admin_email))
         admin_user = result.scalar_one_or_none()
 
@@ -109,10 +119,17 @@ async def bootstrap_admin_and_license() -> None:
             if username_exists.scalar_one_or_none():
                 username_candidate = admin_email.split("@")[0][:100] or "admin"
 
+            try:
+                hashed_password = get_password_hash(admin_password)
+            except Exception as exc:
+                await session.rollback()
+                print(f"⚠️ Admin bootstrap skipped: cannot hash ADMIN_PASSWORD ({exc})")
+                return
+
             admin_user = User(
                 email=admin_email,
                 username=username_candidate,
-                hashed_password=get_password_hash(admin_password),
+                hashed_password=hashed_password,
                 full_name=admin_full_name,
                 is_active=True,
                 is_verified=True,
@@ -127,7 +144,12 @@ async def bootstrap_admin_and_license() -> None:
         admin_user.is_active = True
         admin_user.is_verified = True
         admin_user.is_superuser = True
-        admin_user.hashed_password = get_password_hash(admin_password)
+        try:
+            admin_user.hashed_password = get_password_hash(admin_password)
+        except Exception as exc:
+            await session.rollback()
+            print(f"⚠️ Admin bootstrap skipped: cannot hash ADMIN_PASSWORD ({exc})")
+            return
         if admin_full_name is not None:
             admin_user.full_name = admin_full_name
 
