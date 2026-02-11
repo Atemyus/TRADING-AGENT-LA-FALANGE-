@@ -4,7 +4,6 @@ import { useState } from 'react'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
 import Image from 'next/image'
-import { useRouter } from 'next/navigation'
 import {
   Flame,
   Mail,
@@ -19,12 +18,10 @@ import {
   Key,
 } from 'lucide-react'
 import { MusicPlayer } from '@/components/common/MusicPlayer'
-import { getApiBaseUrl, getErrorMessageFromPayload, parseJsonResponse } from '@/lib/http'
-
-const API_URL = getApiBaseUrl()
+import { useAuth } from '@/contexts/AuthContext'
 
 export default function RegisterPage() {
-  const router = useRouter()
+  const { register } = useAuth()
   const [formData, setFormData] = useState({
     email: '',
     username: '',
@@ -68,50 +65,13 @@ export default function RegisterPage() {
     setIsLoading(true)
 
     try {
-      const response = await fetch(`${API_URL}/api/v1/auth/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: formData.email,
-          username: formData.username,
-          password: formData.password,
-          full_name: formData.fullName || null,
-          license_key: formData.licenseKey,
-        }),
+      await register({
+        email: formData.email,
+        username: formData.username,
+        password: formData.password,
+        full_name: formData.fullName || undefined,
+        license_key: formData.licenseKey,
       })
-
-      const data = await parseJsonResponse<Record<string, unknown>>(response)
-
-      if (!response.ok) {
-        throw new Error(getErrorMessageFromPayload(data, 'Registration failed'))
-      }
-
-      // Auto-login after registration
-      const loginResponse = await fetch(`${API_URL}/api/v1/auth/login/json`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: formData.email,
-          password: formData.password,
-        }),
-      })
-
-      const loginData = await parseJsonResponse<{
-        access_token: string
-        refresh_token: string
-      }>(loginResponse)
-
-      if (loginResponse.ok && loginData?.access_token && loginData?.refresh_token) {
-        localStorage.setItem('access_token', loginData.access_token)
-        localStorage.setItem('refresh_token', loginData.refresh_token)
-      }
-
-      // Redirect to dashboard
-      router.push('/dashboard')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
     } finally {

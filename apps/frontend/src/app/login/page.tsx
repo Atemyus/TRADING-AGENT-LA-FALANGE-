@@ -4,7 +4,6 @@ import { useState } from 'react'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
 import Image from 'next/image'
-import { useRouter } from 'next/navigation'
 import {
   Flame,
   Mail,
@@ -16,12 +15,10 @@ import {
   AlertCircle,
 } from 'lucide-react'
 import { MusicPlayer } from '@/components/common/MusicPlayer'
-import { getApiBaseUrl, getErrorMessageFromPayload, parseJsonResponse } from '@/lib/http'
-
-const API_URL = getApiBaseUrl()
+import { useAuth } from '@/contexts/AuthContext'
 
 export default function LoginPage() {
-  const router = useRouter()
+  const { login } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -34,35 +31,7 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
-      const response = await fetch(`${API_URL}/api/v1/auth/login/json`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
-      })
-
-      const data = await parseJsonResponse<{
-        access_token: string
-        refresh_token: string
-        detail?: string
-        message?: string
-      }>(response)
-
-      if (!response.ok) {
-        throw new Error(getErrorMessageFromPayload(data, 'Login failed'))
-      }
-
-      if (!data?.access_token || !data?.refresh_token) {
-        throw new Error('Invalid login response from server')
-      }
-
-      // Store tokens
-      localStorage.setItem('access_token', data.access_token)
-      localStorage.setItem('refresh_token', data.refresh_token)
-
-      // Redirect to dashboard
-      router.push('/dashboard')
+      await login(email, password)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
     } finally {
