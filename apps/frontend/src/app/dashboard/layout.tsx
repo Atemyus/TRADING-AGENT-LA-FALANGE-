@@ -20,7 +20,7 @@ import {
   Shield,
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
-import { analyticsApi, brokerAccountsApi } from '@/lib/api'
+import { brokerAccountsApi } from '@/lib/api'
 import { MusicPlayer } from '@/components/common/MusicPlayer'
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
 import { useAuth } from '@/contexts/AuthContext'
@@ -126,48 +126,91 @@ export default function DashboardLayout({
           return
         }
 
-        const [accountResult, statusResult] = await Promise.allSettled([
-          brokerAccountsApi.getAccountInfo(selectedBrokerId),
-          brokerAccountsApi.getBotStatus(selectedBrokerId),
-        ])
+        try {
+          const brokers = await brokerAccountsApi.list()
+          const selectedBroker = brokers.find((broker) => broker.id === selectedBrokerId)
+          if (!selectedBroker || !selectedBroker.is_enabled) {
+            setAccountData({ balance: null, todayPnl: null })
+            setIsConnected(false)
+            setConnectionError('Selected workspace is disabled')
+            return
+          }
 
-        const scopedAccount = accountResult.status === 'fulfilled' ? accountResult.value : null
-        const scopedStatus = statusResult.status === 'fulfilled' ? statusResult.value : null
+          const [accountResult, statusResult] = await Promise.allSettled([
+            brokerAccountsApi.getAccountInfo(selectedBrokerId),
+            brokerAccountsApi.getBotStatus(selectedBrokerId),
+          ])
 
-        const resolvedBalance = scopedAccount?.balance ?? fallbackSnapshot?.balance ?? null
-        const resolvedTodayPnl =
-          scopedStatus?.statistics?.daily_pnl ??
-          scopedAccount?.unrealized_pnl ??
-          fallbackSnapshot?.todayPnl ??
-          null
+          const scopedAccount = accountResult.status === 'fulfilled' ? accountResult.value : null
+          const scopedStatus = statusResult.status === 'fulfilled' ? statusResult.value : null
 
-        setAccountData({
-          balance: resolvedBalance,
-          todayPnl: resolvedTodayPnl,
-        })
+          const resolvedBalance = scopedAccount?.balance ?? fallbackSnapshot?.balance ?? null
+          const resolvedTodayPnl =
+            scopedStatus?.statistics?.daily_pnl ??
+            scopedAccount?.unrealized_pnl ??
+            fallbackSnapshot?.todayPnl ??
+            null
 
-        const hasAnyMetric = resolvedBalance !== null || resolvedTodayPnl !== null
-        if (hasAnyMetric) {
-          setIsConnected(true)
-          setConnectionError(null)
-        } else {
+          setAccountData({
+            balance: resolvedBalance,
+            todayPnl: resolvedTodayPnl,
+          })
+
+          const hasAnyMetric = resolvedBalance !== null || resolvedTodayPnl !== null
+          if (hasAnyMetric) {
+            setIsConnected(true)
+            setConnectionError(null)
+          } else {
+            setIsConnected(false)
+            setConnectionError('No live metrics for selected workspace')
+          }
+        } catch {
+          setAccountData(null)
           setIsConnected(false)
-          setConnectionError('No live metrics for selected workspace')
+          setConnectionError('Unable to load workspace metrics')
         }
         return
       }
 
       try {
-        const data = await analyticsApi.getAccount()
+        const brokers = await brokerAccountsApi.list()
+        const enabledBrokers = brokers.filter((broker) => broker.is_enabled)
+
+        if (enabledBrokers.length === 0) {
+          setAccountData({ balance: null, todayPnl: null })
+          setIsConnected(false)
+          setConnectionError('No enabled workspaces')
+          return
+        }
+
+        const [aggregated, allStatuses] = await Promise.all([
+          brokerAccountsApi.getAggregatedAccount().catch(() => null),
+          brokerAccountsApi.getAllStatuses().catch(() => null),
+        ])
+
+        const aggregateBalance = aggregated && aggregated.broker_count > 0
+          ? aggregated.total_balance
+          : null
+        const aggregateDailyPnl = allStatuses?.brokers?.reduce((sum, broker) => {
+          return sum + (broker.statistics?.daily_pnl || 0)
+        }, 0) ?? null
+
+        if (aggregateBalance === null && aggregateDailyPnl === null) {
+          setAccountData({ balance: null, todayPnl: null })
+          setIsConnected(false)
+          setConnectionError('Enabled workspaces are not connected')
+          return
+        }
+
         setAccountData({
-          balance: parseFloat(data.balance) || 0,
-          todayPnl: parseFloat(data.realized_pnl_today) || 0,
+          balance: aggregateBalance,
+          todayPnl: aggregateDailyPnl,
         })
         setIsConnected(true)
         setConnectionError(null)
       } catch {
         setIsConnected(false)
-        setConnectionError('Unable to connect to backend')
+        setConnectionError('Unable to load workspace metrics')
         setAccountData(null)
       }
     }

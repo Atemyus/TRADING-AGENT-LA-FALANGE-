@@ -30,8 +30,6 @@ import {
   Users,
   Server,
   Loader2,
-  ChevronDown,
-  ChevronUp,
   Flame,
   Sparkles,
 } from "lucide-react";
@@ -330,7 +328,6 @@ export default function BotControlPage() {
   const [brokerBalances, setBrokerBalances] = useState<Record<number, { balance: number | null; equity: number | null }>>({});
   const [selectedBrokerId, setSelectedBrokerId] = useState<number | null>(null);
   const [brokerLoading, setBrokerLoading] = useState<Record<number, boolean>>({});
-  const [showBrokersPanel, setShowBrokersPanel] = useState(true);
 
   useEffect(() => {
     const brokerIdParam = Number(searchParams.get("brokerId") || "");
@@ -571,69 +568,12 @@ export default function BotControlPage() {
     }
   }, [brokers, selectedBrokerId]);
 
-  const handleAction = async (action: "start" | "stop" | "pause" | "resume") => {
-    setIsActioning(true);
-    setError(null);
-
-    try {
-      switch (action) {
-        case "start":
-          await botApi.start();
-          break;
-        case "stop":
-          await botApi.stop();
-          break;
-        case "pause":
-          await botApi.pause();
-          break;
-        case "resume":
-          await botApi.resume();
-          break;
-      }
-      await fetchStatus();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : `Failed to ${action} bot`);
-    }
-
-    setIsActioning(false);
-  };
-
   const handleConfigUpdate = async (updates: Partial<BotConfig>) => {
     try {
       await botApi.updateConfig(updates);
       await fetchConfig();
     } catch (e) {
       console.error("Failed to update config:", e);
-    }
-  };
-
-  const getStatusColor = (s: string) => {
-    switch (s) {
-      case "running":
-        return "text-green-400";
-      case "paused":
-        return "text-yellow-400";
-      case "stopped":
-        return "text-slate-400";
-      case "error":
-        return "text-red-400";
-      default:
-        return "text-slate-400";
-    }
-  };
-
-  const getStatusIcon = (s: string) => {
-    switch (s) {
-      case "running":
-        return <Activity className="animate-pulse" />;
-      case "paused":
-        return <Pause />;
-      case "stopped":
-        return <Square />;
-      case "error":
-        return <AlertTriangle />;
-      default:
-        return <Square />;
     }
   };
 
@@ -703,11 +643,8 @@ export default function BotControlPage() {
 
       {/* Multi-Broker Panel */}
       {brokers.length > 0 && (
-        <div className="prometheus-panel-surface">
-          <button
-            onClick={() => setShowBrokersPanel(!showBrokersPanel)}
-            className="w-full p-4 flex items-center justify-between hover:bg-slate-700/50 transition-colors rounded-xl"
-          >
+        <div className="prometheus-panel-surface p-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-indigo-500/20 rounded-lg">
                 <Server size={20} className="text-indigo-400" />
@@ -725,9 +662,8 @@ export default function BotControlPage() {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              {/* Global controls */}
               <button
-                onClick={(e) => { e.stopPropagation(); handleStartAllBrokers(); }}
+                onClick={handleStartAllBrokers}
                 disabled={isActioning}
                 className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg flex items-center gap-1.5 disabled:opacity-50"
               >
@@ -735,399 +671,248 @@ export default function BotControlPage() {
                 Avvia Tutti
               </button>
               <button
-                onClick={(e) => { e.stopPropagation(); handleStopAllBrokers(); }}
+                onClick={handleStopAllBrokers}
                 disabled={isActioning}
                 className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg flex items-center gap-1.5 disabled:opacity-50"
               >
                 <Square size={14} />
                 Ferma Tutti
               </button>
-              {showBrokersPanel ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
             </div>
-          </button>
+          </div>
 
-          {showBrokersPanel && (
-            <div className="px-4 pb-4 space-y-3">
-              {brokers.map((broker) => {
-                const brokerStatus = brokerStatuses[broker.id];
-                const isRunning = brokerStatus?.status === 'running';
-                const isPaused = brokerStatus?.status === 'paused';
-                const isLoading = brokerLoading[broker.id];
-                const isSelected = selectedBrokerId === broker.id;
+          <div className="space-y-3">
+            {brokers.map((broker) => {
+              const brokerStatus = brokerStatuses[broker.id];
+              const isRunning = brokerStatus?.status === 'running';
+              const isPaused = brokerStatus?.status === 'paused';
+              const isLoading = brokerLoading[broker.id];
+              const isSelected = selectedBrokerId === broker.id;
 
-                return (
-                  <motion.div
-                    key={broker.id}
-                    initial={{ opacity: 0, y: -5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className={`p-4 rounded-lg border transition-colors cursor-pointer ${
-                      isSelected
-                        ? 'bg-indigo-500/10 border-indigo-500'
-                        : 'bg-dark-900/70 border-dark-700 hover:border-primary-500/35'
-                    }`}
-                    onClick={() => setSelectedBrokerId(isSelected ? null : broker.id)}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        {/* Status indicator */}
-                        <div className={`w-3 h-3 rounded-full ${
-                          isRunning ? 'bg-green-500 animate-pulse' :
-                          isPaused ? 'bg-yellow-500' :
-                          broker.is_enabled ? 'bg-slate-500' : 'bg-slate-700'
-                        }`} />
+              return (
+                <motion.div
+                  key={broker.id}
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={`p-4 rounded-lg border transition-colors cursor-pointer ${
+                    isSelected
+                      ? 'bg-indigo-500/10 border-indigo-500'
+                      : 'bg-dark-900/70 border-dark-700 hover:border-primary-500/35'
+                  }`}
+                  onClick={() => setSelectedBrokerId(isSelected ? null : broker.id)}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className={`w-3 h-3 rounded-full ${
+                        isRunning ? 'bg-green-500 animate-pulse' :
+                        isPaused ? 'bg-yellow-500' :
+                        broker.is_enabled ? 'bg-slate-500' : 'bg-slate-700'
+                      }`} />
 
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-medium">{broker.name}</h4>
-                            {!broker.is_enabled && (
-                              <span className="text-xs px-1.5 py-0.5 bg-slate-700 rounded text-slate-400">
-                                Disabilitato
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs text-slate-400">
-                            {broker.symbols.slice(0, 3).join(', ')}
-                            {broker.symbols.length > 3 && ` +${broker.symbols.length - 3}`}
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-medium">{broker.name}</h4>
+                          {!broker.is_enabled && (
+                            <span className="text-xs px-1.5 py-0.5 bg-slate-700 rounded text-slate-400">
+                              Disabilitato
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-400">
+                          {broker.symbols.slice(0, 3).join(', ')}
+                          {broker.symbols.length > 3 && ` +${broker.symbols.length - 3}`}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      {brokerBalances[broker.id]?.balance != null && (
+                        <div className="text-center px-3 py-1 bg-indigo-500/10 rounded-lg border border-indigo-500/30">
+                          <p className="text-indigo-400 text-xs">Balance</p>
+                          <p className="font-bold text-indigo-300">
+                            ${brokerBalances[broker.id].balance?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </p>
                         </div>
-                      </div>
+                      )}
 
-                      <div className="flex items-center gap-3">
-                        {/* Balance */}
-                        {brokerBalances[broker.id]?.balance != null && (
-                          <div className="text-center px-3 py-1 bg-indigo-500/10 rounded-lg border border-indigo-500/30">
-                            <p className="text-indigo-400 text-xs">Balance</p>
-                            <p className="font-bold text-indigo-300">
-                              ${brokerBalances[broker.id].balance?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {brokerStatus && (
+                        <div className="flex items-center gap-4 text-sm">
+                          <div className="text-center">
+                            <p className="text-slate-400 text-xs">Analisi</p>
+                            <p className="font-medium">{brokerStatus.statistics?.analyses_today || 0}</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-slate-400 text-xs">Trade</p>
+                            <p className="font-medium">{brokerStatus.statistics?.trades_today || 0}</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-slate-400 text-xs">P&L</p>
+                            <p className={`font-medium ${
+                              (brokerStatus.statistics?.daily_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'
+                            }`}>
+                              ${(brokerStatus.statistics?.daily_pnl || 0).toFixed(2)}
                             </p>
                           </div>
-                        )}
+                        </div>
+                      )}
 
-                        {/* Statistics */}
-                        {brokerStatus && (
-                          <div className="flex items-center gap-4 text-sm">
-                            <div className="text-center">
-                              <p className="text-slate-400 text-xs">Analisi</p>
-                              <p className="font-medium">{brokerStatus.statistics?.analyses_today || 0}</p>
-                            </div>
-                            <div className="text-center">
-                              <p className="text-slate-400 text-xs">Trade</p>
-                              <p className="font-medium">{brokerStatus.statistics?.trades_today || 0}</p>
-                            </div>
-                            <div className="text-center">
-                              <p className="text-slate-400 text-xs">P&L</p>
-                              <p className={`font-medium ${
-                                (brokerStatus.statistics?.daily_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'
-                              }`}>
-                                ${(brokerStatus.statistics?.daily_pnl || 0).toFixed(2)}
-                              </p>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Control buttons */}
-                        {broker.is_enabled && (
-                          <div className="flex items-center gap-2">
-                            {isRunning ? (
-                              <>
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handlePauseBroker(broker.id); }}
-                                  disabled={isLoading}
-                                  className="px-3 py-1.5 bg-yellow-600 hover:bg-yellow-700 text-white text-sm rounded-lg flex items-center gap-1.5 disabled:opacity-50"
-                                >
-                                  {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Pause size={14} />}
-                                  Pause
-                                </button>
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleStopBroker(broker.id); }}
-                                  disabled={isLoading}
-                                  className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg flex items-center gap-1.5 disabled:opacity-50"
-                                >
-                                  {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Square size={14} />}
-                                  Stop
-                                </button>
-                              </>
-                            ) : isPaused ? (
-                              <>
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleResumeBroker(broker.id); }}
-                                  disabled={isLoading}
-                                  className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg flex items-center gap-1.5 disabled:opacity-50"
-                                >
-                                  {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-                                  Resume
-                                </button>
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleStopBroker(broker.id); }}
-                                  disabled={isLoading}
-                                  className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg flex items-center gap-1.5 disabled:opacity-50"
-                                >
-                                  {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Square size={14} />}
-                                  Stop
-                                </button>
-                              </>
-                            ) : (
+                      {broker.is_enabled && (
+                        <div className="flex items-center gap-2">
+                          {isRunning ? (
+                            <>
                               <button
-                                onClick={(e) => { e.stopPropagation(); handleStartBroker(broker.id); }}
+                                onClick={(e) => { e.stopPropagation(); handlePauseBroker(broker.id); }}
+                                disabled={isLoading}
+                                className="px-3 py-1.5 bg-yellow-600 hover:bg-yellow-700 text-white text-sm rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+                              >
+                                {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Pause size={14} />}
+                                Pause
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleStopBroker(broker.id); }}
+                                disabled={isLoading}
+                                className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+                              >
+                                {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Square size={14} />}
+                                Stop
+                              </button>
+                            </>
+                          ) : isPaused ? (
+                            <>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleResumeBroker(broker.id); }}
                                 disabled={isLoading}
                                 className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg flex items-center gap-1.5 disabled:opacity-50"
                               >
                                 {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-                                Start
+                                Resume
                               </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleStopBroker(broker.id); }}
+                                disabled={isLoading}
+                                className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+                              >
+                                {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Square size={14} />}
+                                Stop
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleStartBroker(broker.id); }}
+                              disabled={isLoading}
+                              className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg flex items-center gap-1.5 disabled:opacity-50"
+                            >
+                              {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+                              Start
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
+                  </div>
 
-                    {/* Expanded details */}
-                    {isSelected && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        className="mt-4 pt-4 border-t border-slate-700"
-                      >
-                        {/* Statistics Grid - Always visible when expanded */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-4">
-                          <div className="bg-slate-800 rounded-lg p-3">
-                            <div className="flex items-center gap-2 text-slate-400 mb-1">
-                              <Zap size={14} />
-                              <span className="text-xs">Analisi Oggi</span>
-                            </div>
-                            <p className="text-xl font-bold">{brokerStatus?.statistics?.analyses_today || 0}</p>
+                  {isSelected && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      className="mt-4 pt-4 border-t border-slate-700"
+                    >
+                      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-4">
+                        <div className="bg-slate-800 rounded-lg p-3">
+                          <div className="flex items-center gap-2 text-slate-400 mb-1">
+                            <Zap size={14} />
+                            <span className="text-xs">Analisi Oggi</span>
                           </div>
-                          <div className="bg-slate-800 rounded-lg p-3">
-                            <div className="flex items-center gap-2 text-slate-400 mb-1">
-                              <BarChart3 size={14} />
-                              <span className="text-xs">Trade Oggi</span>
-                            </div>
-                            <p className="text-xl font-bold">{brokerStatus?.statistics?.trades_today || 0}</p>
-                          </div>
-                          <div className="bg-slate-800 rounded-lg p-3">
-                            <div className="flex items-center gap-2 text-slate-400 mb-1">
-                              <DollarSign size={14} />
-                              <span className="text-xs">P&L Giornaliero</span>
-                            </div>
-                            <p className={`text-xl font-bold ${
-                              (brokerStatus?.statistics?.daily_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'
-                            }`}>
-                              {(brokerStatus?.statistics?.daily_pnl || 0) >= 0 ? '+' : ''}${(brokerStatus?.statistics?.daily_pnl || 0).toFixed(2)}
-                            </p>
-                          </div>
-                          <div className="bg-slate-800 rounded-lg p-3">
-                            <div className="flex items-center gap-2 text-slate-400 mb-1">
-                              <Activity size={14} />
-                              <span className="text-xs">Posizioni Aperte</span>
-                            </div>
-                            <p className="text-xl font-bold">{brokerStatus?.statistics?.open_positions || 0}</p>
-                          </div>
-                          <div className="bg-slate-800 rounded-lg p-3">
-                            <div className="flex items-center gap-2 text-slate-400 mb-1">
-                              <Clock size={14} />
-                              <span className="text-xs">Intervallo</span>
-                            </div>
-                            <p className="text-xl font-bold">{brokerStatus?.config?.analysis_interval ? `${Math.floor(brokerStatus.config.analysis_interval / 60)}m` : '-'}</p>
-                          </div>
-                          <div className="bg-slate-800 rounded-lg p-3">
-                            <div className="flex items-center gap-2 text-slate-400 mb-1">
-                              <Brain size={14} />
-                              <span className="text-xs">Modelli AI</span>
-                            </div>
-                            <p className="text-xl font-bold">{brokerStatus?.config?.enabled_models?.length || 8}</p>
-                          </div>
+                          <p className="text-xl font-bold">{brokerStatus?.statistics?.analyses_today || 0}</p>
                         </div>
-
-                        {/* Config info */}
-                        <div className="flex flex-wrap gap-2 mb-4">
-                          <span className="px-2 py-1 bg-purple-500/20 text-purple-300 text-xs rounded-full capitalize">
-                            Modalita: {brokerStatus?.config?.analysis_mode || broker.analysis_mode}
-                          </span>
-                          <span className="px-2 py-1 bg-blue-500/20 text-blue-300 text-xs rounded-full">
-                            Risk: {broker.risk_per_trade_percent}%
-                          </span>
-                          <span className="px-2 py-1 bg-green-500/20 text-green-300 text-xs rounded-full">
-                            Max Posizioni: {broker.max_open_positions}
-                          </span>
-                          <span className="px-2 py-1 bg-orange-500/20 text-orange-300 text-xs rounded-full">
-                            Orario: {broker.trading_start_hour}:00 - {broker.trading_end_hour}:00 UTC
-                          </span>
+                        <div className="bg-slate-800 rounded-lg p-3">
+                          <div className="flex items-center gap-2 text-slate-400 mb-1">
+                            <BarChart3 size={14} />
+                            <span className="text-xs">Trade Oggi</span>
+                          </div>
+                          <p className="text-xl font-bold">{brokerStatus?.statistics?.trades_today || 0}</p>
                         </div>
-
-                        {brokerStatus?.last_error && (
-                          <div className="mb-4 p-2 bg-red-500/10 border border-red-500/30 rounded text-sm text-red-400">
-                            <AlertTriangle size={14} className="inline mr-1" />
-                            {brokerStatus.last_error}
+                        <div className="bg-slate-800 rounded-lg p-3">
+                          <div className="flex items-center gap-2 text-slate-400 mb-1">
+                            <DollarSign size={14} />
+                            <span className="text-xs">P&L Giornaliero</span>
                           </div>
-                        )}
-
-                        {/* AI Reasoning Panel for this broker */}
-                        {isRunning && (
-                          <div className="mt-4">
-                            <AIReasoningPanel
-                              brokerId={broker.id}
-                              brokerName={broker.name}
-                              compact={true}
-                            />
+                          <p className={`text-xl font-bold ${
+                            (brokerStatus?.statistics?.daily_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'
+                          }`}>
+                            {(brokerStatus?.statistics?.daily_pnl || 0) >= 0 ? '+' : ''}${(brokerStatus?.statistics?.daily_pnl || 0).toFixed(2)}
+                          </p>
+                        </div>
+                        <div className="bg-slate-800 rounded-lg p-3">
+                          <div className="flex items-center gap-2 text-slate-400 mb-1">
+                            <Activity size={14} />
+                            <span className="text-xs">Posizioni Aperte</span>
                           </div>
-                        )}
-                      </motion.div>
-                    )}
-                  </motion.div>
-                );
-              })}
+                          <p className="text-xl font-bold">{brokerStatus?.statistics?.open_positions || 0}</p>
+                        </div>
+                        <div className="bg-slate-800 rounded-lg p-3">
+                          <div className="flex items-center gap-2 text-slate-400 mb-1">
+                            <Clock size={14} />
+                            <span className="text-xs">Intervallo</span>
+                          </div>
+                          <p className="text-xl font-bold">{brokerStatus?.config?.analysis_interval ? `${Math.floor(brokerStatus.config.analysis_interval / 60)}m` : '-'}</p>
+                        </div>
+                        <div className="bg-slate-800 rounded-lg p-3">
+                          <div className="flex items-center gap-2 text-slate-400 mb-1">
+                            <Brain size={14} />
+                            <span className="text-xs">Modelli AI</span>
+                          </div>
+                          <p className="text-xl font-bold">{brokerStatus?.config?.enabled_models?.length || 8}</p>
+                        </div>
+                      </div>
 
-              {/* No brokers configured */}
-              {brokers.filter(b => b.is_enabled).length === 0 && (
-                <div className="text-center py-6 text-slate-400">
-                  <Users size={32} className="mx-auto mb-2 opacity-50" />
-                  <p>Nessun broker abilitato</p>
-                  <p className="text-sm">Vai su Settings -&gt; Broker Accounts per configurare</p>
-                </div>
-              )}
-            </div>
-          )}
+                      <div className="flex flex-wrap gap-2 mb-4">
+                        <span className="px-2 py-1 bg-purple-500/20 text-purple-300 text-xs rounded-full capitalize">
+                          Modalita: {brokerStatus?.config?.analysis_mode || broker.analysis_mode}
+                        </span>
+                        <span className="px-2 py-1 bg-blue-500/20 text-blue-300 text-xs rounded-full">
+                          Risk: {broker.risk_per_trade_percent}%
+                        </span>
+                        <span className="px-2 py-1 bg-green-500/20 text-green-300 text-xs rounded-full">
+                          Max Posizioni: {broker.max_open_positions}
+                        </span>
+                        <span className="px-2 py-1 bg-orange-500/20 text-orange-300 text-xs rounded-full">
+                          Orario: {broker.trading_start_hour}:00 - {broker.trading_end_hour}:00 UTC
+                        </span>
+                      </div>
+
+                      {brokerStatus?.last_error && (
+                        <div className="mb-4 p-2 bg-red-500/10 border border-red-500/30 rounded text-sm text-red-400">
+                          <AlertTriangle size={14} className="inline mr-1" />
+                          {brokerStatus.last_error}
+                        </div>
+                      )}
+
+                      {isRunning && (
+                        <div className="mt-4">
+                          <AIReasoningPanel
+                            brokerId={broker.id}
+                            brokerName={broker.name}
+                            compact={true}
+                          />
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                </motion.div>
+              );
+            })}
+
+            {brokers.filter(b => b.is_enabled).length === 0 && (
+              <div className="text-center py-6 text-slate-400">
+                <Users size={32} className="mx-auto mb-2 opacity-50" />
+                <p>Nessun broker abilitato</p>
+                <p className="text-sm">Vai su Settings -&gt; Broker Accounts per configurare</p>
+              </div>
+            )}
+          </div>
         </div>
       )}
-
-      {/* Main Status Card */}
-      <div className="prometheus-panel-surface p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-4">
-            <div
-              className={`p-4 rounded-xl ${
-                currentStatus.status === "running"
-                  ? "bg-green-500/20"
-                  : currentStatus.status === "paused"
-                  ? "bg-yellow-500/20"
-                  : "bg-slate-700"
-              }`}
-            >
-              <span className={getStatusColor(currentStatus.status)}>
-                {getStatusIcon(currentStatus.status)}
-              </span>
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-xl font-semibold capitalize">
-                  Bot {currentStatus.status}
-                </h2>
-                <span className="px-2 py-0.5 bg-purple-500/20 text-purple-300 text-xs rounded-full flex items-center gap-1">
-                  <BarChart3 size={12} />
-                  TradingView Agent
-                </span>
-              </div>
-              {currentStatus.started_at && (
-                <p className="text-sm text-slate-400">
-                  Started: {new Date(currentStatus.started_at).toLocaleString()}
-                </p>
-              )}
-              {currentStatus.last_analysis_at && (
-                <p className="text-sm text-slate-400">
-                  Last analysis: {new Date(currentStatus.last_analysis_at).toLocaleString()}
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Control Buttons */}
-          <div className="flex items-center gap-3">
-            {currentStatus.status === "stopped" && (
-              <button
-                onClick={() => handleAction("start")}
-                disabled={isActioning}
-                className="btn-primary flex items-center gap-2 bg-green-600 hover:bg-green-700"
-              >
-                <Play size={18} />
-                Start Bot
-              </button>
-            )}
-            {currentStatus.status === "running" && (
-              <>
-                <button
-                  onClick={() => handleAction("pause")}
-                  disabled={isActioning}
-                  className="btn-secondary flex items-center gap-2"
-                >
-                  <Pause size={18} />
-                  Pause
-                </button>
-                <button
-                  onClick={() => handleAction("stop")}
-                  disabled={isActioning}
-                  className="btn-primary flex items-center gap-2 bg-red-600 hover:bg-red-700"
-                >
-                  <Square size={18} />
-                  Stop
-                </button>
-              </>
-            )}
-            {currentStatus.status === "paused" && (
-              <>
-                <button
-                  onClick={() => handleAction("resume")}
-                  disabled={isActioning}
-                  className="btn-primary flex items-center gap-2"
-                >
-                  <Play size={18} />
-                  Resume
-                </button>
-                <button
-                  onClick={() => handleAction("stop")}
-                  disabled={isActioning}
-                  className="btn-secondary flex items-center gap-2 bg-red-600 hover:bg-red-700"
-                >
-                  <Square size={18} />
-                  Stop
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-dark-900/70 rounded-xl p-4 border border-dark-700/60">
-            <div className="flex items-center gap-2 text-slate-400 mb-1">
-              <Zap size={16} />
-              <span className="text-sm">Analyses Today</span>
-            </div>
-            <p className="text-2xl font-bold">{currentStatus.statistics.analyses_today}</p>
-          </div>
-          <div className="bg-dark-900/70 rounded-xl p-4 border border-dark-700/60">
-            <div className="flex items-center gap-2 text-slate-400 mb-1">
-              <BarChart3 size={16} />
-              <span className="text-sm">Trades Today</span>
-            </div>
-            <p className="text-2xl font-bold">{currentStatus.statistics.trades_today}</p>
-          </div>
-          <div className="bg-dark-900/70 rounded-xl p-4 border border-dark-700/60">
-            <div className="flex items-center gap-2 text-slate-400 mb-1">
-              <DollarSign size={16} />
-              <span className="text-sm">Daily P&L</span>
-            </div>
-            <p
-              className={`text-2xl font-bold ${
-                currentStatus.statistics.daily_pnl >= 0
-                  ? "text-green-400"
-                  : "text-red-400"
-              }`}
-            >
-              {currentStatus.statistics.daily_pnl >= 0 ? "+" : ""}$
-              {currentStatus.statistics.daily_pnl.toFixed(2)}
-            </p>
-          </div>
-          <div className="bg-dark-900/70 rounded-xl p-4 border border-dark-700/60">
-            <div className="flex items-center gap-2 text-slate-400 mb-1">
-              <Activity size={16} />
-              <span className="text-sm">Open Positions</span>
-            </div>
-            <p className="text-2xl font-bold">
-              {currentStatus.statistics.open_positions} / {currentConfig.max_open_positions}
-            </p>
-          </div>
-        </div>
-      </div>
 
       {/* Chart Preview */}
       <div className="prometheus-panel-surface p-6">
