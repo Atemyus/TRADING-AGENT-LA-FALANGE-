@@ -177,8 +177,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     setTokens(data.access_token, data.refresh_token)
-    await fetchUser()
-    router.push('/dashboard')
+
+    let currentUser: User | null = null
+    try {
+      const meResponse = await fetch(`${API_URL}/api/v1/auth/me`, {
+        headers: {
+          Authorization: `Bearer ${data.access_token}`,
+        },
+      })
+      if (meResponse.ok) {
+        currentUser = await parseJsonResponse<User>(meResponse)
+        setUser(currentUser)
+      } else {
+        await fetchUser()
+      }
+    } catch {
+      await fetchUser()
+    }
+
+    router.push(currentUser?.is_superuser ? '/admin' : '/dashboard')
   }
 
   const register = async (registerData: RegisterData) => {
