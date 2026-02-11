@@ -266,6 +266,78 @@ class EmailService:
             text=f"Welcome {username}! Your Prometheus account is now verified. Go to {self.frontend_url}/dashboard to start trading."
         )
 
+    async def send_license_email(
+        self,
+        to: str,
+        license_key: str,
+        product_name: str,
+        expires_at: datetime | None = None,
+        order_id: str | None = None,
+    ) -> bool:
+        """Send a license key to a customer after purchase."""
+        expires_text = (
+            expires_at.strftime("%Y-%m-%d %H:%M UTC") if expires_at else "No expiration"
+        )
+
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body {{ font-family: 'Segoe UI', Arial, sans-serif; background: #09090b; color: #fafafa; margin: 0; padding: 0; }}
+                .container {{ max-width: 600px; margin: 0 auto; padding: 40px 20px; }}
+                .header {{ text-align: center; margin-bottom: 30px; }}
+                .logo {{ font-size: 32px; font-weight: bold; color: #F59E0B; letter-spacing: 2px; }}
+                .content {{ background: linear-gradient(180deg, rgba(39, 39, 42, 0.8) 0%, rgba(24, 24, 27, 0.95) 100%); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 16px; padding: 32px; }}
+                .title {{ font-size: 24px; margin-bottom: 16px; color: #fafafa; }}
+                .message {{ color: #a1a1aa; line-height: 1.8; margin-bottom: 24px; }}
+                .license {{ background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 12px; padding: 16px; text-align: center; }}
+                .license code {{ font-family: monospace; font-size: 20px; color: #F59E0B; letter-spacing: 1px; }}
+                .meta {{ color: #71717a; font-size: 13px; margin-top: 14px; }}
+                .button {{ display: inline-block; background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); color: #000; padding: 14px 26px; border-radius: 10px; text-decoration: none; font-weight: 600; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <div class="logo">PROMETHEUS</div>
+                </div>
+                <div class="content">
+                    <div class="title">Your license key is ready</div>
+                    <p class="message">
+                        Thank you for your purchase of <strong>{product_name}</strong>.
+                        Use this key during account registration:
+                    </p>
+                    <div class="license">
+                        <code>{license_key}</code>
+                    </div>
+                    <p class="meta">Expires: {expires_text}</p>
+                    {f'<p class="meta">Order: {order_id}</p>' if order_id else ''}
+                    <div style="text-align: center; margin-top: 24px;">
+                        <a href="{self.frontend_url}/register" class="button">Go to Registration</a>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
+        order_line = f"Order: {order_id}\n" if order_id else ""
+        text = (
+            f"Your Prometheus license key: {license_key}\n"
+            f"Product: {product_name}\n"
+            f"Expires: {expires_text}\n"
+            f"{order_line}"
+            f"Register here: {self.frontend_url}/register"
+        )
+
+        return await self.send_email(
+            to=to,
+            subject="Your Prometheus license key",
+            html=html,
+            text=text,
+        )
+
 
 def generate_verification_token() -> str:
     """Generate a secure random token for email verification."""

@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
 from src.core.database import get_db
+from src.core.email import email_service
 from src.core.models import License, LicenseStatus, WhopOrder, WhopOrderStatus, WhopProduct
 
 router = APIRouter()
@@ -89,6 +90,18 @@ async def create_license_for_order(
     # Link license to order
     order.license_id = license.id
     order.license_created = True
+
+    # Best-effort notification email to customer.
+    try:
+        await email_service.send_license_email(
+            to=order.customer_email,
+            license_key=license.key,
+            product_name=order.product_name,
+            expires_at=license.expires_at,
+            order_id=order.whop_order_id,
+        )
+    except Exception as exc:
+        logger.warning(f"Failed to send license email for order {order.whop_order_id}: {exc}")
 
     logger.info(f"Created license {license.key} for order {order.whop_order_id}")
 

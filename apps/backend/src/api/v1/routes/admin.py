@@ -13,6 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from src.api.v1.routes.auth import get_current_user
 from src.core.database import get_db
+from src.core.email import email_service
 from src.core.models import License, LicenseStatus, User, WhopOrder, WhopOrderStatus, WhopProduct
 
 router = APIRouter()
@@ -995,6 +996,18 @@ async def create_license_for_order(
     order.license_created = True
     await db.flush()
     await db.refresh(order)
+
+    # Best-effort notification email.
+    try:
+        await email_service.send_license_email(
+            to=order.customer_email,
+            license_key=license.key,
+            product_name=order.product_name,
+            expires_at=license.expires_at,
+            order_id=order.whop_order_id,
+        )
+    except Exception:
+        pass
 
     return WhopOrderResponse(
         id=order.id,
