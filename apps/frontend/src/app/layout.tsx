@@ -6,7 +6,8 @@ export const metadata: Metadata = {
   title: 'Prometheus | AI Trading Platform',
   description: 'AI-Powered CFD/Futures Trading Platform',
   icons: {
-    icon: '/favicon.ico',
+    icon: '/images/logo.svg',
+    apple: '/images/logo.png',
   },
 }
 
