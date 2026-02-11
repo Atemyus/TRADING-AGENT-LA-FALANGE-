@@ -3,7 +3,6 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { useState, useEffect, useMemo, useRef } from 'react'
 import {
-  Server,
   Brain,
   Shield,
   Bell,
@@ -25,7 +24,7 @@ import {
   RefreshCw,
   Users,
 } from 'lucide-react'
-import { settingsApi, brokerAccountsApi, type BrokerSettingsData, type BrokerAccountData, type BrokerAccountCreate } from '@/lib/api'
+import { settingsApi, brokerAccountsApi, type BrokerAccountData, type BrokerAccountCreate } from '@/lib/api'
 import { useAuth } from '@/contexts/AuthContext'
 
 // Reusable Toggle Component
@@ -92,109 +91,229 @@ function BrokerLogo({
   )
 }
 
-// Broker configurations
-const BROKERS = [
-  {
-    id: 'oanda',
-    name: 'OANDA',
-    logo: 'OA',
-    description: 'Forex & CFD trading via REST API',
-    fields: [
-      { key: 'api_key', label: 'API Key', type: 'password', placeholder: 'Your OANDA API key' },
-      { key: 'account_id', label: 'Account ID', type: 'text', placeholder: '101-001-12345678-001' },
-      { key: 'environment', label: 'Environment', type: 'select', options: ['practice', 'live'] },
-    ],
-  },
-  {
-    id: 'metatrader',
-    name: 'MetaTrader 4/5',
-    logo: 'MT',
-    description: 'MT4/MT5 via MetaApi.cloud',
-    fields: [
-      { key: 'meta_api_token', label: 'MetaApi Token', type: 'password', placeholder: 'Your MetaApi token' },
-      { key: 'account_id', label: 'MT Account ID', type: 'text', placeholder: 'Your MetaApi account ID' },
-      { key: 'platform', label: 'Platform', type: 'select', options: ['mt4', 'mt5'] },
-    ],
-    helpLink: 'https://metaapi.cloud',
-  },
-  {
-    id: 'ig',
-    name: 'IG Markets',
-    logo: 'IG',
-    description: 'Global CFD & Spread Betting',
-    fields: [
-      { key: 'api_key', label: 'API Key', type: 'password', placeholder: 'Your IG API key' },
-      { key: 'username', label: 'Username', type: 'text', placeholder: 'Your IG username' },
-      { key: 'password', label: 'Password', type: 'password', placeholder: 'Your IG password' },
-      { key: 'account_id', label: 'Account ID', type: 'text', placeholder: 'Your account ID' },
-      { key: 'environment', label: 'Environment', type: 'select', options: ['demo', 'live'] },
-    ],
-  },
-  {
-    id: 'interactive_brokers',
-    name: 'Interactive Brokers',
-    logo: 'IB',
-    description: 'Stocks, Futures, Options & more',
-    fields: [
-      { key: 'host', label: 'TWS Host', type: 'text', placeholder: '127.0.0.1' },
-      { key: 'port', label: 'TWS Port', type: 'text', placeholder: '7497 (paper) or 7496 (live)' },
-      { key: 'client_id', label: 'Client ID', type: 'text', placeholder: '1' },
-    ],
-  },
-  {
-    id: 'alpaca',
-    name: 'Alpaca',
-    logo: 'AL',
-    description: 'Commission-free US stocks',
-    fields: [
-      { key: 'api_key', label: 'API Key', type: 'password', placeholder: 'Your Alpaca API key' },
-      { key: 'secret_key', label: 'Secret Key', type: 'password', placeholder: 'Your Alpaca secret key' },
-      { key: 'paper', label: 'Paper Trading', type: 'select', options: ['true', 'false'] },
-    ],
-  },
-]
+type PlatformCredentialTemplate = {
+  primaryLabel: string
+  primaryPlaceholder: string
+  primaryHelp: string
+  secretLabel: string
+  secretPlaceholder: string
+  secretHelp: string
+}
 
 type BrokerPlatform = {
   id: string
   label: string
+  logoDomain: string
+  credentials: PlatformCredentialTemplate
 }
 
 type BrokerDirectoryEntry = {
   id: string
   name: string
+  kind: 'broker' | 'prop'
   logoDomain: string
   platforms: BrokerPlatform[]
 }
 
-const BROKER_DIRECTORY: BrokerDirectoryEntry[] = [
-  { id: 'ic_markets', name: 'IC Markets', logoDomain: 'icmarkets.com', platforms: [{ id: 'mt4', label: 'MetaTrader 4' }, { id: 'mt5', label: 'MetaTrader 5' }, { id: 'ctrader', label: 'cTrader' }] },
-  { id: 'pepperstone', name: 'Pepperstone', logoDomain: 'pepperstone.com', platforms: [{ id: 'mt4', label: 'MetaTrader 4' }, { id: 'mt5', label: 'MetaTrader 5' }, { id: 'ctrader', label: 'cTrader' }, { id: 'tradingview', label: 'TradingView' }] },
-  { id: 'roboforex', name: 'RoboForex', logoDomain: 'roboforex.com', platforms: [{ id: 'mt4', label: 'MetaTrader 4' }, { id: 'mt5', label: 'MetaTrader 5' }, { id: 'ctrader', label: 'cTrader' }] },
-  { id: 'xm', name: 'XM', logoDomain: 'xm.com', platforms: [{ id: 'mt4', label: 'MetaTrader 4' }, { id: 'mt5', label: 'MetaTrader 5' }] },
-  { id: 'exness', name: 'Exness', logoDomain: 'exness.com', platforms: [{ id: 'mt4', label: 'MetaTrader 4' }, { id: 'mt5', label: 'MetaTrader 5' }] },
-  { id: 'vantage', name: 'Vantage', logoDomain: 'vantagemarkets.com', platforms: [{ id: 'mt4', label: 'MetaTrader 4' }, { id: 'mt5', label: 'MetaTrader 5' }] },
-  { id: 'tickmill', name: 'Tickmill', logoDomain: 'tickmill.com', platforms: [{ id: 'mt4', label: 'MetaTrader 4' }, { id: 'mt5', label: 'MetaTrader 5' }] },
-  { id: 'fp_markets', name: 'FP Markets', logoDomain: 'fpmarkets.com', platforms: [{ id: 'mt4', label: 'MetaTrader 4' }, { id: 'mt5', label: 'MetaTrader 5' }, { id: 'ctrader', label: 'cTrader' }] },
-  { id: 'eightcap', name: 'Eightcap', logoDomain: 'eightcap.com', platforms: [{ id: 'mt4', label: 'MetaTrader 4' }, { id: 'mt5', label: 'MetaTrader 5' }, { id: 'tradingview', label: 'TradingView' }] },
-  { id: 'blackbull', name: 'BlackBull Markets', logoDomain: 'blackbull.com', platforms: [{ id: 'mt4', label: 'MetaTrader 4' }, { id: 'mt5', label: 'MetaTrader 5' }, { id: 'ctrader', label: 'cTrader' }] },
-  { id: 'thinkmarkets', name: 'ThinkMarkets', logoDomain: 'thinkmarkets.com', platforms: [{ id: 'mt4', label: 'MetaTrader 4' }, { id: 'mt5', label: 'MetaTrader 5' }, { id: 'thinktrader', label: 'ThinkTrader' }] },
-  { id: 'admirals', name: 'Admirals', logoDomain: 'admiralmarkets.com', platforms: [{ id: 'mt4', label: 'MetaTrader 4' }, { id: 'mt5', label: 'MetaTrader 5' }] },
-  { id: 'oanda', name: 'OANDA', logoDomain: 'oanda.com', platforms: [{ id: 'oanda_api', label: 'OANDA API' }, { id: 'mt5', label: 'MetaTrader 5' }] },
-  { id: 'ig', name: 'IG', logoDomain: 'ig.com', platforms: [{ id: 'ig_api', label: 'IG API' }, { id: 'mt4', label: 'MetaTrader 4' }] },
-  { id: 'ftmo', name: 'FTMO', logoDomain: 'ftmo.com', platforms: [{ id: 'mt4', label: 'MetaTrader 4' }, { id: 'mt5', label: 'MetaTrader 5' }, { id: 'dxtrade', label: 'DXtrade' }] },
-  { id: 'fundednext', name: 'FundedNext', logoDomain: 'fundednext.com', platforms: [{ id: 'mt4', label: 'MetaTrader 4' }, { id: 'mt5', label: 'MetaTrader 5' }, { id: 'ctrader', label: 'cTrader' }] },
-  { id: 'the5ers', name: 'The5ers', logoDomain: 'the5ers.com', platforms: [{ id: 'mt5', label: 'MetaTrader 5' }] },
-  { id: 'my_funded_fx', name: 'MyFundedFX', logoDomain: 'myfundedfx.com', platforms: [{ id: 'mt5', label: 'MetaTrader 5' }, { id: 'matchtrader', label: 'Match-Trader' }] },
-  { id: 'funded_trading_plus', name: 'Funded Trading Plus', logoDomain: 'fundedtradingplus.com', platforms: [{ id: 'mt4', label: 'MetaTrader 4' }, { id: 'mt5', label: 'MetaTrader 5' }, { id: 'tradelocker', label: 'TradeLocker' }] },
-]
-
-const BROKER_LOGO_DOMAINS: Record<string, string> = {
-  oanda: 'oanda.com',
-  metatrader: 'metaapi.cloud',
-  ig: 'ig.com',
-  interactive_brokers: 'interactivebrokers.com',
-  alpaca: 'alpaca.markets',
+const PLATFORM_DIRECTORY: Record<string, BrokerPlatform> = {
+  mt4: {
+    id: 'mt4',
+    label: 'MetaTrader 4',
+    logoDomain: 'metatrader4.com',
+    credentials: {
+      primaryLabel: 'Trading Account ID',
+      primaryPlaceholder: 'MT4 account identifier',
+      primaryHelp: 'Use the account ID assigned by your broker/prop.',
+      secretLabel: 'Investor/API Password or Token',
+      secretPlaceholder: 'Password or broker token',
+      secretHelp: 'Optional here if you already configured a global token in backend.',
+    },
+  },
+  mt5: {
+    id: 'mt5',
+    label: 'MetaTrader 5',
+    logoDomain: 'metatrader5.com',
+    credentials: {
+      primaryLabel: 'Trading Account ID',
+      primaryPlaceholder: 'MT5 account identifier',
+      primaryHelp: 'Use the account ID assigned by your broker/prop.',
+      secretLabel: 'Investor/API Password or Token',
+      secretPlaceholder: 'Password or broker token',
+      secretHelp: 'Optional here if you already configured a global token in backend.',
+    },
+  },
+  ctrader: {
+    id: 'ctrader',
+    label: 'cTrader',
+    logoDomain: 'ctrader.com',
+    credentials: {
+      primaryLabel: 'cTrader Account ID',
+      primaryPlaceholder: 'cTrader account identifier',
+      primaryHelp: 'Insert the account/workspace ID used by cTrader.',
+      secretLabel: 'cTrader Access Token',
+      secretPlaceholder: 'Paste cTrader token/secret',
+      secretHelp: 'Use your platform token, if provided by broker/prop.',
+    },
+  },
+  tradingview: {
+    id: 'tradingview',
+    label: 'TradingView',
+    logoDomain: 'tradingview.com',
+    credentials: {
+      primaryLabel: 'TradingView Workspace/User',
+      primaryPlaceholder: 'TradingView username or workspace id',
+      primaryHelp: 'Used to map this account to your TradingView workspace.',
+      secretLabel: 'TradingView Session/API Token',
+      secretPlaceholder: 'Session token or connector key',
+      secretHelp: 'Use token from your bridge/connector provider.',
+    },
+  },
+  matchtrader: {
+    id: 'matchtrader',
+    label: 'Match-Trader',
+    logoDomain: 'match-trader.com',
+    credentials: {
+      primaryLabel: 'Match-Trader Account ID',
+      primaryPlaceholder: 'Account identifier',
+      primaryHelp: 'Insert the account ID for your Match-Trader profile.',
+      secretLabel: 'Match-Trader Token/Password',
+      secretPlaceholder: 'API key or password',
+      secretHelp: 'Use your Match-Trader credential/token.',
+    },
+  },
+  tradelocker: {
+    id: 'tradelocker',
+    label: 'TradeLocker',
+    logoDomain: 'tradelocker.com',
+    credentials: {
+      primaryLabel: 'TradeLocker Account ID',
+      primaryPlaceholder: 'Account identifier',
+      primaryHelp: 'Insert the account ID for your TradeLocker account.',
+      secretLabel: 'TradeLocker Token/Password',
+      secretPlaceholder: 'API key or password',
+      secretHelp: 'Use your TradeLocker credential/token.',
+    },
+  },
+  dxtrade: {
+    id: 'dxtrade',
+    label: 'DXtrade',
+    logoDomain: 'dx.trade',
+    credentials: {
+      primaryLabel: 'DXtrade Account ID',
+      primaryPlaceholder: 'DXtrade account identifier',
+      primaryHelp: 'Insert the DXtrade account number.',
+      secretLabel: 'DXtrade Token/Password',
+      secretPlaceholder: 'API key or password',
+      secretHelp: 'Use your DXtrade credential/token.',
+    },
+  },
+  thinktrader: {
+    id: 'thinktrader',
+    label: 'ThinkTrader',
+    logoDomain: 'thinktrader.com',
+    credentials: {
+      primaryLabel: 'ThinkTrader Account ID',
+      primaryPlaceholder: 'ThinkTrader account ID',
+      primaryHelp: 'Insert the account linked to ThinkTrader.',
+      secretLabel: 'ThinkTrader Token/Password',
+      secretPlaceholder: 'API key or password',
+      secretHelp: 'Use the credential issued by ThinkMarkets/prop.',
+    },
+  },
+  oanda_api: {
+    id: 'oanda_api',
+    label: 'OANDA API',
+    logoDomain: 'oanda.com',
+    credentials: {
+      primaryLabel: 'OANDA Account ID',
+      primaryPlaceholder: '101-XXX-XXXXXXXX-XXX',
+      primaryHelp: 'Use your OANDA account ID.',
+      secretLabel: 'OANDA API Key',
+      secretPlaceholder: 'Paste your OANDA API key',
+      secretHelp: 'Generate key from OANDA account dashboard.',
+    },
+  },
+  ig_api: {
+    id: 'ig_api',
+    label: 'IG API',
+    logoDomain: 'ig.com',
+    credentials: {
+      primaryLabel: 'IG Account ID',
+      primaryPlaceholder: 'IG account identifier',
+      primaryHelp: 'Use your IG account ID.',
+      secretLabel: 'IG API Key',
+      secretPlaceholder: 'Paste your IG API key',
+      secretHelp: 'Generate key from IG developer portal.',
+    },
+  },
+  alpaca_api: {
+    id: 'alpaca_api',
+    label: 'Alpaca API',
+    logoDomain: 'alpaca.markets',
+    credentials: {
+      primaryLabel: 'Alpaca Account/Key ID',
+      primaryPlaceholder: 'Alpaca account or key id',
+      primaryHelp: 'Insert your Alpaca account/key identifier.',
+      secretLabel: 'Alpaca Secret Key',
+      secretPlaceholder: 'Paste Alpaca secret key',
+      secretHelp: 'Generate credentials from Alpaca dashboard.',
+    },
+  },
+  ib_api: {
+    id: 'ib_api',
+    label: 'Interactive Brokers API',
+    logoDomain: 'interactivebrokers.com',
+    credentials: {
+      primaryLabel: 'IB Account ID',
+      primaryPlaceholder: 'Interactive Brokers account ID',
+      primaryHelp: 'Insert IB account or gateway account id.',
+      secretLabel: 'IB API Secret / Session Token',
+      secretPlaceholder: 'IB token or session secret',
+      secretHelp: 'Use credentials generated from your IB integration.',
+    },
+  },
 }
+
+const platformsFor = (...platformIds: string[]) =>
+  platformIds
+    .map((id) => PLATFORM_DIRECTORY[id])
+    .filter((platform): platform is BrokerPlatform => Boolean(platform))
+
+const BROKER_DIRECTORY: BrokerDirectoryEntry[] = [
+  { id: 'ic_markets', name: 'IC Markets', kind: 'broker', logoDomain: 'icmarkets.com', platforms: platformsFor('mt4', 'mt5', 'ctrader') },
+  { id: 'pepperstone', name: 'Pepperstone', kind: 'broker', logoDomain: 'pepperstone.com', platforms: platformsFor('mt4', 'mt5', 'ctrader', 'tradingview') },
+  { id: 'roboforex', name: 'RoboForex', kind: 'broker', logoDomain: 'roboforex.com', platforms: platformsFor('mt4', 'mt5', 'ctrader') },
+  { id: 'xm', name: 'XM', kind: 'broker', logoDomain: 'xm.com', platforms: platformsFor('mt4', 'mt5') },
+  { id: 'exness', name: 'Exness', kind: 'broker', logoDomain: 'exness.com', platforms: platformsFor('mt4', 'mt5') },
+  { id: 'vantage', name: 'Vantage', kind: 'broker', logoDomain: 'vantagemarkets.com', platforms: platformsFor('mt4', 'mt5') },
+  { id: 'tickmill', name: 'Tickmill', kind: 'broker', logoDomain: 'tickmill.com', platforms: platformsFor('mt4', 'mt5') },
+  { id: 'fp_markets', name: 'FP Markets', kind: 'broker', logoDomain: 'fpmarkets.com', platforms: platformsFor('mt4', 'mt5', 'ctrader') },
+  { id: 'eightcap', name: 'Eightcap', kind: 'broker', logoDomain: 'eightcap.com', platforms: platformsFor('mt4', 'mt5', 'tradingview') },
+  { id: 'blackbull', name: 'BlackBull Markets', kind: 'broker', logoDomain: 'blackbull.com', platforms: platformsFor('mt4', 'mt5', 'ctrader') },
+  { id: 'thinkmarkets', name: 'ThinkMarkets', kind: 'broker', logoDomain: 'thinkmarkets.com', platforms: platformsFor('mt4', 'mt5', 'thinktrader') },
+  { id: 'admirals', name: 'Admirals', kind: 'broker', logoDomain: 'admiralmarkets.com', platforms: platformsFor('mt4', 'mt5') },
+  { id: 'oanda', name: 'OANDA', kind: 'broker', logoDomain: 'oanda.com', platforms: platformsFor('oanda_api', 'mt5') },
+  { id: 'ig', name: 'IG', kind: 'broker', logoDomain: 'ig.com', platforms: platformsFor('ig_api', 'mt4') },
+  { id: 'interactive_brokers', name: 'Interactive Brokers', kind: 'broker', logoDomain: 'interactivebrokers.com', platforms: platformsFor('ib_api') },
+  { id: 'alpaca', name: 'Alpaca', kind: 'broker', logoDomain: 'alpaca.markets', platforms: platformsFor('alpaca_api') },
+  { id: 'xtb', name: 'XTB', kind: 'broker', logoDomain: 'xtb.com', platforms: platformsFor('mt5') },
+  { id: 'forex_com', name: 'Forex.com', kind: 'broker', logoDomain: 'forex.com', platforms: platformsFor('mt5', 'tradingview') },
+  { id: 'cmc_markets', name: 'CMC Markets', kind: 'broker', logoDomain: 'cmcmarkets.com', platforms: platformsFor('tradingview') },
+  { id: 'swissquote', name: 'Swissquote', kind: 'broker', logoDomain: 'swissquote.com', platforms: platformsFor('mt4', 'mt5') },
+  { id: 'trade_station', name: 'TradeStation', kind: 'broker', logoDomain: 'tradestation.com', platforms: platformsFor('tradingview') },
+  { id: 'darwinex', name: 'Darwinex', kind: 'broker', logoDomain: 'darwinex.com', platforms: platformsFor('mt4', 'mt5') },
+  { id: 'topstepx', name: 'TopstepX', kind: 'broker', logoDomain: 'topstep.com', platforms: platformsFor('tradingview') },
+  { id: 'ftmo', name: 'FTMO', kind: 'prop', logoDomain: 'ftmo.com', platforms: platformsFor('mt4', 'mt5', 'dxtrade') },
+  { id: 'fundednext', name: 'FundedNext', kind: 'prop', logoDomain: 'fundednext.com', platforms: platformsFor('mt4', 'mt5', 'ctrader') },
+  { id: 'the5ers', name: 'The5ers', kind: 'prop', logoDomain: 'the5ers.com', platforms: platformsFor('mt5') },
+  { id: 'my_funded_fx', name: 'MyFundedFX', kind: 'prop', logoDomain: 'myfundedfx.com', platforms: platformsFor('mt5', 'matchtrader') },
+  { id: 'funded_trading_plus', name: 'Funded Trading Plus', kind: 'prop', logoDomain: 'fundedtradingplus.com', platforms: platformsFor('mt4', 'mt5', 'tradelocker') },
+  { id: 'e8_markets', name: 'E8 Markets', kind: 'prop', logoDomain: 'e8markets.com', platforms: platformsFor('mt5', 'matchtrader') },
+  { id: 'alpha_capital_group', name: 'Alpha Capital Group', kind: 'prop', logoDomain: 'alphacapitalgroup.uk', platforms: platformsFor('mt5') },
+  { id: 'true_forex_funds', name: 'True Forex Funds', kind: 'prop', logoDomain: 'trueforexfunds.com', platforms: platformsFor('mt4', 'mt5') },
+  { id: 'funded_peaks', name: 'Funded Peaks', kind: 'prop', logoDomain: 'fundedpeaks.com', platforms: platformsFor('mt5') },
+  { id: 'instant_funding', name: 'Instant Funding', kind: 'prop', logoDomain: 'instantfunding.io', platforms: platformsFor('mt5', 'tradelocker') },
+]
 
 const getClearbitLogoUrl = (domain: string) => `https://logo.clearbit.com/${domain}`
 
@@ -219,6 +338,14 @@ const inferPlatformFromAccountName = (name: string, broker: BrokerDirectoryEntry
   return null
 }
 
+const getBrokerTypeByPlatform = (platformId: string): string => {
+  if (platformId === 'oanda_api') return 'oanda'
+  if (platformId === 'ig_api') return 'ig'
+  if (platformId === 'alpaca_api') return 'alpaca'
+  if (platformId === 'ib_api') return 'interactive_brokers'
+  return 'metaapi'
+}
+
 // AI Provider configurations
 const AI_PROVIDERS = [
   {
@@ -241,52 +368,19 @@ const AI_PROVIDERS = [
   },
 ]
 
-type SettingsSection = 'broker' | 'accounts' | 'ai' | 'risk' | 'notifications'
+type SettingsSection = 'accounts' | 'ai' | 'risk' | 'notifications'
 
 export default function SettingsPage() {
-  const [activeSection, setActiveSection] = useState<SettingsSection>('broker')
-  const [selectedBroker, setSelectedBroker] = useState<string>('metatrader')
-  const [brokerCredentials, setBrokerCredentials] = useState<Record<string, string>>({})
-  const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({})
-  const [testingConnection, setTestingConnection] = useState(false)
-  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle')
-  const [connectionMessage, setConnectionMessage] = useState<string>('')
+  const [activeSection, setActiveSection] = useState<SettingsSection>('accounts')
   const [aiProviders, setAiProviders] = useState<Record<string, { enabled: boolean; key: string }>>({})
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string>('')
-  const [isLoading, setIsLoading] = useState(true)
 
   // Load settings on mount
   useEffect(() => {
     const loadSettings = async () => {
       try {
         const settings = await settingsApi.getAll()
-
-        // Set broker type
-        setSelectedBroker(settings.broker.broker_type || 'metatrader')
-
-        // Map broker settings to credentials
-        const creds: Record<string, string> = {}
-        if (settings.broker.broker_type === 'metatrader') {
-          creds.meta_api_token = settings.broker.metaapi_token || ''
-          creds.account_id = settings.broker.metaapi_account_id || ''
-          creds.platform = settings.broker.metaapi_platform || 'mt5'
-        } else if (settings.broker.broker_type === 'oanda') {
-          creds.api_key = settings.broker.oanda_api_key || ''
-          creds.account_id = settings.broker.oanda_account_id || ''
-          creds.environment = settings.broker.oanda_environment || 'practice'
-        } else if (settings.broker.broker_type === 'ig') {
-          creds.api_key = settings.broker.ig_api_key || ''
-          creds.username = settings.broker.ig_username || ''
-          creds.password = settings.broker.ig_password || ''
-          creds.account_id = settings.broker.ig_account_id || ''
-          creds.environment = settings.broker.ig_environment || 'demo'
-        } else if (settings.broker.broker_type === 'alpaca') {
-          creds.api_key = settings.broker.alpaca_api_key || ''
-          creds.secret_key = settings.broker.alpaca_secret_key || ''
-          creds.paper = settings.broker.alpaca_paper ? 'true' : 'false'
-        }
-        setBrokerCredentials(creds)
 
         // Set AI providers
         const aiSettings: Record<string, { enabled: boolean; key: string }> = {}
@@ -300,72 +394,10 @@ export default function SettingsPage() {
 
       } catch (error) {
         console.error('Failed to load settings:', error)
-      } finally {
-        setIsLoading(false)
       }
     }
     loadSettings()
   }, [])
-
-  const handleTestConnection = async () => {
-    setTestingConnection(true)
-    setConnectionStatus('idle')
-    setConnectionMessage('')
-
-    try {
-      // First save the current settings
-      await handleSaveBroker()
-
-      // Then test the connection
-      const result = await settingsApi.testBroker()
-      setConnectionStatus('success')
-      setConnectionMessage(result.message + (result.account_name ? ` (${result.account_name})` : ''))
-    } catch (error) {
-      setConnectionStatus('error')
-      setConnectionMessage(error instanceof Error ? error.message : 'Connection failed')
-    } finally {
-      setTestingConnection(false)
-    }
-  }
-
-  const handleSaveBroker = async () => {
-    setSaving(true)
-    setSaveMessage('')
-
-    try {
-      // Build broker settings based on selected broker
-      const brokerData: BrokerSettingsData = {
-        broker_type: selectedBroker,
-      }
-
-      if (selectedBroker === 'metatrader') {
-        brokerData.metaapi_token = brokerCredentials.meta_api_token
-        brokerData.metaapi_account_id = brokerCredentials.account_id
-        brokerData.metaapi_platform = brokerCredentials.platform || 'mt5'
-      } else if (selectedBroker === 'oanda') {
-        brokerData.oanda_api_key = brokerCredentials.api_key
-        brokerData.oanda_account_id = brokerCredentials.account_id
-        brokerData.oanda_environment = brokerCredentials.environment || 'practice'
-      } else if (selectedBroker === 'ig') {
-        brokerData.ig_api_key = brokerCredentials.api_key
-        brokerData.ig_username = brokerCredentials.username
-        brokerData.ig_password = brokerCredentials.password
-        brokerData.ig_account_id = brokerCredentials.account_id
-        brokerData.ig_environment = brokerCredentials.environment || 'demo'
-      } else if (selectedBroker === 'alpaca') {
-        brokerData.alpaca_api_key = brokerCredentials.api_key
-        brokerData.alpaca_secret_key = brokerCredentials.secret_key
-        brokerData.alpaca_paper = brokerCredentials.paper === 'true'
-      }
-
-      const result = await settingsApi.updateBroker(brokerData)
-      setSaveMessage(result.message)
-    } catch (error) {
-      setSaveMessage(error instanceof Error ? error.message : 'Failed to save')
-    } finally {
-      setSaving(false)
-    }
-  }
 
   const handleSaveAI = async () => {
     setSaving(true)
@@ -453,12 +485,7 @@ export default function SettingsPage() {
     }
   }
 
-  const handleSave = async () => {
-    await handleSaveBroker()
-  }
-
   const sections = [
-    { id: 'broker', label: 'Broker', icon: Server },
     { id: 'accounts', label: 'Broker Accounts', icon: Users },
     { id: 'ai', label: 'AI Providers', icon: Brain },
     { id: 'risk', label: 'Risk Management', icon: Shield },
@@ -473,7 +500,7 @@ export default function SettingsPage() {
         className="mb-8"
       >
         <h1 className="text-3xl font-bold mb-2">Settings</h1>
-        <p className="text-dark-400">Configure your trading platform</p>
+        <p className="text-dark-400">Manage broker workspaces, AI providers, and risk controls</p>
       </motion.div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -509,26 +536,6 @@ export default function SettingsPage() {
           className="lg:col-span-3"
         >
           <AnimatePresence mode="wait">
-            {activeSection === 'broker' && (
-              <BrokerSettings
-                key="broker"
-                brokers={BROKERS}
-                selectedBroker={selectedBroker}
-                setSelectedBroker={setSelectedBroker}
-                credentials={brokerCredentials}
-                setCredentials={setBrokerCredentials}
-                showPasswords={showPasswords}
-                setShowPasswords={setShowPasswords}
-                testingConnection={testingConnection}
-                connectionStatus={connectionStatus}
-                connectionMessage={connectionMessage}
-                onTestConnection={handleTestConnection}
-                onSave={handleSave}
-                saving={saving}
-                saveMessage={saveMessage}
-              />
-            )}
-
             {activeSection === 'accounts' && (
               <BrokerAccountsSettings key="accounts" />
             )}
@@ -556,290 +563,6 @@ export default function SettingsPage() {
         </motion.div>
       </div>
     </div>
-  )
-}
-
-// Broker Settings Component
-function BrokerSettings({
-  brokers,
-  selectedBroker,
-  setSelectedBroker,
-  credentials,
-  setCredentials,
-  showPasswords,
-  setShowPasswords,
-  testingConnection,
-  connectionStatus,
-  connectionMessage,
-  onTestConnection,
-  onSave,
-  saving,
-  saveMessage,
-}: {
-  brokers: typeof BROKERS
-  selectedBroker: string
-  setSelectedBroker: (id: string) => void
-  credentials: Record<string, string>
-  setCredentials: (creds: Record<string, string>) => void
-  showPasswords: Record<string, boolean>
-  setShowPasswords: (show: Record<string, boolean>) => void
-  testingConnection: boolean
-  connectionStatus: 'idle' | 'success' | 'error'
-  connectionMessage: string
-  onTestConnection: () => void
-  onSave: () => void
-  saving: boolean
-  saveMessage: string
-}) {
-  const broker = brokers.find(b => b.id === selectedBroker)
-  const brokerRailRef = useRef<HTMLDivElement | null>(null)
-  const directoryRailRef = useRef<HTMLDivElement | null>(null)
-
-  const scrollRail = (ref: { current: HTMLDivElement | null }, direction: 'left' | 'right') => {
-    if (!ref.current) return
-    const amount = direction === 'left' ? -320 : 320
-    ref.current.scrollBy({ left: amount, behavior: 'smooth' })
-  }
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="space-y-6"
-    >
-      {/* Broker Selection */}
-      <div className="card p-6">
-        <div className="flex items-center justify-between gap-3 mb-4">
-          <div>
-            <h2 className="text-xl font-semibold">Select Integration</h2>
-            <p className="text-xs text-dark-400 mt-1">Choose backend integration, then connect one or more broker workspaces below.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => scrollRail(brokerRailRef, 'left')}
-              className="p-2 rounded-lg border border-dark-700 bg-dark-900/60 hover:border-dark-500"
-              aria-label="Scroll left"
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <button
-              type="button"
-              onClick={() => scrollRail(brokerRailRef, 'right')}
-              className="p-2 rounded-lg border border-dark-700 bg-dark-900/60 hover:border-dark-500"
-              aria-label="Scroll right"
-            >
-              <ChevronRight size={16} />
-            </button>
-          </div>
-        </div>
-        <div ref={brokerRailRef} className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-          {brokers.map((b) => (
-            <button
-              key={b.id}
-              onClick={() => setSelectedBroker(b.id)}
-              className={`min-w-[260px] p-4 rounded-xl border-2 transition-all text-left ${
-                selectedBroker === b.id
-                  ? 'border-primary-500 bg-primary-500/10'
-                  : 'border-dark-700 hover:border-dark-600 bg-dark-800/50'
-              }`}
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <BrokerLogo name={b.name} domain={BROKER_LOGO_DOMAINS[b.id]} />
-                <span className="font-semibold">{b.name}</span>
-                {selectedBroker === b.id && (
-                  <Check size={16} className="ml-auto text-primary-500" />
-                )}
-              </div>
-              <p className="text-sm text-dark-400">{b.description}</p>
-            </button>
-          ))}
-        </div>
-
-        <div className="mt-6 pt-6 border-t border-dark-700/60">
-          <div className="flex items-center justify-between gap-3 mb-4">
-            <div>
-              <p className="text-sm font-medium text-dark-100">Broker and Prop Catalog</p>
-              <p className="text-xs text-dark-400">Use this directory when creating account workspaces and selecting compatible platforms.</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => scrollRail(directoryRailRef, 'left')}
-                className="p-2 rounded-lg border border-dark-700 bg-dark-900/60 hover:border-dark-500"
-                aria-label="Scroll broker catalog left"
-              >
-                <ChevronLeft size={16} />
-              </button>
-              <button
-                type="button"
-                onClick={() => scrollRail(directoryRailRef, 'right')}
-                className="p-2 rounded-lg border border-dark-700 bg-dark-900/60 hover:border-dark-500"
-                aria-label="Scroll broker catalog right"
-              >
-                <ChevronRight size={16} />
-              </button>
-            </div>
-          </div>
-
-          <div ref={directoryRailRef} className="flex gap-3 overflow-x-auto pb-1 scrollbar-hide">
-            {BROKER_DIRECTORY.map((entry) => (
-              <div key={entry.id} className="min-w-[240px] p-4 rounded-xl border border-dark-700 bg-dark-800/40">
-                <div className="flex items-center gap-3 mb-3">
-                  <BrokerLogo name={entry.name} domain={entry.logoDomain} />
-                  <div>
-                    <p className="text-sm font-semibold text-dark-100">{entry.name}</p>
-                    <p className="text-[11px] text-dark-500">{entry.platforms.length} supported platforms</p>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {entry.platforms.map((platform) => (
-                    <span key={platform.id} className="text-[11px] px-2 py-0.5 rounded-full border border-dark-600 bg-dark-900/80 text-dark-300">
-                      {platform.label}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Broker Configuration */}
-      {broker && (
-        <div className="card p-6">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <BrokerLogo name={broker.name} domain={BROKER_LOGO_DOMAINS[broker.id]} className="h-11 w-11" />
-              <div>
-                <h2 className="text-xl font-semibold">{broker.name} Configuration</h2>
-                <p className="text-sm text-dark-400">{broker.description}</p>
-              </div>
-            </div>
-            {broker.helpLink && (
-              <a
-                href={broker.helpLink}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-primary-400 hover:text-primary-300 flex items-center gap-1"
-              >
-                <Info size={14} />
-                Get API Key
-              </a>
-            )}
-          </div>
-
-          <div className="space-y-4">
-            {broker.fields.map((field) => (
-              <div key={field.key}>
-                <label className="block text-sm font-medium mb-2">{field.label}</label>
-                {field.type === 'select' ? (
-                  <select
-                    value={credentials[field.key] || field.options?.[0] || ''}
-                    onChange={(e) => setCredentials({ ...credentials, [field.key]: e.target.value })}
-                    className="input"
-                  >
-                    {field.options?.map((opt) => (
-                      <option key={opt} value={opt}>{opt}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <div className="relative">
-                    <input
-                      type={field.type === 'password' && !showPasswords[field.key] ? 'password' : 'text'}
-                      value={credentials[field.key] || ''}
-                      onChange={(e) => setCredentials({ ...credentials, [field.key]: e.target.value })}
-                      placeholder={field.placeholder}
-                      className="input pr-10"
-                    />
-                    {field.type === 'password' && (
-                      <button
-                        type="button"
-                        onClick={() => setShowPasswords({ ...showPasswords, [field.key]: !showPasswords[field.key] })}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-400 hover:text-dark-200"
-                      >
-                        {showPasswords[field.key] ? <EyeOff size={18} /> : <Eye size={18} />}
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* Connection Status */}
-          <AnimatePresence>
-            {connectionStatus !== 'idle' && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className={`mt-4 p-4 rounded-lg flex items-center gap-3 ${
-                  connectionStatus === 'success'
-                    ? 'bg-neon-green/20 text-neon-green'
-                    : 'bg-neon-red/20 text-neon-red'
-                }`}
-              >
-                {connectionStatus === 'success' ? (
-                  <>
-                    <CheckCircle size={20} />
-                    <span>{connectionMessage || 'Connection successful! Broker is ready.'}</span>
-                  </>
-                ) : (
-                  <>
-                    <AlertCircle size={20} />
-                    <span>{connectionMessage || 'Connection failed. Please check your credentials.'}</span>
-                  </>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Save Status */}
-          {saveMessage && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className={`mt-2 text-sm ${
-                saveMessage.toLowerCase().includes('error') ||
-                saveMessage.toLowerCase().includes('failed') ||
-                saveMessage.toLowerCase().includes('cannot') ||
-                saveMessage.toLowerCase().includes('unavailable')
-                  ? 'text-red-400'
-                  : 'text-neon-green'
-              }`}
-            >
-              {saveMessage}
-            </motion.div>
-          )}
-
-          {/* Actions */}
-          <div className="flex gap-3 mt-6">
-            <button
-              onClick={onTestConnection}
-              disabled={testingConnection}
-              className="btn-secondary flex items-center gap-2"
-            >
-              {testingConnection ? (
-                <Loader2 size={18} className="animate-spin" />
-              ) : (
-                <TestTube size={18} />
-              )}
-              Test Connection
-            </button>
-            <button
-              onClick={onSave}
-              disabled={saving}
-              className="btn-primary flex items-center gap-2"
-            >
-              {saving ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
-              Save Settings
-            </button>
-          </div>
-        </div>
-      )}
-    </motion.div>
   )
 }
 
@@ -1267,6 +990,10 @@ function BrokerAccountsSettings() {
   const [accounts, setAccounts] = useState<BrokerAccountData[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [statusBanner, setStatusBanner] = useState<{
+    type: 'success' | 'error' | 'info'
+    message: string
+  } | null>(null)
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [editingAccount, setEditingAccount] = useState<BrokerAccountData | null>(null)
   const [actionLoading, setActionLoading] = useState<Record<number, string>>({})
@@ -1275,7 +1002,6 @@ function BrokerAccountsSettings() {
   const [formData, setFormData] = useState<BrokerAccountCreate>({
     name: '',
     broker_type: 'metaapi',
-    slot_index: 1,
     metaapi_account_id: '',
     metaapi_token: '',
     is_enabled: true,
@@ -1291,9 +1017,23 @@ function BrokerAccountsSettings() {
     trading_end_hour: 21,
   })
   const [showToken, setShowToken] = useState(false)
+  const [catalogQuery, setCatalogQuery] = useState('')
   const [selectedCatalogBrokerId, setSelectedCatalogBrokerId] = useState(BROKER_DIRECTORY[0]?.id || '')
   const [selectedPlatformId, setSelectedPlatformId] = useState(BROKER_DIRECTORY[0]?.platforms[0]?.id || '')
   const catalogRailRef = useRef<HTMLDivElement | null>(null)
+
+  const filteredBrokerDirectory = useMemo(() => {
+    const query = catalogQuery.trim().toLowerCase()
+    if (!query) return BROKER_DIRECTORY
+    return BROKER_DIRECTORY.filter((entry) => {
+      const inName = entry.name.toLowerCase().includes(query)
+      const inKind = entry.kind.toLowerCase().includes(query)
+      const inPlatform = entry.platforms.some((platform) =>
+        `${platform.label} ${platform.id}`.toLowerCase().includes(query),
+      )
+      return inName || inKind || inPlatform
+    })
+  }, [catalogQuery])
 
   const selectedCatalogBroker = useMemo(
     () => BROKER_DIRECTORY.find((entry) => entry.id === selectedCatalogBrokerId) || BROKER_DIRECTORY[0],
@@ -1316,13 +1056,6 @@ function BrokerAccountsSettings() {
   const usedSlots = takenSlots.size
   const canAddMore = user?.is_superuser ? true : usedSlots < maxSlots
 
-  const getFirstAvailableSlot = () => {
-    for (let i = 1; i <= maxSlots; i += 1) {
-      if (!takenSlots.has(i)) return i
-    }
-    return null
-  }
-
   const scrollCatalog = (direction: 'left' | 'right') => {
     if (!catalogRailRef.current) return
     catalogRailRef.current.scrollBy({
@@ -1337,13 +1070,13 @@ function BrokerAccountsSettings() {
     const generatedName = `${selectedCatalogBroker?.name || 'Broker'} ${selectedPlatform?.label || ''}`.trim()
 
     if (!metaapiAccountId) {
-      setError('Trading account ID is required.')
+      setError(selectedPlatform?.credentials.primaryHelp || 'Primary account credential is required.')
       return null
     }
 
     return {
       ...formData,
-      broker_type: 'metaapi',
+      broker_type: getBrokerTypeByPlatform(selectedPlatformId),
       name: (formData.name || '').trim() || generatedName,
       metaapi_account_id: metaapiAccountId,
       metaapi_token: metaapiToken || undefined,
@@ -1375,10 +1108,13 @@ function BrokerAccountsSettings() {
       setActionLoading({ ...actionLoading, 0: 'creating' })
       await brokerAccountsApi.create(payload)
       setShowCreateForm(false)
+      setStatusBanner({
+        type: 'success',
+        message: `Broker workspace "${payload.name}" created successfully.`,
+      })
       setFormData({
         name: '',
         broker_type: 'metaapi',
-        slot_index: 1,
         metaapi_account_id: '',
         metaapi_token: '',
         is_enabled: true,
@@ -1410,6 +1146,10 @@ function BrokerAccountsSettings() {
       if (!payload) return
       setActionLoading({ ...actionLoading, [editingAccount.id]: 'updating' })
       await brokerAccountsApi.update(editingAccount.id, payload)
+      setStatusBanner({
+        type: 'success',
+        message: `Broker workspace "${payload.name}" updated successfully.`,
+      })
       setEditingAccount(null)
       await loadAccounts()
     } catch (err) {
@@ -1423,7 +1163,11 @@ function BrokerAccountsSettings() {
     if (!confirm('Are you sure you want to delete this broker account?')) return
     try {
       setActionLoading({ ...actionLoading, [id]: 'deleting' })
-      await brokerAccountsApi.delete(id)
+      const result = await brokerAccountsApi.delete(id)
+      setStatusBanner({
+        type: 'success',
+        message: result.message || 'Broker account deleted.',
+      })
       await loadAccounts()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete account')
@@ -1436,10 +1180,16 @@ function BrokerAccountsSettings() {
     try {
       setActionLoading({ ...actionLoading, [id]: 'testing' })
       const result = await brokerAccountsApi.testConnection(id)
-      alert(`${result.message}${result.account_name ? ` (${result.account_name})` : ''}`)
+      setStatusBanner({
+        type: 'success',
+        message: `${result.message}${result.account_name ? ` (${result.account_name})` : ''}`,
+      })
       await loadAccounts()
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Connection test failed')
+      setStatusBanner({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Connection test failed',
+      })
     } finally {
       setActionLoading({})
     }
@@ -1461,10 +1211,16 @@ function BrokerAccountsSettings() {
     try {
       setActionLoading({ ...actionLoading, [id]: 'starting' })
       const result = await brokerAccountsApi.startBot(id)
-      alert(result.message)
+      setStatusBanner({
+        type: 'success',
+        message: result.message || 'Bot started.',
+      })
       await loadAccounts()
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to start bot')
+      setStatusBanner({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Failed to start bot',
+      })
     } finally {
       setActionLoading({})
     }
@@ -1474,10 +1230,16 @@ function BrokerAccountsSettings() {
     try {
       setActionLoading({ ...actionLoading, [id]: 'stopping' })
       const result = await brokerAccountsApi.stopBot(id)
-      alert(result.message)
+      setStatusBanner({
+        type: 'info',
+        message: result.message || 'Bot stopped.',
+      })
       await loadAccounts()
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to stop bot')
+      setStatusBanner({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Failed to stop bot',
+      })
     } finally {
       setActionLoading({})
     }
@@ -1486,6 +1248,16 @@ function BrokerAccountsSettings() {
   const openEditForm = (account: BrokerAccountData) => {
     const inferredBroker = inferBrokerFromAccountName(account.name)
     const inferredPlatformId = inferPlatformFromAccountName(account.name, inferredBroker)
+    const platformFromBrokerType =
+      account.broker_type === 'oanda'
+        ? 'oanda_api'
+        : account.broker_type === 'ig'
+        ? 'ig_api'
+        : account.broker_type === 'alpaca'
+        ? 'alpaca_api'
+        : account.broker_type === 'interactive_brokers'
+        ? 'ib_api'
+        : null
     setEditingAccount(account)
     setFormData({
       name: account.name,
@@ -1508,6 +1280,7 @@ function BrokerAccountsSettings() {
     setSelectedCatalogBrokerId(inferredBroker?.id || BROKER_DIRECTORY[0]?.id || '')
     setSelectedPlatformId(
       inferredPlatformId ||
+      platformFromBrokerType ||
       inferredBroker?.platforms[0]?.id ||
       BROKER_DIRECTORY[0]?.platforms[0]?.id ||
       '',
@@ -1548,17 +1321,16 @@ function BrokerAccountsSettings() {
           </div>
           <button
             onClick={() => {
-              const firstAvailableSlot = getFirstAvailableSlot()
-              if (!user?.is_superuser && firstAvailableSlot === null) {
+              if (!canAddMore) {
                 setError(`All ${maxSlots} license slots are occupied. Remove a broker or upgrade the license.`)
                 return
               }
               setShowCreateForm(true)
               setEditingAccount(null)
+              setStatusBanner(null)
               setFormData({
                 name: '',
                 broker_type: 'metaapi',
-                slot_index: firstAvailableSlot || 1,
                 metaapi_account_id: '',
                 metaapi_token: '',
                 is_enabled: true,
@@ -1586,6 +1358,21 @@ function BrokerAccountsSettings() {
         {error && (
           <div className="p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 mb-4 flex items-center gap-2">
             <AlertCircle size={18} /> {error}
+          </div>
+        )}
+
+        {statusBanner && (
+          <div
+            className={`p-3 rounded-lg mb-4 flex items-center gap-2 border ${
+              statusBanner.type === 'success'
+                ? 'bg-neon-green/15 border-neon-green/40 text-neon-green'
+                : statusBanner.type === 'error'
+                ? 'bg-red-500/15 border-red-500/40 text-red-300'
+                : 'bg-primary-500/15 border-primary-500/40 text-primary-300'
+            }`}
+          >
+            {statusBanner.type === 'error' ? <AlertCircle size={18} /> : <CheckCircle size={18} />}
+            <span>{statusBanner.message}</span>
           </div>
         )}
 
@@ -1620,6 +1407,15 @@ function BrokerAccountsSettings() {
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-semibold">{account.name}</span>
+                        {inferredBroker && (
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${
+                            inferredBroker.kind === 'prop'
+                              ? 'bg-purple-500/20 text-purple-300'
+                              : 'bg-sky-500/20 text-sky-300'
+                          }`}>
+                            {inferredBroker.kind === 'prop' ? 'Prop Firm' : 'Broker'}
+                          </span>
+                        )}
                         {account.slot_index && (
                           <span className="text-xs px-2 py-0.5 rounded-full bg-dark-700 text-dark-300">
                             Slot {account.slot_index}
@@ -1637,7 +1433,7 @@ function BrokerAccountsSettings() {
                         )}
                       </div>
                       <p className="text-xs text-dark-400">
-                        {(inferredBroker?.name || 'MetaApi')}{inferredPlatform ? ` (${inferredPlatform.label})` : ''} | {account.symbols.join(', ')} | {account.analysis_mode} mode | {account.analysis_interval_seconds / 60}min interval
+                        {(inferredBroker?.name || 'Custom Workspace')}{inferredPlatform ? ` (${inferredPlatform.label})` : ''} | {account.symbols.join(', ')} | {account.analysis_mode} mode | {account.analysis_interval_seconds / 60}min interval
                       </p>
                     </div>
                   </div>
@@ -1742,7 +1538,7 @@ function BrokerAccountsSettings() {
             className="card p-6"
           >
             <h3 className="text-lg font-semibold mb-4">
-              {editingAccount ? `Edit: ${editingAccount.name}` : 'Add New Broker'}
+              {editingAccount ? `Edit: ${editingAccount.name}` : 'Add New Workspace'}
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1750,7 +1546,7 @@ function BrokerAccountsSettings() {
                 <div className="flex items-center justify-between gap-3 mb-3">
                   <div>
                     <p className="text-sm font-medium text-dark-100">Broker Catalog</p>
-                    <p className="text-xs text-dark-400">Select broker and platform to preconfigure this workspace.</p>
+                    <p className="text-xs text-dark-400">Select broker or prop firm, then choose platform and credentials.</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -1772,8 +1568,18 @@ function BrokerAccountsSettings() {
                   </div>
                 </div>
 
+                <div className="mb-3">
+                  <input
+                    type="text"
+                    value={catalogQuery}
+                    onChange={(e) => setCatalogQuery(e.target.value)}
+                    placeholder="Search broker or prop firm (e.g. FTMO, RoboForex, Match-Trader...)"
+                    className="input"
+                  />
+                </div>
+
                 <div ref={catalogRailRef} className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                  {BROKER_DIRECTORY.map((entry) => (
+                  {filteredBrokerDirectory.map((entry) => (
                     <button
                       type="button"
                       key={entry.id}
@@ -1795,7 +1601,14 @@ function BrokerAccountsSettings() {
                     >
                       <div className="flex items-center gap-2 mb-2">
                         <BrokerLogo name={entry.name} domain={entry.logoDomain} />
-                        <span className="text-sm font-semibold text-dark-100">{entry.name}</span>
+                        <div>
+                          <span className="text-sm font-semibold text-dark-100">{entry.name}</span>
+                          <p className={`text-[10px] ${
+                            entry.kind === 'prop' ? 'text-purple-300' : 'text-sky-300'
+                          }`}>
+                            {entry.kind === 'prop' ? 'Prop Firm' : 'Broker'}
+                          </p>
+                        </div>
                       </div>
                       <p className="text-[11px] text-dark-500">
                         {entry.platforms.length} platform options
@@ -1803,21 +1616,32 @@ function BrokerAccountsSettings() {
                     </button>
                   ))}
                 </div>
+                {filteredBrokerDirectory.length === 0 && (
+                  <p className="text-xs text-dark-500 mt-3">No brokers/props found for this search.</p>
+                )}
               </div>
 
-              <div>
+              <div className="md:col-span-2">
                 <label className="block text-sm font-medium mb-2">Platform</label>
-                <select
-                  value={selectedPlatformId}
-                  onChange={(e) => setSelectedPlatformId(e.target.value)}
-                  className="input"
-                >
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                   {(selectedCatalogBroker?.platforms || []).map((platform) => (
-                    <option key={platform.id} value={platform.id}>
-                      {platform.label}
-                    </option>
+                    <button
+                      type="button"
+                      key={platform.id}
+                      onClick={() => setSelectedPlatformId(platform.id)}
+                      className={`p-3 rounded-xl border text-left transition-all ${
+                        selectedPlatformId === platform.id
+                          ? 'border-primary-500 bg-primary-500/10'
+                          : 'border-dark-700 bg-dark-900/70 hover:border-dark-500'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <BrokerLogo name={platform.label} domain={platform.logoDomain} className="h-8 w-8" />
+                        <span className="text-sm font-medium text-dark-100">{platform.label}</span>
+                      </div>
+                    </button>
                   ))}
-                </select>
+                </div>
                 <p className="text-xs text-dark-500 mt-1">
                   Current selection: {selectedCatalogBroker?.name || 'Broker'} {selectedPlatform ? `(${selectedPlatform.label})` : ''}
                 </p>
@@ -1835,46 +1659,32 @@ function BrokerAccountsSettings() {
                 />
               </div>
 
-              {/* Slot */}
               <div>
-                <label className="block text-sm font-medium mb-2">License Slot</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={maxSlots}
-                  value={formData.slot_index || ''}
-                  onChange={(e) => setFormData({ ...formData, slot_index: parseInt(e.target.value) || 1 })}
-                  className="input"
-                />
-                {!user?.is_superuser && (
-                  <p className="text-xs text-dark-500 mt-1">Available range: 1-{maxSlots}</p>
-                )}
-              </div>
-
-              {/* Trading Account ID */}
-              <div>
-                <label className="block text-sm font-medium mb-2">Trading Account ID</label>
+                <label className="block text-sm font-medium mb-2">
+                  {selectedPlatform?.credentials.primaryLabel || 'Primary Credential'}
+                </label>
                 <input
                   type="text"
                   value={formData.metaapi_account_id}
                   onChange={(e) => setFormData({ ...formData, metaapi_account_id: e.target.value })}
-                  placeholder="MetaApi account ID linked to this workspace"
+                  placeholder={selectedPlatform?.credentials.primaryPlaceholder || 'Primary credential'}
                   className="input"
                 />
                 <p className="text-xs text-dark-500 mt-1">
-                  Required. One ID per workspace slot.
+                  {selectedPlatform?.credentials.primaryHelp || 'This value is required to configure the workspace.'}
                 </p>
               </div>
 
-              {/* MetaApi Token */}
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium mb-2">Private API Token (optional)</label>
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  {selectedPlatform?.credentials.secretLabel || 'Secret / API Key (optional)'}
+                </label>
                 <div className="relative">
                   <input
                     type={showToken ? 'text' : 'password'}
                     value={formData.metaapi_token}
                     onChange={(e) => setFormData({ ...formData, metaapi_token: e.target.value })}
-                    placeholder="Optional: leave empty to use global MetaApi token from Settings"
+                    placeholder={selectedPlatform?.credentials.secretPlaceholder || 'Optional secret / API key'}
                     className="input pr-10"
                   />
                   <button
@@ -1886,7 +1696,7 @@ function BrokerAccountsSettings() {
                   </button>
                 </div>
                 <p className="text-xs text-dark-500 mt-1">
-                  If empty, backend uses the global MetaApi token configured in Broker Settings.
+                  {selectedPlatform?.credentials.secretHelp || 'Optional. Use only if this platform requires a dedicated secret.'}
                 </p>
               </div>
 
@@ -2091,7 +1901,7 @@ function BrokerAccountsSettings() {
                 ) : (
                   <Check size={18} />
                 )}
-                {editingAccount ? 'Update Broker' : 'Create Broker'}
+                {editingAccount ? 'Update Workspace' : 'Create Workspace'}
               </button>
             </div>
           </motion.div>
