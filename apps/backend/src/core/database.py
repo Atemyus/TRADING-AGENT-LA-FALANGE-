@@ -4,7 +4,9 @@ Uses SQLAlchemy 2.0 async with PostgreSQL or SQLite.
 """
 
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import select
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -53,6 +55,93 @@ async_session_maker = async_sessionmaker(
 class Base(DeclarativeBase):
     """Base class for all database models."""
     pass
+
+
+async def bootstrap_admin_and_license() -> None:
+    """
+    Bootstrap admin and optional license from environment variables.
+
+    This is idempotent and safe to run on every startup.
+    """
+    from src.core.models import License, LicenseStatus, User
+    from src.core.security import get_password_hash
+
+    admin_email = (settings.ADMIN_EMAIL or "").strip().lower()
+    admin_password = settings.ADMIN_PASSWORD or ""
+    admin_username = (settings.ADMIN_USERNAME or "admin").strip() or "admin"
+    admin_full_name = settings.ADMIN_FULL_NAME
+
+    # Optional bootstrap license
+    license_key = (settings.BOOTSTRAP_LICENSE_KEY or "").strip().upper()
+
+    async with async_session_maker() as session:
+        if license_key:
+            result = await session.execute(select(License).where(License.key == license_key))
+            existing_license = result.scalar_one_or_none()
+            if not existing_license:
+                new_license = License(
+                    key=license_key,
+                    name=settings.BOOTSTRAP_LICENSE_NAME,
+                    description="Auto-created at startup from environment",
+                    status=LicenseStatus.ACTIVE,
+                    is_active=True,
+                    max_uses=max(1, int(settings.BOOTSTRAP_LICENSE_MAX_USES)),
+                    current_uses=0,
+                    expires_at=datetime.now(UTC) + timedelta(days=max(1, int(settings.BOOTSTRAP_LICENSE_DURATION_DAYS))),
+                )
+                session.add(new_license)
+                print(f"✅ Bootstrap license created: {license_key}")
+
+        if not admin_email or not admin_password:
+            await session.commit()
+            print("ℹ️ Admin bootstrap skipped (set ADMIN_EMAIL and ADMIN_PASSWORD)")
+            return
+
+        result = await session.execute(select(User).where(User.email == admin_email))
+        admin_user = result.scalar_one_or_none()
+
+        if admin_user is None:
+            # Ensure username uniqueness for fresh creation.
+            username_candidate = admin_username
+            username_exists = await session.execute(
+                select(User).where(User.username == username_candidate)
+            )
+            if username_exists.scalar_one_or_none():
+                username_candidate = admin_email.split("@")[0][:100] or "admin"
+
+            admin_user = User(
+                email=admin_email,
+                username=username_candidate,
+                hashed_password=get_password_hash(admin_password),
+                full_name=admin_full_name,
+                is_active=True,
+                is_verified=True,
+                is_superuser=True,
+            )
+            session.add(admin_user)
+            await session.commit()
+            print(f"✅ Admin bootstrap created: {admin_email}")
+            return
+
+        # Keep existing user, enforce admin privileges, and refresh password from env
+        admin_user.is_active = True
+        admin_user.is_verified = True
+        admin_user.is_superuser = True
+        admin_user.hashed_password = get_password_hash(admin_password)
+        if admin_full_name is not None:
+            admin_user.full_name = admin_full_name
+
+        # Only change username if it's free or already current.
+        if admin_user.username != admin_username:
+            username_exists = await session.execute(
+                select(User).where(User.username == admin_username)
+            )
+            existing_username_user = username_exists.scalar_one_or_none()
+            if existing_username_user is None or existing_username_user.id == admin_user.id:
+                admin_user.username = admin_username
+
+        await session.commit()
+        print(f"✅ Admin bootstrap updated: {admin_email}")
 
 
 async def run_compat_migrations() -> None:
@@ -133,6 +222,7 @@ async def init_db() -> None:
         await conn.run_sync(Base.metadata.create_all)
 
     await run_compat_migrations()
+    await bootstrap_admin_and_license()
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

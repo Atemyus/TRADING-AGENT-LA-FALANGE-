@@ -143,6 +143,18 @@ class Settings(BaseSettings):
     EMAIL_FROM: str = "Prometheus <noreply@prometheus.trading>"
     FRONTEND_URL: str = "http://localhost:3000"
 
+    # Bootstrap admin (optional, for first-time production setup)
+    ADMIN_EMAIL: str | None = None
+    ADMIN_USERNAME: str = "admin"
+    ADMIN_PASSWORD: str | None = None
+    ADMIN_FULL_NAME: str | None = None
+
+    # Optional bootstrap license for registration tests
+    BOOTSTRAP_LICENSE_KEY: str | None = None
+    BOOTSTRAP_LICENSE_NAME: str = "Bootstrap License"
+    BOOTSTRAP_LICENSE_MAX_USES: int = 100
+    BOOTSTRAP_LICENSE_DURATION_DAYS: int = 365
+
     # Notifications
     TELEGRAM_BOT_TOKEN: str | None = None
     TELEGRAM_CHAT_ID: str | None = None
