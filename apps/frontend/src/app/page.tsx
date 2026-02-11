@@ -20,8 +20,19 @@ import {
   LogIn,
 } from 'lucide-react'
 import { MusicPlayer } from '@/components/common/MusicPlayer'
+import { LEGION_MODELS } from './legionModels'
+
+const EDGE_PARTICLES = [
+  { x: 26, size: 5, duration: 7.5, delay: 0.2, opacity: 0.48 },
+  { x: 44, size: 3, duration: 9.5, delay: 1.6, opacity: 0.36 },
+  { x: 62, size: 4, duration: 10.2, delay: 2.4, opacity: 0.4 },
+  { x: 74, size: 2, duration: 8.6, delay: 3.1, opacity: 0.42 },
+  { x: 34, size: 3, duration: 11, delay: 4.3, opacity: 0.34 },
+]
 
 export default function LandingPage() {
+  const visibleLegionModels = LEGION_MODELS.filter((model) => model.visible)
+
   return (
     <div className="min-h-screen overflow-hidden relative">
       {/* Fixed header with music and login */}
@@ -45,71 +56,8 @@ export default function LandingPage() {
         </div>
       </header>
 
-      {/* Left border fire effect */}
-      <div className="fixed left-0 top-0 bottom-0 w-16 pointer-events-none z-40">
-        <div className="absolute inset-0 bg-gradient-to-r from-primary-500/5 to-transparent" />
-        <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-gradient-to-b from-transparent via-primary-500/40 to-transparent" />
-        <div className="absolute left-2 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-primary-500/20 to-transparent" />
-        {/* Floating embers */}
-        <motion.div
-          animate={{
-            y: ['100vh', '-10vh'],
-            opacity: [0, 1, 1, 0],
-            scale: [0.5, 1, 1, 0.5],
-          }}
-          transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}
-          className="absolute left-4 w-2 h-2 rounded-full bg-primary-400/60 blur-[2px]"
-        />
-        <motion.div
-          animate={{
-            y: ['100vh', '-10vh'],
-            opacity: [0, 1, 1, 0],
-          }}
-          transition={{ duration: 12, repeat: Infinity, ease: 'linear', delay: 2 }}
-          className="absolute left-6 w-1.5 h-1.5 rounded-full bg-imperial-400/50 blur-[1px]"
-        />
-        <motion.div
-          animate={{
-            y: ['100vh', '-10vh'],
-            opacity: [0, 0.8, 0.8, 0],
-          }}
-          transition={{ duration: 10, repeat: Infinity, ease: 'linear', delay: 5 }}
-          className="absolute left-3 w-1 h-1 rounded-full bg-primary-300/70 blur-[1px]"
-        />
-      </div>
-
-      {/* Right border fire effect */}
-      <div className="fixed right-0 top-0 bottom-0 w-16 pointer-events-none z-40">
-        <div className="absolute inset-0 bg-gradient-to-l from-primary-500/5 to-transparent" />
-        <div className="absolute right-0 top-0 bottom-0 w-[2px] bg-gradient-to-b from-transparent via-primary-500/40 to-transparent" />
-        <div className="absolute right-2 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-primary-500/20 to-transparent" />
-        {/* Floating embers */}
-        <motion.div
-          animate={{
-            y: ['100vh', '-10vh'],
-            opacity: [0, 1, 1, 0],
-            scale: [0.5, 1, 1, 0.5],
-          }}
-          transition={{ duration: 9, repeat: Infinity, ease: 'linear', delay: 1 }}
-          className="absolute right-4 w-2 h-2 rounded-full bg-primary-400/60 blur-[2px]"
-        />
-        <motion.div
-          animate={{
-            y: ['100vh', '-10vh'],
-            opacity: [0, 1, 1, 0],
-          }}
-          transition={{ duration: 11, repeat: Infinity, ease: 'linear', delay: 4 }}
-          className="absolute right-6 w-1.5 h-1.5 rounded-full bg-imperial-400/50 blur-[1px]"
-        />
-        <motion.div
-          animate={{
-            y: ['100vh', '-10vh'],
-            opacity: [0, 0.8, 0.8, 0],
-          }}
-          transition={{ duration: 7, repeat: Infinity, ease: 'linear', delay: 3 }}
-          className="absolute right-3 w-1 h-1 rounded-full bg-primary-300/70 blur-[1px]"
-        />
-      </div>
+      <EdgeFireRail side="left" />
+      <EdgeFireRail side="right" />
       {/* Hero Section */}
       <section className="relative min-h-screen flex flex-col items-center justify-center px-4 hero-gradient particles-bg">
         {/* Animated background orbs */}
@@ -147,7 +95,7 @@ export default function LandingPage() {
         </div>
 
         {/* Main content */}
-        <div className="text-center max-w-5xl mx-auto z-10">
+        <div className="text-center max-w-5xl mx-auto z-10 px-6 py-10 rounded-3xl hero-content-shell">
           {/* Badge */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -413,29 +361,25 @@ export default function LandingPage() {
             transition={{ duration: 0.6, delay: 0.2 }}
             className="grid grid-cols-2 md:grid-cols-4 gap-4"
           >
-            {[
-              { name: 'ChatGPT', style: 'SMC Expert', color: 'from-green-500 to-emerald-600' },
-              { name: 'Gemini', style: 'Price Action', color: 'from-blue-500 to-cyan-600' },
-              { name: 'Grok', style: 'Momentum', color: 'from-orange-500 to-red-600' },
-              { name: 'Qwen', style: 'Ichimoku', color: 'from-purple-500 to-violet-600' },
-              { name: 'Llama', style: 'Bollinger', color: 'from-yellow-500 to-amber-600' },
-              { name: 'ERNIE', style: 'Fibonacci', color: 'from-pink-500 to-rose-600' },
-              { name: 'Kimi', style: 'Wave Theory', color: 'from-teal-500 to-cyan-600' },
-              { name: 'Mistral', style: 'VWAP', color: 'from-indigo-500 to-blue-600' },
-            ].map((model, index) => (
+            {visibleLegionModels.map((model, index) => (
               <motion.div
-                key={model.name}
+                key={model.id}
                 initial={{ opacity: 0, scale: 0.9 }}
                 whileInView={{ opacity: 1, scale: 1 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.4, delay: index * 0.05 }}
-                className="card-glass p-5 text-center hover:border-primary-500/30 transition-all duration-300 group"
+                className="card-glass p-5 text-center legion-card group"
               >
-                <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${model.color} mx-auto mb-3 flex items-center justify-center text-white font-bold text-lg group-hover:scale-110 transition-transform`}>
-                  {model.name[0]}
+                <div className={`w-14 h-14 rounded-2xl border bg-gradient-to-br ${model.accentClass} mx-auto mb-3 flex items-center justify-center transition-transform duration-300 group-hover:scale-105`}>
+                  <Image
+                    src={model.logoSrc}
+                    alt={model.logoAlt}
+                    width={28}
+                    height={28}
+                    className="w-7 h-7 object-contain legion-logo-mark"
+                  />
                 </div>
-                <h3 className="font-semibold text-dark-100 mb-1">{model.name}</h3>
-                <p className="text-xs text-dark-400">{model.style}</p>
+                <h3 className="font-semibold text-dark-100">{model.name}</h3>
               </motion.div>
             ))}
           </motion.div>
@@ -492,6 +436,42 @@ export default function LandingPage() {
           </p>
         </div>
       </footer>
+    </div>
+  )
+}
+
+function EdgeFireRail({ side }: { side: 'left' | 'right' }) {
+  const isLeft = side === 'left'
+
+  return (
+    <div
+      className={`fixed top-0 bottom-0 w-16 pointer-events-none z-40 edge-fire-rail ${
+        isLeft ? 'left-0 edge-fire-rail-left' : 'right-0 edge-fire-rail-right'
+      }`}
+    >
+      <div className="edge-rail-backdrop" />
+      <div className="edge-rail-line edge-rail-line-main" />
+      <div className="edge-rail-line edge-rail-line-soft" />
+      <div className="edge-rail-energy" />
+      <div className="edge-rail-energy edge-rail-energy-soft" />
+      {EDGE_PARTICLES.map((particle, index) => {
+        const x = isLeft ? particle.x : 100 - particle.x
+        return (
+          <span
+            key={`${side}-${index}`}
+            className="edge-rail-particle"
+            style={
+              {
+                '--particle-x': `${x}%`,
+                '--particle-size': `${particle.size}px`,
+                '--particle-duration': `${particle.duration}s`,
+                '--particle-delay': `${particle.delay}s`,
+                '--particle-opacity': particle.opacity,
+              } as React.CSSProperties
+            }
+          />
+        )
+      })}
     </div>
   )
 }

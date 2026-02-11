@@ -56,7 +56,7 @@ export default function TermsPage() {
             <section>
               <h2 className="text-xl font-semibold text-white mb-3">1. Acceptance of Terms</h2>
               <p>
-                By accessing and using Prometheus AI Trading ("the Service"), you agree to be bound
+                By accessing and using Prometheus AI Trading (&quot;the Service&quot;), you agree to be bound
                 by these Terms of Service. If you do not agree to these terms, please do not use
                 our services.
               </p>
