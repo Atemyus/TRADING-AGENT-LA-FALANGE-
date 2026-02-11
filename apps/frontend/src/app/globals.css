@@ -1180,6 +1180,106 @@
   background: rgba(24, 24, 27, 0.58);
 }
 
+.workspace-symbol-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(113, 113, 122, 0.55);
+  background: rgba(24, 24, 27, 0.72);
+  color: rgba(229, 231, 235, 0.88);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0.4rem 0.78rem;
+  transition: border-color 180ms ease, color 180ms ease, transform 180ms ease, box-shadow 180ms ease;
+}
+
+.workspace-symbol-chip:hover {
+  border-color: rgba(245, 158, 11, 0.42);
+  color: rgba(255, 244, 214, 0.95);
+  transform: translateY(-1px);
+}
+
+.workspace-symbol-chip-active {
+  border-color: rgba(245, 158, 11, 0.64);
+  color: rgba(255, 244, 214, 0.97);
+  background: rgba(245, 158, 11, 0.14);
+  box-shadow: 0 0 18px rgba(245, 158, 11, 0.19);
+}
+
+.workspace-symbol-chip-soft {
+  border-color: rgba(63, 63, 70, 0.8);
+  color: rgba(212, 212, 216, 0.9);
+  background: rgba(17, 17, 19, 0.66);
+}
+
+.workspace-panel-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(113, 113, 122, 0.42);
+  background:
+    linear-gradient(150deg, rgba(26, 26, 30, 0.95) 0%, rgba(14, 14, 17, 0.92) 100%);
+  padding: 1.15rem;
+  min-height: 245px;
+  transition: transform 220ms ease, border-color 220ms ease, box-shadow 240ms ease;
+}
+
+.workspace-panel-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 14% 18%, rgba(245, 158, 11, 0.16) 0%, transparent 42%),
+    radial-gradient(circle at 88% 82%, rgba(124, 58, 237, 0.15) 0%, transparent 45%);
+  opacity: 0.82;
+}
+
+.workspace-panel-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(245, 158, 11, 0.44);
+  box-shadow:
+    0 20px 44px rgba(0, 0, 0, 0.42),
+    0 0 24px rgba(245, 158, 11, 0.12);
+}
+
+.workspace-panel-card-active {
+  border-color: rgba(245, 158, 11, 0.68);
+  box-shadow:
+    0 22px 48px rgba(0, 0, 0, 0.45),
+    0 0 28px rgba(245, 158, 11, 0.2);
+}
+
+.workspace-panel-empty {
+  border-style: dashed;
+  border-color: rgba(82, 82, 91, 0.65);
+  background:
+    linear-gradient(160deg, rgba(18, 18, 22, 0.82) 0%, rgba(10, 10, 12, 0.84) 100%);
+}
+
+.workspace-metric-block {
+  border-radius: 0.85rem;
+  border: 1px solid rgba(63, 63, 70, 0.6);
+  background: rgba(9, 9, 11, 0.52);
+  padding: 0.55rem 0.66rem;
+}
+
+.workspace-metric-label {
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(161, 161, 170, 0.88);
+  margin-bottom: 0.12rem;
+}
+
+.workspace-metric-value {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: rgba(244, 244, 245, 0.94);
+}
+
 .prometheus-arrival-overlay {
   background:
     radial-gradient(circle at 50% 40%, rgba(245, 158, 11, 0.17) 0%, transparent 50%),

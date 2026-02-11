@@ -1,12 +1,13 @@
 'use client'
 
 import { motion, AnimatePresence } from 'framer-motion'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   Server,
   Brain,
   Shield,
   Bell,
+  ChevronLeft,
   ChevronRight,
   Check,
   Eye,
@@ -60,12 +61,43 @@ function Toggle({
   )
 }
 
+function BrokerLogo({
+  name,
+  domain,
+  className = 'h-9 w-9',
+}: {
+  name: string
+  domain?: string
+  className?: string
+}) {
+  const [failed, setFailed] = useState(false)
+  const logoSrc = domain ? getClearbitLogoUrl(domain) : ''
+
+  if (!logoSrc || failed) {
+    return (
+      <div className={`${className} rounded-lg bg-dark-700 border border-dark-600 flex items-center justify-center text-xs font-semibold text-dark-200`}>
+        {name.split(' ').map((chunk) => chunk[0]).join('').slice(0, 2).toUpperCase()}
+      </div>
+    )
+  }
+
+  return (
+    <img
+      src={logoSrc}
+      alt={`${name} logo`}
+      className={`${className} rounded-lg object-cover border border-dark-600 bg-white/90 p-1`}
+      onError={() => setFailed(true)}
+      loading="lazy"
+    />
+  )
+}
+
 // Broker configurations
 const BROKERS = [
   {
     id: 'oanda',
     name: 'OANDA',
-    logo: '🏦',
+    logo: 'OA',
     description: 'Forex & CFD trading via REST API',
     fields: [
       { key: 'api_key', label: 'API Key', type: 'password', placeholder: 'Your OANDA API key' },
@@ -76,7 +108,7 @@ const BROKERS = [
   {
     id: 'metatrader',
     name: 'MetaTrader 4/5',
-    logo: '📊',
+    logo: 'MT',
     description: 'MT4/MT5 via MetaApi.cloud',
     fields: [
       { key: 'meta_api_token', label: 'MetaApi Token', type: 'password', placeholder: 'Your MetaApi token' },
@@ -88,7 +120,7 @@ const BROKERS = [
   {
     id: 'ig',
     name: 'IG Markets',
-    logo: '🔴',
+    logo: 'IG',
     description: 'Global CFD & Spread Betting',
     fields: [
       { key: 'api_key', label: 'API Key', type: 'password', placeholder: 'Your IG API key' },
@@ -101,7 +133,7 @@ const BROKERS = [
   {
     id: 'interactive_brokers',
     name: 'Interactive Brokers',
-    logo: '🟣',
+    logo: 'IB',
     description: 'Stocks, Futures, Options & more',
     fields: [
       { key: 'host', label: 'TWS Host', type: 'text', placeholder: '127.0.0.1' },
@@ -112,7 +144,7 @@ const BROKERS = [
   {
     id: 'alpaca',
     name: 'Alpaca',
-    logo: '🦙',
+    logo: 'AL',
     description: 'Commission-free US stocks',
     fields: [
       { key: 'api_key', label: 'API Key', type: 'password', placeholder: 'Your Alpaca API key' },
@@ -122,12 +154,77 @@ const BROKERS = [
   },
 ]
 
+type BrokerPlatform = {
+  id: string
+  label: string
+}
+
+type BrokerDirectoryEntry = {
+  id: string
+  name: string
+  logoDomain: string
+  platforms: BrokerPlatform[]
+}
+
+const BROKER_DIRECTORY: BrokerDirectoryEntry[] = [
+  { id: 'ic_markets', name: 'IC Markets', logoDomain: 'icmarkets.com', platforms: [{ id: 'mt4', label: 'MetaTrader 4' }, { id: 'mt5', label: 'MetaTrader 5' }, { id: 'ctrader', label: 'cTrader' }] },
+  { id: 'pepperstone', name: 'Pepperstone', logoDomain: 'pepperstone.com', platforms: [{ id: 'mt4', label: 'MetaTrader 4' }, { id: 'mt5', label: 'MetaTrader 5' }, { id: 'ctrader', label: 'cTrader' }, { id: 'tradingview', label: 'TradingView' }] },
+  { id: 'roboforex', name: 'RoboForex', logoDomain: 'roboforex.com', platforms: [{ id: 'mt4', label: 'MetaTrader 4' }, { id: 'mt5', label: 'MetaTrader 5' }, { id: 'ctrader', label: 'cTrader' }] },
+  { id: 'xm', name: 'XM', logoDomain: 'xm.com', platforms: [{ id: 'mt4', label: 'MetaTrader 4' }, { id: 'mt5', label: 'MetaTrader 5' }] },
+  { id: 'exness', name: 'Exness', logoDomain: 'exness.com', platforms: [{ id: 'mt4', label: 'MetaTrader 4' }, { id: 'mt5', label: 'MetaTrader 5' }] },
+  { id: 'vantage', name: 'Vantage', logoDomain: 'vantagemarkets.com', platforms: [{ id: 'mt4', label: 'MetaTrader 4' }, { id: 'mt5', label: 'MetaTrader 5' }] },
+  { id: 'tickmill', name: 'Tickmill', logoDomain: 'tickmill.com', platforms: [{ id: 'mt4', label: 'MetaTrader 4' }, { id: 'mt5', label: 'MetaTrader 5' }] },
+  { id: 'fp_markets', name: 'FP Markets', logoDomain: 'fpmarkets.com', platforms: [{ id: 'mt4', label: 'MetaTrader 4' }, { id: 'mt5', label: 'MetaTrader 5' }, { id: 'ctrader', label: 'cTrader' }] },
+  { id: 'eightcap', name: 'Eightcap', logoDomain: 'eightcap.com', platforms: [{ id: 'mt4', label: 'MetaTrader 4' }, { id: 'mt5', label: 'MetaTrader 5' }, { id: 'tradingview', label: 'TradingView' }] },
+  { id: 'blackbull', name: 'BlackBull Markets', logoDomain: 'blackbull.com', platforms: [{ id: 'mt4', label: 'MetaTrader 4' }, { id: 'mt5', label: 'MetaTrader 5' }, { id: 'ctrader', label: 'cTrader' }] },
+  { id: 'thinkmarkets', name: 'ThinkMarkets', logoDomain: 'thinkmarkets.com', platforms: [{ id: 'mt4', label: 'MetaTrader 4' }, { id: 'mt5', label: 'MetaTrader 5' }, { id: 'thinktrader', label: 'ThinkTrader' }] },
+  { id: 'admirals', name: 'Admirals', logoDomain: 'admiralmarkets.com', platforms: [{ id: 'mt4', label: 'MetaTrader 4' }, { id: 'mt5', label: 'MetaTrader 5' }] },
+  { id: 'oanda', name: 'OANDA', logoDomain: 'oanda.com', platforms: [{ id: 'oanda_api', label: 'OANDA API' }, { id: 'mt5', label: 'MetaTrader 5' }] },
+  { id: 'ig', name: 'IG', logoDomain: 'ig.com', platforms: [{ id: 'ig_api', label: 'IG API' }, { id: 'mt4', label: 'MetaTrader 4' }] },
+  { id: 'ftmo', name: 'FTMO', logoDomain: 'ftmo.com', platforms: [{ id: 'mt4', label: 'MetaTrader 4' }, { id: 'mt5', label: 'MetaTrader 5' }, { id: 'dxtrade', label: 'DXtrade' }] },
+  { id: 'fundednext', name: 'FundedNext', logoDomain: 'fundednext.com', platforms: [{ id: 'mt4', label: 'MetaTrader 4' }, { id: 'mt5', label: 'MetaTrader 5' }, { id: 'ctrader', label: 'cTrader' }] },
+  { id: 'the5ers', name: 'The5ers', logoDomain: 'the5ers.com', platforms: [{ id: 'mt5', label: 'MetaTrader 5' }] },
+  { id: 'my_funded_fx', name: 'MyFundedFX', logoDomain: 'myfundedfx.com', platforms: [{ id: 'mt5', label: 'MetaTrader 5' }, { id: 'matchtrader', label: 'Match-Trader' }] },
+  { id: 'funded_trading_plus', name: 'Funded Trading Plus', logoDomain: 'fundedtradingplus.com', platforms: [{ id: 'mt4', label: 'MetaTrader 4' }, { id: 'mt5', label: 'MetaTrader 5' }, { id: 'tradelocker', label: 'TradeLocker' }] },
+]
+
+const BROKER_LOGO_DOMAINS: Record<string, string> = {
+  oanda: 'oanda.com',
+  metatrader: 'metaapi.cloud',
+  ig: 'ig.com',
+  interactive_brokers: 'interactivebrokers.com',
+  alpaca: 'alpaca.markets',
+}
+
+const getClearbitLogoUrl = (domain: string) => `https://logo.clearbit.com/${domain}`
+
+const inferBrokerFromAccountName = (name: string): BrokerDirectoryEntry | null => {
+  const value = name.toLowerCase()
+  for (const broker of BROKER_DIRECTORY) {
+    if (value.includes(broker.name.toLowerCase()) || value.includes(broker.id.replace(/_/g, ' '))) {
+      return broker
+    }
+  }
+  return null
+}
+
+const inferPlatformFromAccountName = (name: string, broker: BrokerDirectoryEntry | null): string | null => {
+  if (!broker) return null
+  const value = name.toLowerCase()
+  for (const platform of broker.platforms) {
+    if (value.includes(platform.label.toLowerCase()) || value.includes(platform.id.toLowerCase())) {
+      return platform.id
+    }
+  }
+  return null
+}
+
 // AI Provider configurations
 const AI_PROVIDERS = [
   {
     id: 'aiml',
     name: 'AIML API',
-    icon: '🚀',
+    icon: 'AI',
     models: ['ChatGPT 5.2', 'Gemini 3 Pro', 'Grok 4.1 Fast', 'Qwen3 VL', 'Llama 4 Scout', 'ERNIE 4.5 VL'],
     field: { key: 'AIML_API_KEY', label: 'API Key', placeholder: 'Your AIML API key' },
     badge: '6 Models',
@@ -136,7 +233,7 @@ const AI_PROVIDERS = [
   {
     id: 'nvidia',
     name: 'NVIDIA API',
-    icon: '🟢',
+    icon: 'NV',
     models: ['Kimi K2.5', 'Mistral Large 3'],
     field: { key: 'NVIDIA_API_KEY', label: 'API Key', placeholder: 'Your NVIDIA API key' },
     badge: '2 Models',
@@ -495,6 +592,14 @@ function BrokerSettings({
   saveMessage: string
 }) {
   const broker = brokers.find(b => b.id === selectedBroker)
+  const brokerRailRef = useRef<HTMLDivElement | null>(null)
+  const directoryRailRef = useRef<HTMLDivElement | null>(null)
+
+  const scrollRail = (ref: { current: HTMLDivElement | null }, direction: 'left' | 'right') => {
+    if (!ref.current) return
+    const amount = direction === 'left' ? -320 : 320
+    ref.current.scrollBy({ left: amount, behavior: 'smooth' })
+  }
 
   return (
     <motion.div
@@ -505,20 +610,43 @@ function BrokerSettings({
     >
       {/* Broker Selection */}
       <div className="card p-6">
-        <h2 className="text-xl font-semibold mb-4">Select Broker</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div>
+            <h2 className="text-xl font-semibold">Select Integration</h2>
+            <p className="text-xs text-dark-400 mt-1">Choose backend integration, then connect one or more broker workspaces below.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => scrollRail(brokerRailRef, 'left')}
+              className="p-2 rounded-lg border border-dark-700 bg-dark-900/60 hover:border-dark-500"
+              aria-label="Scroll left"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollRail(brokerRailRef, 'right')}
+              className="p-2 rounded-lg border border-dark-700 bg-dark-900/60 hover:border-dark-500"
+              aria-label="Scroll right"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+        <div ref={brokerRailRef} className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
           {brokers.map((b) => (
             <button
               key={b.id}
               onClick={() => setSelectedBroker(b.id)}
-              className={`p-4 rounded-xl border-2 transition-all text-left ${
+              className={`min-w-[260px] p-4 rounded-xl border-2 transition-all text-left ${
                 selectedBroker === b.id
                   ? 'border-primary-500 bg-primary-500/10'
                   : 'border-dark-700 hover:border-dark-600 bg-dark-800/50'
               }`}
             >
               <div className="flex items-center gap-3 mb-2">
-                <span className="text-2xl">{b.logo}</span>
+                <BrokerLogo name={b.name} domain={BROKER_LOGO_DOMAINS[b.id]} />
                 <span className="font-semibold">{b.name}</span>
                 {selectedBroker === b.id && (
                   <Check size={16} className="ml-auto text-primary-500" />
@@ -528,6 +656,54 @@ function BrokerSettings({
             </button>
           ))}
         </div>
+
+        <div className="mt-6 pt-6 border-t border-dark-700/60">
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <div>
+              <p className="text-sm font-medium text-dark-100">Broker and Prop Catalog</p>
+              <p className="text-xs text-dark-400">Use this directory when creating account workspaces and selecting compatible platforms.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => scrollRail(directoryRailRef, 'left')}
+                className="p-2 rounded-lg border border-dark-700 bg-dark-900/60 hover:border-dark-500"
+                aria-label="Scroll broker catalog left"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollRail(directoryRailRef, 'right')}
+                className="p-2 rounded-lg border border-dark-700 bg-dark-900/60 hover:border-dark-500"
+                aria-label="Scroll broker catalog right"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+
+          <div ref={directoryRailRef} className="flex gap-3 overflow-x-auto pb-1 scrollbar-hide">
+            {BROKER_DIRECTORY.map((entry) => (
+              <div key={entry.id} className="min-w-[240px] p-4 rounded-xl border border-dark-700 bg-dark-800/40">
+                <div className="flex items-center gap-3 mb-3">
+                  <BrokerLogo name={entry.name} domain={entry.logoDomain} />
+                  <div>
+                    <p className="text-sm font-semibold text-dark-100">{entry.name}</p>
+                    <p className="text-[11px] text-dark-500">{entry.platforms.length} supported platforms</p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {entry.platforms.map((platform) => (
+                    <span key={platform.id} className="text-[11px] px-2 py-0.5 rounded-full border border-dark-600 bg-dark-900/80 text-dark-300">
+                      {platform.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Broker Configuration */}
@@ -535,7 +711,7 @@ function BrokerSettings({
         <div className="card p-6">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
-              <span className="text-3xl">{broker.logo}</span>
+              <BrokerLogo name={broker.name} domain={BROKER_LOGO_DOMAINS[broker.id]} className="h-11 w-11" />
               <div>
                 <h2 className="text-xl font-semibold">{broker.name} Configuration</h2>
                 <p className="text-sm text-dark-400">{broker.description}</p>
@@ -989,7 +1165,7 @@ function NotificationSettings({
       <div className="card p-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <span className="text-2xl">📱</span>
+            <span className="text-2xl">TG</span>
             <div>
               <h3 className="font-semibold">Telegram</h3>
               <p className="text-sm text-dark-400">Get notifications via Telegram bot</p>
@@ -1034,7 +1210,7 @@ function NotificationSettings({
       <div className="card p-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <span className="text-2xl">💬</span>
+            <span className="text-2xl">DS</span>
             <div>
               <h3 className="font-semibold">Discord</h3>
               <p className="text-sm text-dark-400">Get notifications via Discord webhook</p>
@@ -1115,6 +1291,25 @@ function BrokerAccountsSettings() {
     trading_end_hour: 21,
   })
   const [showToken, setShowToken] = useState(false)
+  const [selectedCatalogBrokerId, setSelectedCatalogBrokerId] = useState(BROKER_DIRECTORY[0]?.id || '')
+  const [selectedPlatformId, setSelectedPlatformId] = useState(BROKER_DIRECTORY[0]?.platforms[0]?.id || '')
+  const catalogRailRef = useRef<HTMLDivElement | null>(null)
+
+  const selectedCatalogBroker = useMemo(
+    () => BROKER_DIRECTORY.find((entry) => entry.id === selectedCatalogBrokerId) || BROKER_DIRECTORY[0],
+    [selectedCatalogBrokerId],
+  )
+  const selectedPlatform = useMemo(
+    () => selectedCatalogBroker?.platforms.find((platform) => platform.id === selectedPlatformId) || selectedCatalogBroker?.platforms[0] || null,
+    [selectedCatalogBroker, selectedPlatformId],
+  )
+
+  useEffect(() => {
+    if (!selectedCatalogBroker) return
+    if (!selectedCatalogBroker.platforms.some((platform) => platform.id === selectedPlatformId)) {
+      setSelectedPlatformId(selectedCatalogBroker.platforms[0]?.id || '')
+    }
+  }, [selectedCatalogBroker, selectedPlatformId])
 
   const maxSlots = user?.is_superuser ? Math.max(10, accounts.length) : Math.max(1, user?.license_broker_slots || 1)
   const takenSlots = new Set(accounts.map((a) => a.slot_index).filter((s): s is number => typeof s === 'number' && s > 0))
@@ -1126,6 +1321,33 @@ function BrokerAccountsSettings() {
       if (!takenSlots.has(i)) return i
     }
     return null
+  }
+
+  const scrollCatalog = (direction: 'left' | 'right') => {
+    if (!catalogRailRef.current) return
+    catalogRailRef.current.scrollBy({
+      left: direction === 'left' ? -340 : 340,
+      behavior: 'smooth',
+    })
+  }
+
+  const buildAccountPayload = () => {
+    const metaapiAccountId = (formData.metaapi_account_id || '').trim()
+    const metaapiToken = (formData.metaapi_token || '').trim()
+    const generatedName = `${selectedCatalogBroker?.name || 'Broker'} ${selectedPlatform?.label || ''}`.trim()
+
+    if (!metaapiAccountId) {
+      setError('Trading account ID is required.')
+      return null
+    }
+
+    return {
+      ...formData,
+      broker_type: 'metaapi',
+      name: (formData.name || '').trim() || generatedName,
+      metaapi_account_id: metaapiAccountId,
+      metaapi_token: metaapiToken || undefined,
+    } as BrokerAccountCreate
   }
 
   // Load accounts
@@ -1148,8 +1370,10 @@ function BrokerAccountsSettings() {
 
   const handleCreate = async () => {
     try {
+      const payload = buildAccountPayload()
+      if (!payload) return
       setActionLoading({ ...actionLoading, 0: 'creating' })
-      await brokerAccountsApi.create(formData)
+      await brokerAccountsApi.create(payload)
       setShowCreateForm(false)
       setFormData({
         name: '',
@@ -1169,6 +1393,8 @@ function BrokerAccountsSettings() {
         trading_start_hour: 7,
         trading_end_hour: 21,
       })
+      setSelectedCatalogBrokerId(BROKER_DIRECTORY[0]?.id || '')
+      setSelectedPlatformId(BROKER_DIRECTORY[0]?.platforms[0]?.id || '')
       await loadAccounts()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create account')
@@ -1180,8 +1406,10 @@ function BrokerAccountsSettings() {
   const handleUpdate = async () => {
     if (!editingAccount) return
     try {
+      const payload = buildAccountPayload()
+      if (!payload) return
       setActionLoading({ ...actionLoading, [editingAccount.id]: 'updating' })
-      await brokerAccountsApi.update(editingAccount.id, formData)
+      await brokerAccountsApi.update(editingAccount.id, payload)
       setEditingAccount(null)
       await loadAccounts()
     } catch (err) {
@@ -1256,6 +1484,8 @@ function BrokerAccountsSettings() {
   }
 
   const openEditForm = (account: BrokerAccountData) => {
+    const inferredBroker = inferBrokerFromAccountName(account.name)
+    const inferredPlatformId = inferPlatformFromAccountName(account.name, inferredBroker)
     setEditingAccount(account)
     setFormData({
       name: account.name,
@@ -1275,6 +1505,13 @@ function BrokerAccountsSettings() {
       trading_start_hour: account.trading_start_hour,
       trading_end_hour: account.trading_end_hour,
     })
+    setSelectedCatalogBrokerId(inferredBroker?.id || BROKER_DIRECTORY[0]?.id || '')
+    setSelectedPlatformId(
+      inferredPlatformId ||
+      inferredBroker?.platforms[0]?.id ||
+      BROKER_DIRECTORY[0]?.platforms[0]?.id ||
+      '',
+    )
     setShowCreateForm(false)
   }
 
@@ -1336,6 +1573,8 @@ function BrokerAccountsSettings() {
                 trading_start_hour: 7,
                 trading_end_hour: 21,
               })
+              setSelectedCatalogBrokerId(BROKER_DIRECTORY[0]?.id || '')
+              setSelectedPlatformId(BROKER_DIRECTORY[0]?.platforms[0]?.id || '')
             }}
             disabled={!canAddMore}
             className="btn-primary flex items-center gap-2"
@@ -1359,7 +1598,12 @@ function BrokerAccountsSettings() {
           </div>
         ) : (
           <div className="space-y-4">
-            {accounts.map((account) => (
+            {accounts.map((account) => {
+              const inferredBroker = inferBrokerFromAccountName(account.name)
+              const inferredPlatformId = inferPlatformFromAccountName(account.name, inferredBroker)
+              const inferredPlatform = inferredBroker?.platforms.find((platform) => platform.id === inferredPlatformId) || null
+
+              return (
               <div
                 key={account.id}
                 className={`p-4 rounded-xl border transition-all ${
@@ -1372,7 +1616,7 @@ function BrokerAccountsSettings() {
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <span className="text-2xl">📊</span>
+                    <BrokerLogo name={inferredBroker?.name || account.name} domain={inferredBroker?.logoDomain} className="h-10 w-10" />
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-semibold">{account.name}</span>
@@ -1393,7 +1637,7 @@ function BrokerAccountsSettings() {
                         )}
                       </div>
                       <p className="text-xs text-dark-400">
-                        {account.symbols.join(', ')} | {account.analysis_mode} mode | {account.analysis_interval_seconds / 60}min interval
+                        {(inferredBroker?.name || 'MetaApi')}{inferredPlatform ? ` (${inferredPlatform.label})` : ''} | {account.symbols.join(', ')} | {account.analysis_mode} mode | {account.analysis_interval_seconds / 60}min interval
                       </p>
                     </div>
                   </div>
@@ -1483,7 +1727,7 @@ function BrokerAccountsSettings() {
                   </div>
                 </div>
               </div>
-            ))}
+            )})}
           </div>
         )}
       </div>
@@ -1502,6 +1746,83 @@ function BrokerAccountsSettings() {
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="md:col-span-2 p-4 rounded-xl border border-dark-700 bg-dark-900/40">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div>
+                    <p className="text-sm font-medium text-dark-100">Broker Catalog</p>
+                    <p className="text-xs text-dark-400">Select broker and platform to preconfigure this workspace.</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => scrollCatalog('left')}
+                      className="p-2 rounded-lg border border-dark-700 bg-dark-950/70 hover:border-dark-500"
+                      aria-label="Scroll brokers left"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => scrollCatalog('right')}
+                      className="p-2 rounded-lg border border-dark-700 bg-dark-950/70 hover:border-dark-500"
+                      aria-label="Scroll brokers right"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
+
+                <div ref={catalogRailRef} className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                  {BROKER_DIRECTORY.map((entry) => (
+                    <button
+                      type="button"
+                      key={entry.id}
+                      onClick={() => {
+                        setSelectedCatalogBrokerId(entry.id)
+                        setSelectedPlatformId(entry.platforms[0]?.id || '')
+                        if (!formData.name) {
+                          setFormData({
+                            ...formData,
+                            name: `${entry.name} ${entry.platforms[0]?.label || ''}`.trim(),
+                          })
+                        }
+                      }}
+                      className={`min-w-[220px] p-3 rounded-xl border text-left transition-all ${
+                        selectedCatalogBrokerId === entry.id
+                          ? 'border-primary-500 bg-primary-500/10'
+                          : 'border-dark-700 bg-dark-900/70 hover:border-dark-500'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <BrokerLogo name={entry.name} domain={entry.logoDomain} />
+                        <span className="text-sm font-semibold text-dark-100">{entry.name}</span>
+                      </div>
+                      <p className="text-[11px] text-dark-500">
+                        {entry.platforms.length} platform options
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Platform</label>
+                <select
+                  value={selectedPlatformId}
+                  onChange={(e) => setSelectedPlatformId(e.target.value)}
+                  className="input"
+                >
+                  {(selectedCatalogBroker?.platforms || []).map((platform) => (
+                    <option key={platform.id} value={platform.id}>
+                      {platform.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-dark-500 mt-1">
+                  Current selection: {selectedCatalogBroker?.name || 'Broker'} {selectedPlatform ? `(${selectedPlatform.label})` : ''}
+                </p>
+              </div>
+
               {/* Name */}
               <div>
                 <label className="block text-sm font-medium mb-2">Account Name</label>
@@ -1530,27 +1851,30 @@ function BrokerAccountsSettings() {
                 )}
               </div>
 
-              {/* MetaApi Account ID */}
+              {/* Trading Account ID */}
               <div>
-                <label className="block text-sm font-medium mb-2">MetaApi Account ID</label>
+                <label className="block text-sm font-medium mb-2">Trading Account ID</label>
                 <input
                   type="text"
                   value={formData.metaapi_account_id}
                   onChange={(e) => setFormData({ ...formData, metaapi_account_id: e.target.value })}
-                  placeholder="Your MetaApi account ID"
+                  placeholder="MetaApi account ID linked to this workspace"
                   className="input"
                 />
+                <p className="text-xs text-dark-500 mt-1">
+                  Required. One ID per workspace slot.
+                </p>
               </div>
 
               {/* MetaApi Token */}
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium mb-2">MetaApi Token</label>
+                <label className="block text-sm font-medium mb-2">Private API Token (optional)</label>
                 <div className="relative">
                   <input
                     type={showToken ? 'text' : 'password'}
                     value={formData.metaapi_token}
                     onChange={(e) => setFormData({ ...formData, metaapi_token: e.target.value })}
-                    placeholder="Your MetaApi access token"
+                    placeholder="Optional: leave empty to use global MetaApi token from Settings"
                     className="input pr-10"
                   />
                   <button
@@ -1561,6 +1885,9 @@ function BrokerAccountsSettings() {
                     {showToken ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
+                <p className="text-xs text-dark-500 mt-1">
+                  If empty, backend uses the global MetaApi token configured in Broker Settings.
+                </p>
               </div>
 
               {/* Symbols */}

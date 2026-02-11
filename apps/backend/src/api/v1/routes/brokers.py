@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.v1.routes.auth import get_licensed_user
+from src.core.config import settings
 from src.core.database import get_db
 from src.core.models import BrokerAccount, User
 
@@ -409,16 +410,24 @@ async def test_broker_connection(
     broker = await _get_user_broker_or_404(db, broker_id, current_user)
 
     if broker.broker_type == "metaapi":
-        if not broker.metaapi_token or not broker.metaapi_account_id:
-            raise HTTPException(status_code=400, detail="MetaApi credentials not configured")
+        effective_metaapi_token = broker.metaapi_token or settings.METAAPI_ACCESS_TOKEN
+        effective_metaapi_account_id = broker.metaapi_account_id or settings.METAAPI_ACCOUNT_ID
+        using_global_token = bool(not broker.metaapi_token and settings.METAAPI_ACCESS_TOKEN)
+        using_global_account_id = bool(not broker.metaapi_account_id and settings.METAAPI_ACCOUNT_ID)
+
+        if not effective_metaapi_token or not effective_metaapi_account_id:
+            raise HTTPException(
+                status_code=400,
+                detail="MetaApi credentials not configured. Provide broker account ID or configure global MetaApi settings.",
+            )
 
         try:
             import httpx
 
             async with httpx.AsyncClient(verify=False, timeout=15.0) as client:
                 response = await client.get(
-                    f"https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai/users/current/accounts/{broker.metaapi_account_id}",
-                    headers={"auth-token": broker.metaapi_token},
+                    f"https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai/users/current/accounts/{effective_metaapi_account_id}",
+                    headers={"auth-token": effective_metaapi_token},
                 )
                 if response.status_code == 200:
                     account_info = response.json()
@@ -434,6 +443,8 @@ async def test_broker_connection(
                         "platform": account_info.get("platform", "mt5"),
                         "state": account_info.get("state", "Unknown"),
                         "broker": account_info.get("broker", "Unknown"),
+                        "using_global_token": using_global_token,
+                        "using_global_account_id": using_global_account_id,
                     }
                 if response.status_code == 404:
                     raise HTTPException(status_code=400, detail="Account not found. Check MetaApi Account ID.")

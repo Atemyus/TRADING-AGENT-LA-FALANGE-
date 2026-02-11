@@ -8,12 +8,14 @@ Each broker account runs independently with its own:
 """
 
 import asyncio
+import os
 from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.config import settings
 from src.core.models import BrokerAccount
 from src.engines.trading.auto_trader import AnalysisMode, AutoTrader, BotConfig, BotStatus
 
@@ -77,6 +79,8 @@ class MultiBrokerManager:
             trader = AutoTrader()
             config = self._create_config_from_account(broker_account)
             trader.configure(config)
+            fallback_account_id = os.environ.get("METAAPI_ACCOUNT_ID") or settings.METAAPI_ACCOUNT_ID
+            effective_metaapi_account_id = broker_account.metaapi_account_id or fallback_account_id
 
             # Copy plain data from SQLAlchemy object (avoids DetachedInstanceError)
             instance = BrokerInstance(
@@ -84,7 +88,7 @@ class MultiBrokerManager:
                 broker_name=broker_account.name,
                 broker_type=broker_account.broker_type,
                 symbols=list(broker_account.symbols),  # Copy the list
-                metaapi_account_id=broker_account.metaapi_account_id or "",
+                metaapi_account_id=effective_metaapi_account_id or "",
                 trader=trader,
                 status="initialized"
             )
@@ -94,6 +98,12 @@ class MultiBrokerManager:
 
     def _create_config_from_account(self, account: BrokerAccount) -> BotConfig:
         """Create BotConfig from BrokerAccount database model."""
+        # Account-specific credentials override global broker settings.
+        fallback_token = os.environ.get("METAAPI_ACCESS_TOKEN") or settings.METAAPI_ACCESS_TOKEN
+        fallback_account_id = os.environ.get("METAAPI_ACCOUNT_ID") or settings.METAAPI_ACCOUNT_ID
+        effective_metaapi_token = account.metaapi_token or fallback_token
+        effective_metaapi_account_id = account.metaapi_account_id or fallback_account_id
+
         # Parse analysis mode
         try:
             analysis_mode = AnalysisMode(account.analysis_mode)
@@ -116,8 +126,8 @@ class MultiBrokerManager:
             enabled_models=account.enabled_models,
             # Broker credentials - CRITICAL for multi-broker isolation
             broker_type=account.broker_type,
-            metaapi_token=account.metaapi_token,
-            metaapi_account_id=account.metaapi_account_id,
+            metaapi_token=effective_metaapi_token,
+            metaapi_account_id=effective_metaapi_account_id,
         )
 
     async def start_broker(self, broker_id: int, db: AsyncSession) -> dict:
@@ -138,8 +148,16 @@ class MultiBrokerManager:
         if not broker_account.is_enabled:
             return {"status": "error", "message": "Broker is disabled"}
 
-        if not broker_account.metaapi_token or not broker_account.metaapi_account_id:
-            return {"status": "error", "message": "MetaApi credentials not configured"}
+        fallback_token = os.environ.get("METAAPI_ACCESS_TOKEN") or settings.METAAPI_ACCESS_TOKEN
+        fallback_account_id = os.environ.get("METAAPI_ACCOUNT_ID") or settings.METAAPI_ACCOUNT_ID
+        effective_metaapi_token = broker_account.metaapi_token or fallback_token
+        effective_metaapi_account_id = broker_account.metaapi_account_id or fallback_account_id
+
+        if not effective_metaapi_token or not effective_metaapi_account_id:
+            return {
+                "status": "error",
+                "message": "MetaApi credentials not configured. Set account ID on the broker or global MetaApi settings.",
+            }
 
         # Initialize if not exists, OR refresh config if exists
         if broker_id in self._instances:
@@ -152,7 +170,7 @@ class MultiBrokerManager:
             instance.broker_name = broker_account.name
             instance.broker_type = broker_account.broker_type
             instance.symbols = list(broker_account.symbols)
-            instance.metaapi_account_id = broker_account.metaapi_account_id or ""
+            instance.metaapi_account_id = effective_metaapi_account_id or ""
 
             print(f"[MultiBrokerManager] Refreshed config for broker '{broker_account.name}' - enabled_models: {new_config.enabled_models}")
         else:
@@ -166,7 +184,7 @@ class MultiBrokerManager:
         try:
             # Credentials are now passed via BotConfig - no need to set env vars!
             # This ensures each broker instance uses its OWN credentials
-            print(f"[MultiBrokerManager] Starting broker '{broker_account.name}' with account ...{broker_account.metaapi_account_id[-4:] if broker_account.metaapi_account_id else 'N/A'}")
+            print(f"[MultiBrokerManager] Starting broker '{broker_account.name}' with account ...{effective_metaapi_account_id[-4:] if effective_metaapi_account_id else 'N/A'}")
             print(f"[MultiBrokerManager] Enabled models: {instance.trader.config.enabled_models}")
 
             # Start the trader
@@ -455,10 +473,12 @@ class MultiBrokerManager:
         instance.trader.configure(new_config)
 
         # Update plain data fields (avoids DetachedInstanceError)
+        fallback_account_id = os.environ.get("METAAPI_ACCOUNT_ID") or settings.METAAPI_ACCOUNT_ID
+        effective_metaapi_account_id = broker_account.metaapi_account_id or fallback_account_id
         instance.broker_name = broker_account.name
         instance.broker_type = broker_account.broker_type
         instance.symbols = list(broker_account.symbols)
-        instance.metaapi_account_id = broker_account.metaapi_account_id or ""
+        instance.metaapi_account_id = effective_metaapi_account_id or ""
 
         return {
             "status": "success",

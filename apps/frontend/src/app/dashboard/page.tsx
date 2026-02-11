@@ -21,6 +21,8 @@ import {
   Flame,
   Shield,
   Sparkles,
+  ArrowRight,
+  CircleDashed,
 } from 'lucide-react'
 
 import { PerformanceChart } from '@/components/charts/PerformanceChart'
@@ -68,6 +70,15 @@ interface AggregatedBrokerStats {
   currency: string
 }
 
+interface WorkspaceSnapshot {
+  status: 'running' | 'paused' | 'stopped' | 'disabled' | 'not_initialized'
+  balance: number | null
+  equity: number | null
+  unrealizedPnl: number | null
+  marginUsed: number | null
+  currency: string
+}
+
 export default function DashboardPage() {
   const searchParams = useSearchParams()
   const { user } = useAuth()
@@ -84,6 +95,7 @@ export default function DashboardPage() {
   const [aggregatedStats, setAggregatedStats] = useState<AggregatedBrokerStats | null>(null)
   const [brokers, setBrokers] = useState<BrokerAccountData[]>([])
   const [selectedBrokerId, setSelectedBrokerId] = useState<number | null>(null)
+  const [workspaceSnapshots, setWorkspaceSnapshots] = useState<Record<number, WorkspaceSnapshot>>({})
 
   // WebSocket symbol format
   const wsSymbol = selectedSymbol.replace('/', '_')
@@ -121,11 +133,59 @@ export default function DashboardPage() {
   // Fetch all dashboard data
   const fetchAccountData = useCallback(async () => {
     // Load broker workspaces for slot cards
+    let brokerList: BrokerAccountData[] = []
     try {
-      const brokerList = await brokerAccountsApi.list()
+      brokerList = await brokerAccountsApi.list()
       setBrokers(brokerList)
     } catch {
       setBrokers([])
+      brokerList = []
+    }
+
+    try {
+      const [allStatuses, allAccountInfo] = await Promise.all([
+        brokerAccountsApi.getAllStatuses().catch(() => null),
+        Promise.all(
+          brokerList.map(async (broker) => {
+            const info = await brokerAccountsApi.getAccountInfo(broker.id).catch(() => null)
+            return { brokerId: broker.id, info }
+          }),
+        ),
+      ])
+
+      const infoMap = new Map<number, (typeof allAccountInfo)[number]['info']>()
+      for (const entry of allAccountInfo) {
+        infoMap.set(entry.brokerId, entry.info)
+      }
+
+      const statusMap = new Map<number, WorkspaceSnapshot['status']>()
+      if (allStatuses?.brokers) {
+        for (const status of allStatuses.brokers) {
+          const normalized =
+            status.status === 'running' || status.status === 'paused'
+              ? status.status
+              : status.status === 'not_initialized'
+                ? 'not_initialized'
+                : 'stopped'
+          statusMap.set(status.broker_id, normalized)
+        }
+      }
+
+      const snapshots: Record<number, WorkspaceSnapshot> = {}
+      for (const broker of brokerList) {
+        const accountInfo = infoMap.get(broker.id)
+        snapshots[broker.id] = {
+          status: broker.is_enabled ? (statusMap.get(broker.id) || 'stopped') : 'disabled',
+          balance: accountInfo?.balance ?? null,
+          equity: accountInfo?.equity ?? null,
+          unrealizedPnl: accountInfo?.unrealized_pnl ?? null,
+          marginUsed: accountInfo?.margin_used ?? null,
+          currency: accountInfo?.currency || 'USD',
+        }
+      }
+      setWorkspaceSnapshots(snapshots)
+    } catch {
+      setWorkspaceSnapshots({})
     }
 
     try {
@@ -414,6 +474,25 @@ export default function DashboardPage() {
     }
   }
 
+  const commandSymbols = (() => {
+    if (selectedBroker?.symbols?.length) {
+      return selectedBroker.symbols.slice(0, 10)
+    }
+    const all = Array.from(new Set(brokers.flatMap((b) => b.symbols || [])))
+    return all.slice(0, 12)
+  })()
+
+  const formatSigned = (value: number | null | undefined, currency = 'USD') => {
+    if (value === null || value === undefined) return '--'
+    const signed = value > 0 ? `+${value}` : `${value}`
+    const abs = Number.parseFloat(signed)
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 2,
+    }).format(abs)
+  }
+
   return (
     <motion.div
       variants={containerVariants}
@@ -457,6 +536,27 @@ export default function DashboardPage() {
               </p>
             </div>
           </div>
+        </div>
+      </motion.div>
+
+      <motion.div variants={itemVariants} className="prometheus-panel-surface p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs uppercase tracking-wider text-dark-500">Asset Command Strip</p>
+          <p className="text-xs text-dark-400">{commandSymbols.length} mapped instruments</p>
+        </div>
+        <div className="flex flex-wrap gap-2 mt-3">
+          {commandSymbols.map((asset) => (
+            <button
+              key={asset}
+              onClick={() => setSelectedSymbol(asset)}
+              className={`workspace-symbol-chip ${selectedSymbol === asset ? 'workspace-symbol-chip-active' : ''}`}
+            >
+              {asset}
+            </button>
+          ))}
+          {commandSymbols.length === 0 && (
+            <span className="text-xs text-dark-500">No instruments configured yet.</span>
+          )}
         </div>
       </motion.div>
 
@@ -535,6 +635,107 @@ export default function DashboardPage() {
                     <p className="text-xs text-dark-500 mt-1">Add a broker in Settings</p>
                   </>
                 )}
+              </button>
+            )
+          })}
+        </div>
+      </motion.div>
+
+      <motion.div variants={itemVariants} className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-wider text-dark-500">Workspace Panels</p>
+            <h3 className="text-lg font-semibold text-dark-100">
+              {selectedBroker ? `${selectedBroker.name} performance view` : 'Parallel broker performance'}
+            </h3>
+          </div>
+          <p className="text-xs text-dark-400">Click a panel to open its dedicated command center context</p>
+        </div>
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          {Array.from({ length: totalSlots }, (_, idx) => {
+            const slot = idx + 1
+            const broker = brokersBySlot.get(slot)
+            if (!broker) {
+              return (
+                <div key={`empty-${slot}`} className="workspace-panel-card workspace-panel-empty">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-xs uppercase tracking-wider text-dark-500 mb-1">Slot {slot}</p>
+                      <h4 className="text-xl font-semibold text-dark-300 mb-1">Empty Workspace</h4>
+                      <p className="text-sm text-dark-500">Assign a broker in Settings to activate this panel.</p>
+                    </div>
+                    <CircleDashed size={20} className="text-dark-500" />
+                  </div>
+                  <Link href="/dashboard/settings" className="mt-6 inline-flex items-center gap-2 text-sm text-primary-300 hover:text-primary-200">
+                    Configure broker
+                    <ArrowRight size={15} />
+                  </Link>
+                </div>
+              )
+            }
+
+            const snapshot = workspaceSnapshots[broker.id]
+            const isSelected = selectedBrokerId === broker.id
+            return (
+              <button
+                key={broker.id}
+                onClick={() => setSelectedBrokerId(broker.id)}
+                className={`workspace-panel-card text-left ${isSelected ? 'workspace-panel-card-active' : ''}`}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs uppercase tracking-wider text-dark-500">Slot {slot}</span>
+                    <span className={`prometheus-chip ${
+                      snapshot?.status === 'running'
+                        ? ''
+                        : snapshot?.status === 'paused'
+                          ? 'prometheus-chip-imperial'
+                          : 'prometheus-chip-soft'
+                    }`}>
+                      {snapshot?.status || (broker.is_enabled ? 'stopped' : 'disabled')}
+                    </span>
+                  </div>
+                  <span className={`text-[11px] px-2 py-0.5 rounded-full ${broker.is_enabled ? 'bg-profit/20 text-profit' : 'bg-dark-700 text-dark-400'}`}>
+                    {broker.is_enabled ? 'Enabled' : 'Disabled'}
+                  </span>
+                </div>
+
+                <h4 className="text-2xl font-semibold text-white mb-2">{broker.name}</h4>
+                <p className="text-xs text-dark-400 mb-4">{broker.broker_type.toUpperCase()} adapter</p>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="workspace-metric-block">
+                    <p className="workspace-metric-label">Balance</p>
+                    <p className="workspace-metric-value">{formatSigned(snapshot?.balance, snapshot?.currency || 'USD')}</p>
+                  </div>
+                  <div className="workspace-metric-block">
+                    <p className="workspace-metric-label">Equity</p>
+                    <p className="workspace-metric-value">{formatSigned(snapshot?.equity, snapshot?.currency || 'USD')}</p>
+                  </div>
+                  <div className="workspace-metric-block">
+                    <p className="workspace-metric-label">Live P&L</p>
+                    <p className={`workspace-metric-value ${
+                      (snapshot?.unrealizedPnl || 0) > 0 ? 'text-profit' : (snapshot?.unrealizedPnl || 0) < 0 ? 'text-loss' : 'text-dark-200'
+                    }`}>
+                      {formatSigned(snapshot?.unrealizedPnl, snapshot?.currency || 'USD')}
+                    </p>
+                  </div>
+                  <div className="workspace-metric-block">
+                    <p className="workspace-metric-label">Margin Used</p>
+                    <p className="workspace-metric-value">{formatSigned(snapshot?.marginUsed, snapshot?.currency || 'USD')}</p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2 mt-4">
+                  {(broker.symbols || []).slice(0, 5).map((symbol) => (
+                    <span key={symbol} className="workspace-symbol-chip workspace-symbol-chip-soft">{symbol}</span>
+                  ))}
+                </div>
+
+                <div className="mt-5 inline-flex items-center gap-2 text-sm text-primary-300">
+                  Open scoped command view
+                  <ArrowRight size={14} />
+                </div>
               </button>
             )
           })}
