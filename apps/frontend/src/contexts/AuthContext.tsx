@@ -223,9 +223,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!response.ok) {
       throw new Error(getErrorMessageFromPayload(data, 'Registration failed'))
     }
-
-    // Auto-login after registration
-    await login(registerData.email, registerData.password)
   }
 
   const logout = () => {

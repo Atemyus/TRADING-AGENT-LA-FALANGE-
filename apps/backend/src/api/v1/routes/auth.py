@@ -32,6 +32,32 @@ router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 
+async def _queue_verification_email(
+    user: User,
+    db: AsyncSession,
+    background_tasks: BackgroundTasks,
+) -> None:
+    """
+    Ensure a valid verification token exists and queue a verification email.
+    """
+    now = datetime.now(UTC)
+    if (
+        not user.verification_token
+        or not user.verification_token_expires
+        or user.verification_token_expires < now
+    ):
+        user.verification_token = generate_verification_token()
+        user.verification_token_expires = get_token_expiry(hours=24)
+        await db.flush()
+
+    background_tasks.add_task(
+        email_service.send_verification_email,
+        to=user.email,
+        token=user.verification_token,
+        username=user.username,
+    )
+
+
 # ============================================================================
 # Request/Response Models
 # ============================================================================
@@ -144,6 +170,12 @@ async def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User account is disabled"
+        )
+
+    if not user.is_verified and not user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email not verified. Please verify your email before accessing the platform."
         )
 
     return user
@@ -450,6 +482,7 @@ async def reset_password(
 
 @router.post("/login", response_model=Token)
 async def login(
+    background_tasks: BackgroundTasks,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db)
 ):
@@ -481,6 +514,13 @@ async def login(
             detail="User account is disabled"
         )
 
+    if not user.is_verified and not user.is_superuser:
+        await _queue_verification_email(user, db, background_tasks)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email not verified. We sent a new verification email."
+        )
+
     # Update last login
     user.last_login_at = datetime.now(UTC)
     await db.flush()
@@ -499,6 +539,7 @@ async def login(
 @router.post("/login/json", response_model=Token)
 async def login_json(
     credentials: UserLogin,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -521,6 +562,13 @@ async def login_json(
             detail="User account is disabled"
         )
 
+    if not user.is_verified and not user.is_superuser:
+        await _queue_verification_email(user, db, background_tasks)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email not verified. We sent a new verification email."
+        )
+
     # Update last login
     user.last_login_at = datetime.now(UTC)
     await db.flush()
@@ -539,6 +587,7 @@ async def login_json(
 @router.post("/refresh", response_model=Token)
 async def refresh_token(
     token_data: TokenRefresh,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db)
 ):
     """Refresh access token using refresh token."""
@@ -558,6 +607,13 @@ async def refresh_token(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or inactive"
+        )
+
+    if not user.is_verified and not user.is_superuser:
+        await _queue_verification_email(user, db, background_tasks)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email not verified. We sent a new verification email."
         )
 
     access_token = create_access_token(subject=user.id)
@@ -637,8 +693,9 @@ async def logout(current_user: User = Depends(get_current_user)):
 # Legacy endpoint
 @router.post("/token", response_model=Token)
 async def token(
+    background_tasks: BackgroundTasks,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db)
 ):
     """Legacy token endpoint."""
-    return await login(form_data, db)
+    return await login(background_tasks=background_tasks, form_data=form_data, db=db)

@@ -33,6 +33,7 @@ export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
   const [isLoading, setIsLoading] = useState(false)
 
   const passwordRequirements = [
@@ -49,6 +50,7 @@ export default function RegisterPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setSuccess('')
 
     // Validate passwords match
     if (formData.password !== formData.confirmPassword) {
@@ -72,6 +74,7 @@ export default function RegisterPage() {
         full_name: formData.fullName || undefined,
         license_key: formData.licenseKey,
       })
+      setSuccess('Registration completed. Verify your email before logging in. Check spam/promotions if needed.')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
     } finally {
@@ -136,7 +139,18 @@ export default function RegisterPage() {
             </motion.div>
           )}
 
+          {success && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-6 p-4 bg-profit/10 border border-profit/30 rounded-xl"
+            >
+              <p className="text-profit text-sm">{success}</p>
+            </motion.div>
+          )}
+
           {/* Form */}
+          {!success && (
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* License Key - Required */}
             <div>
@@ -320,6 +334,17 @@ export default function RegisterPage() {
               )}
             </button>
           </form>
+          )}
+
+          {success && (
+            <Link
+              href="/login"
+              className="btn-primary w-full py-4 flex items-center justify-center gap-2"
+            >
+              <Flame size={20} />
+              <span>Go to Login</span>
+            </Link>
+          )}
 
           {/* Divider */}
           <div className="relative my-8">

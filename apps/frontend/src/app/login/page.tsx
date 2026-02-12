@@ -16,6 +16,9 @@ import {
 } from 'lucide-react'
 import { MusicPlayer } from '@/components/common/MusicPlayer'
 import { useAuth } from '@/contexts/AuthContext'
+import { getApiBaseUrl, getErrorMessageFromPayload, parseJsonResponse } from '@/lib/http'
+
+const API_URL = getApiBaseUrl()
 
 export default function LoginPage() {
   const { login } = useAuth()
@@ -24,10 +27,15 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [isResending, setIsResending] = useState(false)
+  const [resendMessage, setResendMessage] = useState('')
+
+  const isUnverifiedError = error.toLowerCase().includes('email not verified')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setResendMessage('')
     setIsLoading(true)
 
     try {
@@ -36,6 +44,37 @@ export default function LoginPage() {
       setError(err instanceof Error ? err.message : 'An error occurred')
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const handleResendVerification = async () => {
+    setResendMessage('')
+    if (!email.trim()) {
+      setResendMessage('Insert your email address first.')
+      return
+    }
+
+    setIsResending(true)
+    try {
+      const response = await fetch(`${API_URL}/api/v1/auth/resend-verification`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+      })
+
+      const data = await parseJsonResponse<{ message?: string; detail?: string }>(response)
+      if (!response.ok) {
+        setResendMessage(getErrorMessageFromPayload(data, 'Failed to resend verification email.'))
+        return
+      }
+
+      setResendMessage(data?.message || 'Verification email sent.')
+    } catch {
+      setResendMessage('Failed to resend verification email.')
+    } finally {
+      setIsResending(false)
     }
   }
 
@@ -93,6 +132,26 @@ export default function LoginPage() {
             >
               <AlertCircle size={20} className="text-loss flex-shrink-0" />
               <p className="text-loss text-sm">{error}</p>
+            </motion.div>
+          )}
+
+          {isUnverifiedError && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-6 p-4 bg-primary-500/10 border border-primary-500/30 rounded-xl"
+            >
+              <button
+                type="button"
+                onClick={handleResendVerification}
+                disabled={isResending}
+                className="btn-secondary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isResending ? 'Sending...' : 'Resend verification email'}
+              </button>
+              {resendMessage && (
+                <p className="text-xs text-dark-300 mt-3">{resendMessage}</p>
+              )}
             </motion.div>
           )}
 
