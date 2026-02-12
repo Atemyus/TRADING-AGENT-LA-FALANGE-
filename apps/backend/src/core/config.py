@@ -5,16 +5,27 @@ All configuration is loaded from environment variables.
 
 import json
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+_CONFIG_PATH = Path(__file__).resolve()
+_BACKEND_DIR = _CONFIG_PATH.parents[2]
+_REPO_ROOT = _CONFIG_PATH.parents[4]
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        # Support both local backend `.env` and repository-root `.env`.
+        env_file=(
+            str(_BACKEND_DIR / ".env"),
+            str(_REPO_ROOT / ".env"),
+            ".env",
+        ),
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore",
@@ -146,7 +157,7 @@ class Settings(BaseSettings):
 
     # Email Service (Resend)
     RESEND_API_KEY: str | None = None
-    EMAIL_FROM: str = "Prometheus <noreply@prometheus.trading>"
+    EMAIL_FROM: str | None = None
     FRONTEND_URL: str = "http://localhost:3000"
 
     # Bootstrap admin (optional, for first-time production setup)

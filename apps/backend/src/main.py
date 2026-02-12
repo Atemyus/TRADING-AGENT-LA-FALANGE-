@@ -25,6 +25,7 @@ from src.api.v1.routes import (
 from src.api.v1.routes import settings as settings_routes
 from src.core.config import settings
 from src.core.database import init_db
+from src.core.email import email_service
 
 
 @asynccontextmanager
@@ -62,6 +63,10 @@ async def lifespan(app: FastAPI):
 
     print(f"🔥 Prometheus Trading Platform v{settings.VERSION} started")
     print(f"📊 Environment: {settings.ENVIRONMENT}")
+    if email_service.is_configured:
+        print(f"📧 Email configured with sender: {email_service.from_email}")
+    else:
+        print("⚠️ Email service not configured (set RESEND_API_KEY and EMAIL_FROM)")
     yield
     # Shutdown
     print("👋 Shutting down...")

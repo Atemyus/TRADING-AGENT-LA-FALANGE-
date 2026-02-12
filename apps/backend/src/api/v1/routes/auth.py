@@ -32,14 +32,28 @@ router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 
+def _assert_email_service_configured() -> None:
+    """Ensure email service is configured for email-dependent flows."""
+    if email_service.is_configured:
+        return
+
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Email service is not configured. Set RESEND_API_KEY and EMAIL_FROM.",
+    )
+
+
 async def _queue_verification_email(
     user: User,
     db: AsyncSession,
     background_tasks: BackgroundTasks,
-) -> None:
+) -> bool:
     """
     Ensure a valid verification token exists and queue a verification email.
     """
+    if not email_service.is_configured:
+        return False
+
     now = datetime.now(UTC)
     if (
         not user.verification_token
@@ -56,6 +70,7 @@ async def _queue_verification_email(
         token=user.verification_token,
         username=user.username,
     )
+    return True
 
 
 # ============================================================================
@@ -247,6 +262,8 @@ async def register(
     - **full_name**: Optional full name
     - **license_key**: Valid license key (required)
     """
+    _assert_email_service_configured()
+
     # Validate license key first
     result = await db.execute(
         select(License).where(License.key == user_data.license_key.strip().upper())
@@ -383,6 +400,8 @@ async def resend_verification(
     """
     Resend verification email.
     """
+    _assert_email_service_configured()
+
     normalized_email = data.email.strip().lower()
     result = await db.execute(select(User).where(User.email == normalized_email))
     user = result.scalar_one_or_none()
@@ -420,6 +439,8 @@ async def forgot_password(
     """
     Request a password reset email.
     """
+    _assert_email_service_configured()
+
     normalized_email = data.email.strip().lower()
     result = await db.execute(select(User).where(User.email == normalized_email))
     user = result.scalar_one_or_none()
@@ -515,10 +536,14 @@ async def login(
         )
 
     if not user.is_verified and not user.is_superuser:
-        await _queue_verification_email(user, db, background_tasks)
+        email_queued = await _queue_verification_email(user, db, background_tasks)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Email not verified. We sent a new verification email."
+            detail=(
+                "Email not verified. We sent a new verification email."
+                if email_queued
+                else "Email not verified. Verification email service is unavailable."
+            )
         )
 
     # Update last login
@@ -563,10 +588,14 @@ async def login_json(
         )
 
     if not user.is_verified and not user.is_superuser:
-        await _queue_verification_email(user, db, background_tasks)
+        email_queued = await _queue_verification_email(user, db, background_tasks)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Email not verified. We sent a new verification email."
+            detail=(
+                "Email not verified. We sent a new verification email."
+                if email_queued
+                else "Email not verified. Verification email service is unavailable."
+            )
         )
 
     # Update last login
@@ -610,10 +639,14 @@ async def refresh_token(
         )
 
     if not user.is_verified and not user.is_superuser:
-        await _queue_verification_email(user, db, background_tasks)
+        email_queued = await _queue_verification_email(user, db, background_tasks)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Email not verified. We sent a new verification email."
+            detail=(
+                "Email not verified. We sent a new verification email."
+                if email_queued
+                else "Email not verified. Verification email service is unavailable."
+            )
         )
 
     access_token = create_access_token(subject=user.id)

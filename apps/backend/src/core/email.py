@@ -3,6 +3,7 @@ Email service for sending verification and notification emails.
 Supports Resend (recommended) and SMTP.
 """
 
+import os
 import secrets
 from datetime import UTC, datetime, timedelta
 
@@ -15,14 +16,36 @@ class EmailService:
     """Email service using Resend API."""
 
     def __init__(self):
-        self.api_key = getattr(settings, 'RESEND_API_KEY', None)
-        self.from_email = getattr(settings, 'EMAIL_FROM', 'Prometheus <noreply@prometheus.trading>')
-        self.frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+        self._default_frontend_url = "http://localhost:3000"
+
+    @property
+    def api_key(self) -> str:
+        """Read API key dynamically from environment/settings."""
+        return (os.getenv("RESEND_API_KEY") or settings.RESEND_API_KEY or "").strip()
+
+    @property
+    def from_email(self) -> str:
+        """Read sender dynamically from environment/settings."""
+        return (os.getenv("EMAIL_FROM") or settings.EMAIL_FROM or "").strip()
+
+    @property
+    def frontend_url(self) -> str:
+        """Read frontend URL dynamically from environment/settings."""
+        return (os.getenv("FRONTEND_URL") or settings.FRONTEND_URL or self._default_frontend_url).rstrip("/")
+
+    def _missing_config(self) -> list[str]:
+        """List missing mandatory email configuration fields."""
+        missing: list[str] = []
+        if not self.api_key:
+            missing.append("RESEND_API_KEY")
+        if not self.from_email:
+            missing.append("EMAIL_FROM")
+        return missing
 
     @property
     def is_configured(self) -> bool:
         """Check if email service is configured."""
-        return bool(self.api_key)
+        return len(self._missing_config()) == 0
 
     async def send_email(
         self,
@@ -43,8 +66,13 @@ class EmailService:
         Returns:
             True if email was sent successfully
         """
-        if not self.is_configured:
-            print(f"📧 Email service not configured. Would send to {to}: {subject}")
+        missing_config = self._missing_config()
+        if missing_config:
+            missing = ", ".join(missing_config)
+            print(
+                f"📧 Email service not configured (missing: {missing}). "
+                f"Skipped send to {to}: {subject}"
+            )
             return False
 
         try:
@@ -65,15 +93,21 @@ class EmailService:
                     timeout=30.0,
                 )
 
-                if response.status_code == 200:
+                if response.status_code in {200, 201, 202}:
                     print(f"✅ Email sent to {to}: {subject}")
                     return True
-                else:
-                    print(f"❌ Failed to send email: {response.text}")
-                    return False
+
+                error_body = response.text.strip().replace("\n", " ")
+                if len(error_body) > 500:
+                    error_body = f"{error_body[:497]}..."
+                print(
+                    f"❌ Failed to send email (status {response.status_code}) "
+                    f"from {self.from_email} to {to}: {error_body}"
+                )
+                return False
 
         except Exception as e:
-            print(f"❌ Email error: {e}")
+            print(f"❌ Email error while sending to {to}: {e}")
             return False
 
     async def send_verification_email(self, to: str, token: str, username: str) -> bool:
