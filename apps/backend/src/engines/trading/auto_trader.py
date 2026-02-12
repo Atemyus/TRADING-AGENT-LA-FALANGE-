@@ -321,6 +321,55 @@ class AutoTrader:
 
         return (sl_pips, pip_value)
 
+    def _to_float(self, value: Any) -> float | None:
+        """Safely convert a value to float."""
+        try:
+            if value is None:
+                return None
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _estimate_margin_per_lot(
+        self,
+        symbol: str,
+        current_price: float,
+        account_info: Any,
+        broker_spec: dict[str, Any] | None = None,
+    ) -> float | None:
+        """
+        Estimate margin required for 1.00 lot.
+
+        Priority:
+        1) Broker-provided direct margin fields (if present)
+        2) contractSize * price / account leverage
+        """
+        if broker_spec:
+            for key in (
+                "initialMargin",
+                "maintenanceMargin",
+                "marginInitial",
+                "marginMaintenance",
+                "requiredMargin",
+            ):
+                margin_value = self._to_float(broker_spec.get(key))
+                if margin_value and margin_value > 0:
+                    return margin_value
+
+        contract_size = self._to_float((broker_spec or {}).get("contractSize"))
+        leverage = self._to_float(getattr(account_info, "leverage", None)) or 0.0
+        if contract_size and contract_size > 0 and current_price > 0:
+            if leverage > 0:
+                return (current_price * contract_size) / leverage
+            return current_price * contract_size
+
+        # Fallback conservative estimate for index CFDs when broker spec is incomplete.
+        sym = symbol.upper().replace("/", "").replace("_", "")
+        if any(idx in sym for idx in ["US30", "US500", "NAS100", "DE40", "UK100", "JP225", "FR40", "EU50"]) and leverage > 0:
+            return (current_price * 10.0) / leverage
+
+        return None
+
     def add_callback(self, callback: Callable):
         """Add a callback for trade notifications."""
         self._callbacks.append(callback)
@@ -988,6 +1037,47 @@ class AutoTrader:
                 self._log_analysis(symbol, "error", f"⚠️ Size calcolata ({lot_size}) troppo alta! Limitata a {MAX_LOT_SIZE} lotti (possibile errore pip_value)")
                 lot_size = MAX_LOT_SIZE
 
+            # ====== CONTROLLO MARGINE: limita size in base al margine disponibile ======
+            margin_available = float(getattr(account_info, "margin_available", 0) or 0)
+            margin_per_lot = self._estimate_margin_per_lot(
+                symbol=symbol,
+                current_price=current_price,
+                account_info=account_info,
+                broker_spec=broker_spec,
+            )
+
+            if margin_per_lot and margin_per_lot > 0:
+                margin_buffer = 0.90  # usa solo il 90% del margine libero
+                max_lot_by_margin = round((margin_available * margin_buffer) / margin_per_lot, 2)
+                self._log_analysis(
+                    symbol,
+                    "info",
+                    f"💳 Margine: disponibile=${margin_available:.2f} | stimato per 1 lotto=${margin_per_lot:.2f} | size max margine={max_lot_by_margin}",
+                )
+
+                if max_lot_by_margin < MIN_LOT:
+                    self._log_analysis(
+                        symbol,
+                        "error",
+                        (
+                            "❌ Trade annullato: margine insufficiente anche per il lotto minimo "
+                            f"(0.01). Disponibile=${margin_available:.2f}"
+                        ),
+                    )
+                    return
+
+                if lot_size > max_lot_by_margin:
+                    old_lot_size = lot_size
+                    lot_size = max(MIN_LOT, max_lot_by_margin)
+                    self._log_analysis(
+                        symbol,
+                        "info",
+                        (
+                            f"⚠️ Size ridotta per margine: {old_lot_size} -> {lot_size} lotti "
+                            "(cap basato su margine disponibile)"
+                        ),
+                    )
+
             # Calcolo rischio effettivo
             actual_risk = lot_size * sl_pips * pip_value
             risk_pct = (actual_risk / account_balance) * 100
@@ -996,19 +1086,61 @@ class AutoTrader:
 
             self._log_analysis(symbol, "trade", f"📊 Ordine: {side.value} {lot_size} lotti | SL: {stop_loss} ({sl_pips:.1f} pips) | TP: {take_profit} | Rischio: ${actual_risk:.2f} ({risk_pct:.2f}%)")
 
-            order = OrderRequest(
-                symbol=symbol,
-                side=side,
-                order_type=OrderType.MARKET,
-                size=Decimal(str(lot_size)),
-                stop_loss=Decimal(str(stop_loss)),
-                take_profit=Decimal(str(take_profit)),
-            )
+            # Retry automatico in caso di margine insufficiente
+            order_result = None
+            attempt_lot_size = lot_size
+            MAX_MARGIN_RETRIES = 4
 
-            order_result = await self.broker.place_order(order)
+            for attempt in range(MAX_MARGIN_RETRIES):
+                order = OrderRequest(
+                    symbol=symbol,
+                    side=side,
+                    order_type=OrderType.MARKET,
+                    size=Decimal(str(attempt_lot_size)),
+                    stop_loss=Decimal(str(stop_loss)),
+                    take_profit=Decimal(str(take_profit)),
+                )
+
+                order_result = await self.broker.place_order(order)
+
+                if not order_result.is_rejected:
+                    lot_size = attempt_lot_size
+                    break
+
+                reject_msg = (order_result.error_message or "")
+                reject_upper = reject_msg.upper()
+                no_money_reject = (
+                    "NO_MONEY" in reject_upper
+                    or "MARGINE INSUFFICIENTE" in reject_upper
+                    or "INSUFFICIENT MARGIN" in reject_upper
+                )
+
+                if not no_money_reject or attempt == MAX_MARGIN_RETRIES - 1:
+                    lot_size = attempt_lot_size
+                    break
+
+                next_lot_size = round(attempt_lot_size * 0.75, 2)
+                if next_lot_size < MIN_LOT:
+                    lot_size = attempt_lot_size
+                    break
+
+                self._log_analysis(
+                    symbol,
+                    "info",
+                    (
+                        f"⚠️ Ordine rifiutato per margine con {attempt_lot_size} lotti, "
+                        f"ritento con {next_lot_size} lotti"
+                    ),
+                )
+                attempt_lot_size = next_lot_size
+
+            if order_result is None:
+                self._log_analysis(symbol, "error", "❌ Nessun risultato ordine disponibile dopo i tentativi di invio")
+                return
 
             if order_result.is_filled:
                 fill_price = float(order_result.average_fill_price) if order_result.average_fill_price else current_price
+                filled_size = float(order_result.filled_size) if order_result.filled_size else lot_size
 
                 # Break Even: usa il valore AI se disponibile, altrimenti default a 50% della distanza TP
                 be_trigger = consensus.get("break_even_trigger")
@@ -1033,7 +1165,7 @@ class AutoTrader:
                     entry_price=fill_price,
                     stop_loss=stop_loss,
                     take_profit=take_profit,
-                    units=lot_size,
+                    units=filled_size,
                     timestamp=datetime.utcnow(),
                     confidence=consensus["confidence"],
                     timeframes_analyzed=consensus.get("timeframes", ["15"]),
