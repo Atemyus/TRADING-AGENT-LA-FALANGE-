@@ -1,7 +1,7 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
@@ -82,6 +82,12 @@ interface WorkspaceSnapshot {
 
 interface WorkspaceSymbolSelectionEventDetail {
   symbol: string
+}
+
+interface PerformancePoint {
+  date: string
+  pnl: number
+  balance: number
 }
 
 export default function DashboardPage() {
@@ -212,8 +218,12 @@ export default function DashboardPage() {
           equity: accountInfo?.equity ?? null,
           unrealizedPnl: accountInfo?.unrealized_pnl ?? null,
           marginUsed: accountInfo?.margin_used ?? null,
-          openPositions: statusEntry?.openPositions || 0,
-          dailyPnl: statusEntry?.dailyPnl ?? null,
+          openPositions: statusEntry?.openPositions ?? accountInfo?.open_positions ?? 0,
+          dailyPnl:
+            statusEntry?.dailyPnl ??
+            accountInfo?.realized_pnl_today ??
+            accountInfo?.unrealized_pnl ??
+            null,
           currency: accountInfo?.currency || 'USD',
         }
       }
@@ -550,11 +560,8 @@ export default function DashboardPage() {
       JSON.stringify({
         brokerId: selectedBrokerId,
         isDisabled: snapshot.status === 'disabled',
-        balance: snapshot.status === 'disabled' ? null : (snapshot.balance ?? null),
-        todayPnl:
-          snapshot.status === 'disabled'
-            ? null
-            : (snapshot.dailyPnl ?? snapshot.unrealizedPnl ?? null),
+        balance: snapshot.balance ?? null,
+        todayPnl: snapshot.dailyPnl ?? snapshot.unrealizedPnl ?? null,
       }),
     )
     window.dispatchEvent(new Event('selected-broker-snapshot-changed'))
@@ -592,23 +599,52 @@ export default function DashboardPage() {
     }).format(abs)
   }
 
-  const isSelectedWorkspaceDisabled = selectedSnapshot?.status === 'disabled'
   const scopedCurrency = selectedSnapshot?.currency || aggregatedStats?.currency || 'USD'
-  const scopedBalance = isSelectedWorkspaceDisabled
-    ? null
-    : (selectedSnapshot?.balance ?? aggregatedStats?.totalBalance ?? null)
-  const scopedUnrealizedPnl = isSelectedWorkspaceDisabled
-    ? null
-    : (selectedSnapshot?.unrealizedPnl ?? aggregatedStats?.totalUnrealizedPnl ?? null)
-  const scopedMarginUsed = isSelectedWorkspaceDisabled
-    ? null
-    : (selectedSnapshot?.marginUsed ?? aggregatedStats?.totalMarginUsed ?? null)
-  const scopedOpenPositions = isSelectedWorkspaceDisabled
-    ? 0
-    : (selectedSnapshot?.openPositions ?? aggregatedStats?.totalOpenPositions ?? 0)
-  const scopedTodayPnl = isSelectedWorkspaceDisabled
-    ? null
-    : (selectedSnapshot?.dailyPnl ?? selectedSnapshot?.unrealizedPnl ?? null)
+  const scopedBalance = selectedSnapshot?.balance ?? aggregatedStats?.totalBalance ?? null
+  const scopedUnrealizedPnl = selectedSnapshot?.unrealizedPnl ?? aggregatedStats?.totalUnrealizedPnl ?? null
+  const scopedMarginUsed = selectedSnapshot?.marginUsed ?? aggregatedStats?.totalMarginUsed ?? null
+  const scopedOpenPositions = selectedSnapshot?.openPositions ?? aggregatedStats?.totalOpenPositions ?? 0
+  const scopedTodayPnl = selectedSnapshot?.dailyPnl ?? selectedSnapshot?.unrealizedPnl ?? aggregatedStats?.totalUnrealizedPnl ?? null
+
+  const performanceData = useMemo<PerformancePoint[]>(() => {
+    const groupedByDay = new Map<string, number>()
+
+    for (const order of orders) {
+      if (typeof order.pnl !== 'number' || Number.isNaN(order.pnl)) continue
+      const reference = order.closedAt || order.createdAt
+      const date = reference.slice(0, 10)
+      groupedByDay.set(date, (groupedByDay.get(date) || 0) + order.pnl)
+    }
+
+    const sortedDays = Array.from(groupedByDay.entries())
+      .map(([date, pnl]) => ({ date, pnl }))
+      .sort((a, b) => a.date.localeCompare(b.date))
+
+    if (sortedDays.length === 0) {
+      if (typeof scopedBalance !== 'number' || Number.isNaN(scopedBalance)) return []
+      return [
+        {
+          date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          pnl: 0,
+          balance: scopedBalance,
+        },
+      ]
+    }
+
+    const totalRealizedPnl = sortedDays.reduce((sum, point) => sum + point.pnl, 0)
+    let rollingBalance = typeof scopedBalance === 'number'
+      ? scopedBalance - totalRealizedPnl
+      : 0
+
+    return sortedDays.map((point) => {
+      rollingBalance += point.pnl
+      return {
+        date: new Date(`${point.date}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        pnl: point.pnl,
+        balance: rollingBalance,
+      }
+    })
+  }, [orders, scopedBalance])
 
   return (
     <motion.div
@@ -839,17 +875,18 @@ export default function DashboardPage() {
         </div>
       </motion.div>
 
-      {!selectedBrokerId ? (
+      {!selectedBrokerId && (
         <motion.div
           variants={itemVariants}
           className="prometheus-panel-surface p-6 text-center"
         >
           <p className="text-sm text-dark-300">
-            Select a broker workspace card to open its dedicated Command Center.
+            Aggregate view active. Select a workspace card to scope metrics to one broker.
           </p>
         </motion.div>
-      ) : (
-        <>
+      )}
+
+      <>
           {/* Error Banner */}
           {error && (
             <motion.div
@@ -942,7 +979,11 @@ export default function DashboardPage() {
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
             {/* Performance Chart - Takes 2 columns */}
             <motion.div variants={itemVariants} className="xl:col-span-2">
-              <PerformanceChart height={350} />
+              <PerformanceChart
+                data={performanceData}
+                title={selectedBroker ? `${selectedBroker.name} Performance` : 'Portfolio Performance'}
+                height={350}
+              />
             </motion.div>
 
             {/* AI Consensus Panel - Now with real data */}
@@ -1026,8 +1067,7 @@ export default function DashboardPage() {
               </div>
             </div>
           </motion.div>
-        </>
-      )}
+      </>
     </motion.div>
   )
 }

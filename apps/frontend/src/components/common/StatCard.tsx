@@ -26,6 +26,8 @@ export function StatCard({
   trend,
   animate = true,
 }: StatCardProps) {
+  const showNegative = isNegative || isPositive === false
+
   const Wrapper = animate ? motion.div : 'div'
   const wrapperProps = animate
     ? {
@@ -44,13 +46,13 @@ export function StatCard({
         <div className="flex-1">
           <p className="text-sm text-dark-400 mb-1">{label}</p>
           <p className={`text-2xl font-bold font-mono ${
-            isPositive ? 'text-neon-green' : isNegative ? 'text-neon-red' : ''
+            isPositive ? 'text-profit' : showNegative ? 'text-loss' : ''
           }`}>
             {value}
           </p>
           {change && (
             <p className={`text-sm mt-1 ${
-              isPositive ? 'text-neon-green' : isNegative ? 'text-neon-red' : 'text-dark-400'
+              isPositive ? 'text-profit' : showNegative ? 'text-loss' : 'text-dark-400'
             }`}>
               {change}
             </p>
@@ -60,10 +62,10 @@ export function StatCard({
           )}
         </div>
         <div className={`p-3 rounded-xl ${
-          isPositive ? 'bg-neon-green/10' : isNegative ? 'bg-neon-red/10' : 'bg-dark-800'
+          isPositive ? 'bg-profit/10' : showNegative ? 'bg-loss/10' : 'bg-dark-800'
         }`}>
           <Icon size={22} className={`${
-            isPositive ? 'text-neon-green' : isNegative ? 'text-neon-red' : 'text-dark-400'
+            isPositive ? 'text-profit' : showNegative ? 'text-loss' : 'text-dark-400'
           }`} />
         </div>
       </div>

@@ -564,17 +564,42 @@ async def get_broker_bot_status(
     broker = await _get_user_broker_or_404(db, broker_id, current_user)
     manager = get_multi_broker_manager()
     status = manager.get_broker_status(broker_id)
+    account_info = await manager.get_broker_account_info(broker_id, broker_account=broker)
+    positions = await manager.get_broker_positions(broker_id, broker_account=broker)
 
-    if not status:
-        return {
-            "broker_id": broker_id,
-            "name": broker.name,
-            "status": "not_initialized",
-            "is_enabled": broker.is_enabled,
-            "is_connected": broker.is_connected,
-        }
+    live_daily_pnl = None
+    if account_info:
+        live_daily_pnl = account_info.get("realized_pnl_today")
+        if live_daily_pnl is None:
+            live_daily_pnl = account_info.get("unrealized_pnl")
+    live_open_positions = (
+        len(positions)
+        if positions is not None
+        else (account_info.get("open_positions") if account_info else None)
+    )
 
-    return {**status, "is_enabled": broker.is_enabled}
+    if status:
+        merged_statistics = dict(status.get("statistics") or {})
+        if live_daily_pnl is not None:
+            merged_statistics["daily_pnl"] = live_daily_pnl
+        if live_open_positions is not None:
+            merged_statistics["open_positions"] = int(live_open_positions)
+        status["statistics"] = merged_statistics
+        return {**status, "is_enabled": broker.is_enabled}
+
+    return {
+        "broker_id": broker_id,
+        "name": broker.name,
+        "status": "not_initialized",
+        "is_enabled": broker.is_enabled,
+        "is_connected": broker.is_connected,
+        "statistics": {
+            "analyses_today": 0,
+            "trades_today": 0,
+            "daily_pnl": float(live_daily_pnl or 0),
+            "open_positions": int(live_open_positions or 0),
+        },
+    }
 
 
 @router.post("/{broker_id}/refresh-config")
@@ -631,7 +656,7 @@ async def get_broker_account_info(
 
     broker = await _get_user_broker_or_404(db, broker_id, current_user)
     manager = get_multi_broker_manager()
-    account_info = await manager.get_broker_account_info(broker_id)
+    account_info = await manager.get_broker_account_info(broker_id, broker_account=broker)
 
     if not account_info:
         return {
@@ -639,7 +664,7 @@ async def get_broker_account_info(
             "name": broker.name,
             "balance": None,
             "equity": None,
-            "message": "Broker not running or not connected",
+            "message": "Broker account data unavailable",
         }
 
     return {**account_info, "name": broker.name}
@@ -656,14 +681,14 @@ async def get_broker_positions(
 
     broker = await _get_user_broker_or_404(db, broker_id, current_user)
     manager = get_multi_broker_manager()
-    positions = await manager.get_broker_positions(broker_id)
+    positions = await manager.get_broker_positions(broker_id, broker_account=broker)
 
     if positions is None:
         return {
             "broker_id": broker_id,
             "name": broker.name,
             "positions": [],
-            "message": "Broker not running or not connected",
+            "message": "Broker positions unavailable",
         }
 
     return {
@@ -744,7 +769,7 @@ async def get_all_broker_positions(
     current_user: User = Depends(get_licensed_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get open positions from all running brokers visible to current user."""
+    """Get open positions from all brokers visible to current user."""
     from src.engines.trading.multi_broker_manager import get_multi_broker_manager
 
     result = await db.execute(_sorted_brokers_query(current_user))
@@ -753,7 +778,7 @@ async def get_all_broker_positions(
     manager = get_multi_broker_manager()
     all_positions = []
     for broker in brokers:
-        positions = await manager.get_broker_positions(broker.id)
+        positions = await manager.get_broker_positions(broker.id, broker_account=broker)
         if positions:
             all_positions.extend(positions)
 
@@ -785,7 +810,7 @@ async def get_aggregated_account_summary(
     broker_details = []
 
     for broker in brokers:
-        account_info = await manager.get_broker_account_info(broker.id)
+        account_info = await manager.get_broker_account_info(broker.id, broker_account=broker)
         if account_info and "balance" in account_info and account_info["balance"] is not None:
             total_balance += account_info["balance"]
             total_equity += account_info.get("equity", 0) or 0
@@ -805,8 +830,8 @@ async def get_aggregated_account_summary(
 
     total_positions = 0
     for broker in brokers:
-        positions = await manager.get_broker_positions(broker.id)
-        if positions:
+        positions = await manager.get_broker_positions(broker.id, broker_account=broker)
+        if positions is not None:
             total_positions += len(positions)
 
     return {
@@ -837,7 +862,26 @@ async def get_all_broker_statuses(
 
     for broker in brokers:
         bot_status = manager.get_broker_status(broker.id)
+        account_info = await manager.get_broker_account_info(broker.id, broker_account=broker)
+        positions = await manager.get_broker_positions(broker.id, broker_account=broker)
+        live_daily_pnl = None
+        if account_info:
+            live_daily_pnl = account_info.get("realized_pnl_today")
+            if live_daily_pnl is None:
+                live_daily_pnl = account_info.get("unrealized_pnl")
+        live_open_positions = (
+            len(positions)
+            if positions is not None
+            else (account_info.get("open_positions") if account_info else None)
+        )
+
         if bot_status:
+            merged_statistics = dict(bot_status.get("statistics") or {})
+            if live_daily_pnl is not None:
+                merged_statistics["daily_pnl"] = live_daily_pnl
+            if live_open_positions is not None:
+                merged_statistics["open_positions"] = int(live_open_positions)
+            bot_status["statistics"] = merged_statistics
             statuses.append({**bot_status, "is_enabled": broker.is_enabled})
         else:
             statuses.append(
@@ -847,6 +891,12 @@ async def get_all_broker_statuses(
                     "status": "not_initialized",
                     "is_enabled": broker.is_enabled,
                     "is_connected": broker.is_connected,
+                    "statistics": {
+                        "analyses_today": 0,
+                        "trades_today": 0,
+                        "daily_pnl": float(live_daily_pnl or 0),
+                        "open_positions": int(live_open_positions or 0),
+                    },
                 }
             )
 

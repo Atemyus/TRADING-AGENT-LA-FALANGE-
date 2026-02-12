@@ -58,6 +58,7 @@ export function PerformanceChart({
   }
   const totalPnL = data.reduce((sum, d) => sum + d.pnl, 0)
   const isPositive = totalPnL >= 0
+  const trendColor = isPositive ? '#10B981' : '#EF4444'
   const startBalance = data[0]?.balance || 0
   const endBalance = data[data.length - 1]?.balance || 0
   const percentChange = startBalance > 0 ? ((endBalance - startBalance) / startBalance) * 100 : 0
@@ -73,11 +74,11 @@ export function PerformanceChart({
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <div className={`p-2 rounded-lg ${isPositive ? 'bg-neon-green/20' : 'bg-neon-red/20'}`}>
+          <div className={`p-2 rounded-lg ${isPositive ? 'bg-profit/20' : 'bg-loss/20'}`}>
             {isPositive ? (
-              <TrendingUp className="w-5 h-5 text-neon-green" />
+              <TrendingUp className="w-5 h-5 text-profit" />
             ) : (
-              <TrendingDown className="w-5 h-5 text-neon-red" />
+              <TrendingDown className="w-5 h-5 text-loss" />
             )}
           </div>
           <div>
@@ -87,10 +88,10 @@ export function PerformanceChart({
         </div>
 
         <div className="text-right">
-          <p className={`text-2xl font-bold font-mono ${isPositive ? 'text-neon-green' : 'text-neon-red'}`}>
+          <p className={`text-2xl font-bold font-mono ${isPositive ? 'text-profit' : 'text-loss'}`}>
             {isPositive ? '+' : ''}${totalPnL.toFixed(2)}
           </p>
-          <p className={`text-sm ${isPositive ? 'text-neon-green' : 'text-neon-red'}`}>
+          <p className={`text-sm ${isPositive ? 'text-profit' : 'text-loss'}`}>
             {isPositive ? '+' : ''}{percentChange.toFixed(2)}%
           </p>
         </div>
@@ -103,12 +104,12 @@ export function PerformanceChart({
             <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
               <stop
                 offset="5%"
-                stopColor={isPositive ? '#00ff88' : '#ff4757'}
+                stopColor={trendColor}
                 stopOpacity={0.3}
               />
               <stop
                 offset="95%"
-                stopColor={isPositive ? '#00ff88' : '#ff4757'}
+                stopColor={trendColor}
                 stopOpacity={0}
               />
             </linearGradient>
@@ -145,7 +146,7 @@ export function PerformanceChart({
           <Area
             type="monotone"
             dataKey="balance"
-            stroke={isPositive ? '#00ff88' : '#ff4757'}
+            stroke={trendColor}
             strokeWidth={2}
             fill={`url(#${gradientId})`}
             animationDuration={1500}
@@ -166,13 +167,13 @@ export function PerformanceChart({
         </div>
         <div>
           <p className="text-xs text-dark-400">Best Day</p>
-          <p className="font-mono font-medium text-neon-green">
+          <p className="font-mono font-medium text-profit">
             +${Math.max(...data.map((d) => d.pnl)).toFixed(2)}
           </p>
         </div>
         <div>
           <p className="text-xs text-dark-400">Worst Day</p>
-          <p className="font-mono font-medium text-neon-red">
+          <p className="font-mono font-medium text-loss">
             ${Math.min(...data.map((d) => d.pnl)).toFixed(2)}
           </p>
         </div>

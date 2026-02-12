@@ -351,14 +351,16 @@
   }
 
   .nav-link:hover {
-    background: rgba(245, 158, 11, 0.05);
-    color: #F59E0B;
+    background: rgba(245, 158, 11, 0.12);
+    color: #fde68a;
+    border-color: rgba(245, 158, 11, 0.28);
   }
 
   .nav-link.active {
-    background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(124, 58, 237, 0.1) 100%);
-    color: #FFD700;
-    border: 1px solid rgba(255, 215, 0, 0.2);
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(180, 83, 9, 0.16) 100%);
+    color: #fef3c7;
+    border: 1px solid rgba(251, 191, 36, 0.34);
+    box-shadow: 0 0 18px rgba(245, 158, 11, 0.16);
   }
 
   .nav-link.active::before {
@@ -369,9 +371,38 @@
     transform: translateY(-50%);
     width: 3px;
     height: 60%;
-    background: linear-gradient(180deg, #FFD700 0%, #7C3AED 100%);
+    background: linear-gradient(180deg, #fcd34d 0%, #d97706 100%);
     border-radius: 0 3px 3px 0;
   }
+}
+
+.prometheus-sidebar-shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 18% 14%, rgba(245, 158, 11, 0.24) 0%, transparent 45%),
+    radial-gradient(circle at 82% 86%, rgba(251, 191, 36, 0.12) 0%, transparent 44%);
+}
+
+.prometheus-sidebar-shell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-right: 1px solid rgba(245, 158, 11, 0.18);
+  box-shadow: inset -14px 0 32px rgba(245, 158, 11, 0.08);
+}
+
+.prometheus-sidebar-runes {
+  background-image:
+    radial-gradient(circle at 16px 22px, rgba(251, 191, 36, 0.16) 1px, transparent 1.5px),
+    radial-gradient(circle at 52px 64px, rgba(251, 191, 36, 0.12) 1px, transparent 1.5px),
+    radial-gradient(circle at 112px 34px, rgba(245, 158, 11, 0.15) 1px, transparent 1.5px);
+  background-size: 140px 120px;
+  opacity: 0.45;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.85) 0%, transparent 95%);
 }
 
 @layer utilities {

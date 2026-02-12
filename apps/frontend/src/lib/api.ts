@@ -783,6 +783,45 @@ export interface BrokerBotStatus {
   }
 }
 
+export interface BrokerAccountInfo {
+  broker_id: number
+  name: string
+  balance: number | null
+  equity: number | null
+  margin_used?: number
+  margin_available?: number
+  unrealized_pnl?: number
+  realized_pnl_today?: number
+  open_positions?: number
+  currency?: string
+  message?: string
+}
+
+export interface BrokerPositionData {
+  position_id: string
+  symbol: string
+  side: string
+  size: number
+  entry_price: number
+  current_price: number
+  unrealized_pnl: string
+  unrealized_pnl_percent: string
+  stop_loss: number | null
+  take_profit: number | null
+  leverage: number
+  margin_used: number
+  opened_at: string | null
+  broker_id: number
+  broker_name: string
+}
+
+export interface BrokerPositionsResponse {
+  broker_id: number
+  name: string
+  positions: BrokerPositionData[]
+  message?: string
+}
+
 export const brokerAccountsApi = {
   /**
    * Get all broker accounts
@@ -951,16 +990,7 @@ export const brokerAccountsApi = {
   /**
    * Get account info (balance, equity) for a specific broker
    */
-  getAccountInfo: async (brokerId: number): Promise<{
-    broker_id: number
-    name: string
-    balance: number | null
-    equity: number | null
-    margin_used?: number
-    margin_available?: number
-    unrealized_pnl?: number
-    currency?: string
-  }> => {
+  getAccountInfo: async (brokerId: number): Promise<BrokerAccountInfo> => {
     return fetchApi(`/api/v1/brokers/${brokerId}/account`)
   },
 
@@ -1006,59 +1036,22 @@ export const brokerAccountsApi = {
   /**
    * Get positions for a specific broker
    */
-  getPositions: async (brokerId: number): Promise<{
-    broker_id: number
-    name: string
-    positions: Array<{
-      position_id: string
-      symbol: string
-      side: string
-      size: number
-      entry_price: number
-      current_price: number
-      unrealized_pnl: string
-      unrealized_pnl_percent: string
-      stop_loss: number | null
-      take_profit: number | null
-      leverage: number
-      margin_used: number
-      opened_at: string | null
-      broker_id: number
-      broker_name: string
-    }>
-    message?: string
-  }> => {
+  getPositions: async (brokerId: number): Promise<BrokerPositionsResponse> => {
     return fetchApi(`/api/v1/brokers/${brokerId}/positions`)
   },
 
   /**
-   * Get all positions from all running brokers
+   * Get all positions from all available brokers
    */
   getAllPositions: async (): Promise<{
     total_positions: number
-    positions: Array<{
-      position_id: string
-      symbol: string
-      side: string
-      size: number
-      entry_price: number
-      current_price: number
-      unrealized_pnl: string
-      unrealized_pnl_percent: string
-      stop_loss: number | null
-      take_profit: number | null
-      leverage: number
-      margin_used: number
-      opened_at: string | null
-      broker_id: number
-      broker_name: string
-    }>
+    positions: BrokerPositionData[]
   }> => {
     return fetchApi('/api/v1/brokers/control/positions-all')
   },
 
   /**
-   * Get aggregated account summary from all running brokers
+   * Get aggregated account summary from all available brokers
    */
   getAggregatedAccount: async (): Promise<{
     total_balance: number

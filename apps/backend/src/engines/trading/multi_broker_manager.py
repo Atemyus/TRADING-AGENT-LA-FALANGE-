@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.config import settings
 from src.core.models import BrokerAccount
 from src.engines.trading.auto_trader import AnalysisMode, AutoTrader, BotConfig, BotStatus
+from src.engines.trading.broker_factory import BrokerFactory, NoBrokerConfiguredError
 
 
 @dataclass
@@ -32,6 +33,7 @@ class BrokerInstance:
     broker_name: str
     broker_type: str
     symbols: list[str]
+    metaapi_token: str
     metaapi_account_id: str
 
     # AutoTrader instance
@@ -79,7 +81,9 @@ class MultiBrokerManager:
             trader = AutoTrader()
             config = self._create_config_from_account(broker_account)
             trader.configure(config)
+            fallback_token = os.environ.get("METAAPI_ACCESS_TOKEN") or settings.METAAPI_ACCESS_TOKEN
             fallback_account_id = os.environ.get("METAAPI_ACCOUNT_ID") or settings.METAAPI_ACCOUNT_ID
+            effective_metaapi_token = broker_account.metaapi_token or fallback_token
             effective_metaapi_account_id = broker_account.metaapi_account_id or fallback_account_id
 
             # Copy plain data from SQLAlchemy object (avoids DetachedInstanceError)
@@ -88,6 +92,7 @@ class MultiBrokerManager:
                 broker_name=broker_account.name,
                 broker_type=broker_account.broker_type,
                 symbols=list(broker_account.symbols),  # Copy the list
+                metaapi_token=effective_metaapi_token or "",
                 metaapi_account_id=effective_metaapi_account_id or "",
                 trader=trader,
                 status="initialized"
@@ -170,6 +175,7 @@ class MultiBrokerManager:
             instance.broker_name = broker_account.name
             instance.broker_type = broker_account.broker_type
             instance.symbols = list(broker_account.symbols)
+            instance.metaapi_token = effective_metaapi_token or ""
             instance.metaapi_account_id = effective_metaapi_account_id or ""
 
             print(f"[MultiBrokerManager] Refreshed config for broker '{broker_account.name}' - enabled_models: {new_config.enabled_models}")
@@ -353,20 +359,62 @@ class MultiBrokerManager:
             }
         }
 
-    async def get_broker_account_info(self, broker_id: int) -> dict | None:
-        """Get account info (balance, equity) for a specific broker."""
-        if broker_id not in self._instances:
-            return None
+    async def _ensure_broker_connection(
+        self,
+        broker_id: int,
+        broker_account: BrokerAccount | None = None,
+    ):
+        """Ensure a broker connection exists for a workspace, even if bot is stopped."""
+        instance = self._instances.get(broker_id)
+        if instance is None:
+            if broker_account is None:
+                return None
+            instance = await self.initialize_broker(broker_account)
 
-        instance = self._instances[broker_id]
-        trader = instance.trader
+        if instance.trader.broker and getattr(instance.trader.broker, "is_connected", False):
+            return instance.trader.broker
 
-        # Check if broker is connected
-        if not trader.broker:
+        if instance.trader.broker and not getattr(instance.trader.broker, "is_connected", False):
+            try:
+                await instance.trader.broker.connect()
+                return instance.trader.broker
+            except Exception:
+                instance.trader.broker = None
+
+        fallback_token = os.environ.get("METAAPI_ACCESS_TOKEN") or settings.METAAPI_ACCESS_TOKEN
+        fallback_account_id = os.environ.get("METAAPI_ACCOUNT_ID") or settings.METAAPI_ACCOUNT_ID
+        broker_access_token = instance.metaapi_token or fallback_token
+        broker_account_id = instance.metaapi_account_id or fallback_account_id
+
+        try:
+            broker = BrokerFactory.create(
+                broker_type=instance.broker_type,
+                access_token=broker_access_token,
+                account_id=broker_account_id,
+            )
+        except (NoBrokerConfiguredError, NotImplementedError):
             return None
 
         try:
-            account_info = await trader.broker.get_account_info()
+            await broker.connect()
+        except Exception:
+            return None
+        instance.trader.broker = broker
+        return broker
+
+    async def get_broker_account_info(
+        self,
+        broker_id: int,
+        broker_account: BrokerAccount | None = None,
+    ) -> dict | None:
+        """Get account info (balance, equity) for a specific broker."""
+        broker = await self._ensure_broker_connection(broker_id, broker_account=broker_account)
+        if not broker:
+            return None
+
+        try:
+            account_info = await broker.get_account_info()
+            open_positions = await broker.get_positions()
             return {
                 "broker_id": broker_id,
                 "balance": float(account_info.balance),
@@ -374,6 +422,8 @@ class MultiBrokerManager:
                 "margin_used": float(account_info.margin_used),
                 "margin_available": float(account_info.margin_available),
                 "unrealized_pnl": float(account_info.unrealized_pnl),
+                "realized_pnl_today": float(getattr(account_info, "realized_pnl_today", 0) or 0),
+                "open_positions": len(open_positions or []),
                 "currency": account_info.currency,
             }
         except Exception as e:
@@ -382,20 +432,19 @@ class MultiBrokerManager:
                 "error": str(e)
             }
 
-    async def get_broker_positions(self, broker_id: int) -> list | None:
+    async def get_broker_positions(
+        self,
+        broker_id: int,
+        broker_account: BrokerAccount | None = None,
+    ) -> list | None:
         """Get open positions for a specific broker."""
-        if broker_id not in self._instances:
-            return None
-
-        instance = self._instances[broker_id]
-        trader = instance.trader
-
-        # Check if broker is connected
-        if not trader.broker:
+        instance = self._instances.get(broker_id)
+        broker = await self._ensure_broker_connection(broker_id, broker_account=broker_account)
+        if not broker or not instance:
             return None
 
         try:
-            positions = await trader.broker.get_positions()
+            positions = await broker.get_positions()
             return [
                 {
                     "position_id": p.position_id,
@@ -405,7 +454,16 @@ class MultiBrokerManager:
                     "entry_price": float(p.entry_price),
                     "current_price": float(p.current_price),
                     "unrealized_pnl": str(p.unrealized_pnl),
-                    "unrealized_pnl_percent": str(getattr(p, 'unrealized_pnl_percent', '0')),
+                    "unrealized_pnl_percent": str(
+                        float(
+                            getattr(
+                                p,
+                                "pnl_percent",
+                                getattr(p, "unrealized_pnl_percent", 0),
+                            )
+                            or 0
+                        )
+                    ),
                     "stop_loss": float(p.stop_loss) if p.stop_loss else None,
                     "take_profit": float(p.take_profit) if p.take_profit else None,
                     "leverage": getattr(p, 'leverage', 1),
@@ -475,9 +533,12 @@ class MultiBrokerManager:
         # Update plain data fields (avoids DetachedInstanceError)
         fallback_account_id = os.environ.get("METAAPI_ACCOUNT_ID") or settings.METAAPI_ACCOUNT_ID
         effective_metaapi_account_id = broker_account.metaapi_account_id or fallback_account_id
+        fallback_token = os.environ.get("METAAPI_ACCESS_TOKEN") or settings.METAAPI_ACCESS_TOKEN
+        effective_metaapi_token = broker_account.metaapi_token or fallback_token
         instance.broker_name = broker_account.name
         instance.broker_type = broker_account.broker_type
         instance.symbols = list(broker_account.symbols)
+        instance.metaapi_token = effective_metaapi_token or ""
         instance.metaapi_account_id = effective_metaapi_account_id or ""
 
         return {

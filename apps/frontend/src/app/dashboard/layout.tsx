@@ -119,22 +119,10 @@ export default function DashboardLayout({
           ? selectedBrokerSnapshot
           : null
 
-        if (fallbackSnapshot?.isDisabled) {
-          setAccountData({ balance: null, todayPnl: null })
-          setIsConnected(false)
-          setConnectionError('Selected workspace is disabled')
-          return
-        }
-
         try {
           const brokers = await brokerAccountsApi.list()
           const selectedBroker = brokers.find((broker) => broker.id === selectedBrokerId)
-          if (!selectedBroker || !selectedBroker.is_enabled) {
-            setAccountData({ balance: null, todayPnl: null })
-            setIsConnected(false)
-            setConnectionError('Selected workspace is disabled')
-            return
-          }
+          const workspaceIsDisabled = selectedBroker ? !selectedBroker.is_enabled : Boolean(fallbackSnapshot?.isDisabled)
 
           const [accountResult, statusResult] = await Promise.allSettled([
             brokerAccountsApi.getAccountInfo(selectedBrokerId),
@@ -147,6 +135,7 @@ export default function DashboardLayout({
           const resolvedBalance = scopedAccount?.balance ?? fallbackSnapshot?.balance ?? null
           const resolvedTodayPnl =
             scopedStatus?.statistics?.daily_pnl ??
+            scopedAccount?.realized_pnl_today ??
             scopedAccount?.unrealized_pnl ??
             fallbackSnapshot?.todayPnl ??
             null
@@ -162,7 +151,11 @@ export default function DashboardLayout({
             setConnectionError(null)
           } else {
             setIsConnected(false)
-            setConnectionError('No live metrics for selected workspace')
+            setConnectionError(
+              workspaceIsDisabled
+                ? 'Selected workspace is disabled and has no available metrics'
+                : 'No live metrics for selected workspace',
+            )
           }
         } catch {
           setAccountData(null)
@@ -174,12 +167,10 @@ export default function DashboardLayout({
 
       try {
         const brokers = await brokerAccountsApi.list()
-        const enabledBrokers = brokers.filter((broker) => broker.is_enabled)
-
-        if (enabledBrokers.length === 0) {
+        if (brokers.length === 0) {
           setAccountData({ balance: null, todayPnl: null })
           setIsConnected(false)
-          setConnectionError('No enabled workspaces')
+          setConnectionError('No configured workspaces')
           return
         }
 
@@ -188,17 +179,51 @@ export default function DashboardLayout({
           brokerAccountsApi.getAllStatuses().catch(() => null),
         ])
 
-        const aggregateBalance = aggregated && aggregated.broker_count > 0
+        let aggregateBalance = aggregated && aggregated.broker_count > 0
           ? aggregated.total_balance
           : null
-        const aggregateDailyPnl = allStatuses?.brokers?.reduce((sum, broker) => {
-          return sum + (broker.statistics?.daily_pnl || 0)
+        let aggregateDailyPnl = allStatuses?.brokers?.reduce((sum, broker) => {
+          const pnl = broker.statistics?.daily_pnl
+          return typeof pnl === 'number' && Number.isFinite(pnl) ? sum + pnl : sum
         }, 0) ?? null
+
+        if (aggregateBalance === null || aggregateDailyPnl === null) {
+          const accountResults = await Promise.allSettled(
+            brokers.map((broker) => brokerAccountsApi.getAccountInfo(broker.id)),
+          )
+          const availableAccounts: Array<Awaited<ReturnType<typeof brokerAccountsApi.getAccountInfo>>> = []
+          for (const result of accountResults) {
+            if (result.status === 'fulfilled') {
+              availableAccounts.push(result.value)
+            }
+          }
+
+          if (aggregateBalance === null) {
+            const balances = availableAccounts
+              .map((account) => account.balance)
+              .filter((balance): balance is number => typeof balance === 'number')
+            aggregateBalance = balances.length > 0
+              ? balances.reduce((sum, balance) => sum + balance, 0)
+              : null
+          }
+
+          if (aggregateDailyPnl === null) {
+            const dailyPnls = availableAccounts.map((account) => {
+              if (typeof account.realized_pnl_today === 'number') return account.realized_pnl_today
+              if (typeof account.unrealized_pnl === 'number') return account.unrealized_pnl
+              return null
+            }).filter((pnl): pnl is number => pnl !== null)
+
+            aggregateDailyPnl = dailyPnls.length > 0
+              ? dailyPnls.reduce((sum, pnl) => sum + pnl, 0)
+              : null
+          }
+        }
 
         if (aggregateBalance === null && aggregateDailyPnl === null) {
           setAccountData({ balance: null, todayPnl: null })
           setIsConnected(false)
-          setConnectionError('Enabled workspaces are not connected')
+          setConnectionError('Workspaces have no available metrics')
           return
         }
 
@@ -216,7 +241,7 @@ export default function DashboardLayout({
     }
 
     fetchAccountData()
-    const interval = setInterval(fetchAccountData, 30000) // Update every 30s
+    const interval = setInterval(fetchAccountData, 10000) // Update every 10s
     return () => clearInterval(interval)
   }, [selectedBrokerId, selectedBrokerSnapshot])
 
@@ -233,17 +258,18 @@ export default function DashboardLayout({
         initial={{ x: -280 }}
         animate={{ x: sidebarOpen ? 0 : -280 }}
         transition={{ duration: 0.3, ease: 'easeOut' }}
-        className="fixed left-0 top-0 h-full w-[280px] z-40 overflow-hidden"
+        className="fixed left-0 top-0 h-full w-[280px] z-40 overflow-hidden prometheus-sidebar-shell"
       >
         {/* Sidebar background with gradient */}
-        <div className="absolute inset-0 bg-dark-950/95 backdrop-blur-2xl border-r border-primary-500/10" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(21,15,10,0.98)_0%,rgba(10,8,6,0.98)_100%)] backdrop-blur-2xl border-r border-primary-500/20" />
+        <div className="absolute inset-0 prometheus-sidebar-runes pointer-events-none" />
 
         {/* Gradient accent at top */}
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary-500 via-imperial-500 to-primary-500" />
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary-400 via-primary-600 to-imperial-500" />
 
         {/* Rising flames effect on sidebar */}
         <div className="absolute bottom-0 left-0 right-0 h-64 pointer-events-none overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-t from-primary-500/5 via-primary-500/2 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-primary-500/12 via-primary-500/5 to-transparent" />
           {/* Animated flame particles */}
           <motion.div
             animate={{
@@ -260,7 +286,7 @@ export default function DashboardLayout({
               opacity: [0.5, 0.25, 0],
             }}
             transition={{ duration: 3.5, repeat: Infinity, ease: 'easeOut', delay: 0.5 }}
-            className="absolute bottom-0 left-[50%] w-2 h-6 bg-gradient-to-t from-imperial-500/25 to-transparent rounded-full blur-sm"
+            className="absolute bottom-0 left-[50%] w-2 h-6 bg-gradient-to-t from-primary-500/30 to-transparent rounded-full blur-sm"
           />
           <motion.div
             animate={{
@@ -279,16 +305,16 @@ export default function DashboardLayout({
             scale: [1, 1.1, 1],
           }}
           transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-          className="absolute top-1/3 -right-20 w-40 h-40 bg-primary-500/10 rounded-full blur-3xl pointer-events-none"
+          className="absolute top-1/3 -right-20 w-40 h-40 bg-primary-500/15 rounded-full blur-3xl pointer-events-none"
         />
 
         {/* Vertical accent line with glow */}
         <div className="absolute right-0 top-20 bottom-20 w-px pointer-events-none">
-          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-primary-500/30 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-primary-500/45 to-transparent" />
           <motion.div
             animate={{ y: ['-100%', '100%'] }}
             transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
-            className="absolute w-full h-20 bg-gradient-to-b from-transparent via-primary-400/60 to-transparent"
+            className="absolute w-full h-20 bg-gradient-to-b from-transparent via-primary-300/70 to-transparent"
           />
         </div>
 

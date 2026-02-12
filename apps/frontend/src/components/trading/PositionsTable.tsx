@@ -7,7 +7,6 @@ import {
   TrendingDown,
   X,
   Edit2,
-  MoreVertical,
   AlertTriangle,
 } from 'lucide-react'
 
@@ -54,7 +53,7 @@ function PositionRow({ position, onClose, onModify }: { position: Position; onCl
           <span className="font-semibold">{position.symbol}</span>
           <span className={`
             text-xs px-2 py-0.5 rounded font-medium
-            ${position.side === 'long' ? 'bg-neon-green/20 text-neon-green' : 'bg-neon-red/20 text-neon-red'}
+            ${position.side === 'long' ? 'bg-profit/20 text-profit' : 'bg-loss/20 text-loss'}
           `}>
             {position.side.toUpperCase()}
           </span>
@@ -89,14 +88,14 @@ function PositionRow({ position, onClose, onModify }: { position: Position; onCl
       {/* SL/TP */}
       <td className="px-4 py-3 text-right">
         <div className="text-xs">
-          <div className="text-neon-red">SL: {position.stopLoss || '-'}</div>
-          <div className="text-neon-green">TP: {position.takeProfit || '-'}</div>
+          <div className="text-loss">SL: {position.stopLoss || '-'}</div>
+          <div className="text-profit">TP: {position.takeProfit || '-'}</div>
         </div>
       </td>
 
       {/* P&L */}
       <td className="px-4 py-3 text-right">
-        <div className={`flex items-center justify-end gap-1 ${isPositive ? 'text-neon-green' : 'text-neon-red'}`}>
+        <div className={`flex items-center justify-end gap-1 ${isPositive ? 'text-profit' : 'text-loss'}`}>
           {isPositive ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
           <div>
             <div className="font-mono font-semibold">
@@ -125,10 +124,10 @@ function PositionRow({ position, onClose, onModify }: { position: Position; onCl
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             onClick={onClose}
-            className="p-2 hover:bg-neon-red/20 rounded-lg transition-colors group"
+            className="p-2 hover:bg-loss/20 rounded-lg transition-colors group"
             title="Close Position"
           >
-            <X size={16} className="text-dark-400 group-hover:text-neon-red" />
+            <X size={16} className="text-dark-400 group-hover:text-loss" />
           </motion.button>
         </div>
       </td>
@@ -159,7 +158,7 @@ export function PositionsTable({
         </div>
         <div className="text-right">
           <p className="text-sm text-dark-400">Total P&L</p>
-          <p className={`text-xl font-mono font-bold ${isPositive ? 'text-neon-green' : 'text-neon-red'}`}>
+          <p className={`text-xl font-mono font-bold ${isPositive ? 'text-profit' : 'text-loss'}`}>
             {isPositive ? '+' : ''}${totalPnL.toFixed(2)}
           </p>
         </div>

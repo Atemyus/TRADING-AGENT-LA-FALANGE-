@@ -33,7 +33,14 @@ import {
   Flame,
   Sparkles,
 } from "lucide-react";
-import { botApi, brokerAccountsApi, BrokerAccountData, BrokerBotStatus } from "@/lib/api";
+import {
+  botApi,
+  brokerAccountsApi,
+  BrokerAccountData,
+  BrokerAccountInfo,
+  BrokerBotStatus,
+  BrokerPositionData,
+} from "@/lib/api";
 
 // Dynamic import for TradingView widget
 const TradingViewWidget = dynamic(
@@ -325,6 +332,8 @@ export default function BotControlPage() {
   // Multi-broker state
   const [brokers, setBrokers] = useState<BrokerAccountData[]>([]);
   const [brokerStatuses, setBrokerStatuses] = useState<Record<number, BrokerBotStatus>>({});
+  const [brokerAccountInfo, setBrokerAccountInfo] = useState<Record<number, BrokerAccountInfo>>({});
+  const [brokerPositions, setBrokerPositions] = useState<Record<number, BrokerPositionData[]>>({});
   const [brokerBalances, setBrokerBalances] = useState<Record<number, { balance: number | null; equity: number | null }>>({});
   const [selectedBrokerId, setSelectedBrokerId] = useState<number | null>(null);
   const [brokerLoading, setBrokerLoading] = useState<Record<number, boolean>>({});
@@ -398,6 +407,42 @@ export default function BotControlPage() {
     enabled_models: ["chatgpt", "gemini", "grok", "qwen", "llama", "ernie", "kimi", "mistral"],
   };
 
+  const resolveDailyPnl = (brokerId: number, statusData?: BrokerBotStatus | null) => {
+    const statusPnl = statusData?.statistics?.daily_pnl;
+    if (typeof statusPnl === "number" && Number.isFinite(statusPnl)) {
+      return statusPnl;
+    }
+
+    const accountInfo = brokerAccountInfo[brokerId];
+    if (typeof accountInfo?.realized_pnl_today === "number" && Number.isFinite(accountInfo.realized_pnl_today)) {
+      return accountInfo.realized_pnl_today;
+    }
+    if (typeof accountInfo?.unrealized_pnl === "number" && Number.isFinite(accountInfo.unrealized_pnl)) {
+      return accountInfo.unrealized_pnl;
+    }
+
+    return 0;
+  };
+
+  const resolveOpenPositions = (brokerId: number, statusData?: BrokerBotStatus | null) => {
+    const livePositions = brokerPositions[brokerId];
+    if (Array.isArray(livePositions)) {
+      return livePositions.length;
+    }
+
+    const statusPositions = statusData?.statistics?.open_positions;
+    if (typeof statusPositions === "number" && Number.isFinite(statusPositions)) {
+      return statusPositions;
+    }
+
+    const accountPositions = brokerAccountInfo[brokerId]?.open_positions;
+    if (typeof accountPositions === "number" && Number.isFinite(accountPositions)) {
+      return accountPositions;
+    }
+
+    return 0;
+  };
+
   const fetchStatus = useCallback(async () => {
     try {
       const data = await botApi.getStatus();
@@ -443,36 +488,87 @@ export default function BotControlPage() {
       const data = await brokerAccountsApi.list();
       setBrokers(data);
 
-      // Fetch status and balance for each enabled broker
+      // Fetch status, account and positions for every broker (enabled or disabled)
       const statuses: Record<number, BrokerBotStatus> = {};
+      const accounts: Record<number, BrokerAccountInfo> = {};
+      const positionsByBroker: Record<number, BrokerPositionData[]> = {};
       const balances: Record<number, { balance: number | null; equity: number | null }> = {};
-      for (const broker of data) {
-        if (broker.is_enabled) {
-          try {
-            const status = await brokerAccountsApi.getBotStatus(broker.id);
-            statuses[broker.id] = status;
 
-            // Fetch balance if broker is running
-            if (status?.status === 'running') {
-              try {
-                const accountInfo = await brokerAccountsApi.getAccountInfo(broker.id);
-                balances[broker.id] = {
-                  balance: accountInfo.balance,
-                  equity: accountInfo.equity
-                };
-              } catch {
-                // Balance not available
-              }
-            }
-          } catch {
-            // Broker not running
-          }
+      const entries = await Promise.all(
+        data.map(async (broker) => {
+          const [statusResult, accountResult, positionsResult] = await Promise.allSettled([
+            brokerAccountsApi.getBotStatus(broker.id),
+            brokerAccountsApi.getAccountInfo(broker.id),
+            brokerAccountsApi.getPositions(broker.id),
+          ]);
+
+          return {
+            broker,
+            status: statusResult.status === "fulfilled" ? statusResult.value : null,
+            account: accountResult.status === "fulfilled" ? accountResult.value : null,
+            positions:
+              positionsResult.status === "fulfilled"
+                ? (positionsResult.value.positions || [])
+                : [],
+          };
+        }),
+      );
+
+      for (const entry of entries) {
+        const { broker, status, account, positions } = entry;
+        const derivedDailyPnl =
+          typeof status?.statistics?.daily_pnl === "number"
+            ? status.statistics.daily_pnl
+            : typeof account?.realized_pnl_today === "number"
+              ? account.realized_pnl_today
+              : (account?.unrealized_pnl ?? 0);
+        const derivedOpenPositions =
+          positions.length > 0
+            ? positions.length
+            : typeof status?.statistics?.open_positions === "number"
+              ? status.statistics.open_positions
+              : (account?.open_positions ?? 0);
+
+        statuses[broker.id] = status || {
+          broker_id: broker.id,
+          name: broker.name,
+          status: broker.is_enabled ? "stopped" : "disabled",
+          is_enabled: broker.is_enabled,
+          is_connected: broker.is_connected,
+          statistics: {
+            analyses_today: 0,
+            trades_today: 0,
+            daily_pnl: derivedDailyPnl,
+            open_positions: derivedOpenPositions,
+          },
+          config: {
+            symbols: broker.symbols,
+            analysis_mode: broker.analysis_mode,
+            analysis_interval: broker.analysis_interval_seconds,
+            enabled_models: broker.enabled_models,
+          },
+        };
+
+        if (account) {
+          accounts[broker.id] = account;
+          balances[broker.id] = {
+            balance: account.balance ?? null,
+            equity: account.equity ?? null,
+          };
         }
+        positionsByBroker[broker.id] = positions;
       }
+
       setBrokerStatuses(statuses);
+      setBrokerAccountInfo(accounts);
+      setBrokerPositions(positionsByBroker);
       setBrokerBalances(balances);
     } catch {
-      // API not available
+      setBrokers([]);
+      setBrokerStatuses({});
+      setBrokerAccountInfo({});
+      setBrokerPositions({});
+      setBrokerBalances({});
     }
   }, []);
 
@@ -587,6 +683,15 @@ export default function BotControlPage() {
 
   const currentStatus = status || demoStatus;
   const currentConfig = config || demoConfig;
+  const scopedLivePositions = selectedBrokerId
+    ? (brokerPositions[selectedBrokerId] || [])
+    : Object.values(brokerPositions).flat();
+  const scopedTodayPnl = selectedBrokerId
+    ? resolveDailyPnl(selectedBrokerId, brokerStatuses[selectedBrokerId])
+    : brokers.reduce((sum, broker) => sum + resolveDailyPnl(broker.id, brokerStatuses[broker.id]), 0);
+  const scopedOpenPositions = selectedBrokerId
+    ? resolveOpenPositions(selectedBrokerId, brokerStatuses[selectedBrokerId])
+    : scopedLivePositions.length;
 
   return (
     <motion.div
@@ -641,6 +746,27 @@ export default function BotControlPage() {
         </motion.div>
       )}
 
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="prometheus-panel-surface p-4">
+          <p className="text-xs uppercase tracking-wider text-dark-500 mb-1">Scope</p>
+          <p className="text-lg font-semibold text-dark-100">
+            {selectedBrokerId
+              ? (brokers.find((broker) => broker.id === selectedBrokerId)?.name || "Selected broker")
+              : "All broker workspaces"}
+          </p>
+        </div>
+        <div className="prometheus-panel-surface p-4">
+          <p className="text-xs uppercase tracking-wider text-dark-500 mb-1">Today P&L</p>
+          <p className={`text-2xl font-bold font-mono ${scopedTodayPnl >= 0 ? "text-profit" : "text-loss"}`}>
+            {scopedTodayPnl >= 0 ? "+" : ""}${scopedTodayPnl.toFixed(2)}
+          </p>
+        </div>
+        <div className="prometheus-panel-surface p-4">
+          <p className="text-xs uppercase tracking-wider text-dark-500 mb-1">Open Positions</p>
+          <p className="text-2xl font-bold font-mono text-dark-100">{scopedOpenPositions}</p>
+        </div>
+      </div>
+
       {/* Multi-Broker Panel */}
       {brokers.length > 0 && (
         <div className="prometheus-panel-surface p-4 space-y-3">
@@ -688,6 +814,8 @@ export default function BotControlPage() {
               const isPaused = brokerStatus?.status === 'paused';
               const isLoading = brokerLoading[broker.id];
               const isSelected = selectedBrokerId === broker.id;
+              const brokerDailyPnl = resolveDailyPnl(broker.id, brokerStatus);
+              const brokerOpenPositions = resolveOpenPositions(broker.id, brokerStatus);
 
               return (
                 <motion.div
@@ -748,9 +876,9 @@ export default function BotControlPage() {
                           <div className="text-center">
                             <p className="text-slate-400 text-xs">P&L</p>
                             <p className={`font-medium ${
-                              (brokerStatus.statistics?.daily_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'
+                              brokerDailyPnl >= 0 ? 'text-profit' : 'text-loss'
                             }`}>
-                              ${(brokerStatus.statistics?.daily_pnl || 0).toFixed(2)}
+                              {brokerDailyPnl >= 0 ? "+" : ""}${brokerDailyPnl.toFixed(2)}
                             </p>
                           </div>
                         </div>
@@ -838,9 +966,9 @@ export default function BotControlPage() {
                             <span className="text-xs">P&L Giornaliero</span>
                           </div>
                           <p className={`text-xl font-bold ${
-                            (brokerStatus?.statistics?.daily_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'
+                            brokerDailyPnl >= 0 ? 'text-profit' : 'text-loss'
                           }`}>
-                            {(brokerStatus?.statistics?.daily_pnl || 0) >= 0 ? '+' : ''}${(brokerStatus?.statistics?.daily_pnl || 0).toFixed(2)}
+                            {brokerDailyPnl >= 0 ? "+" : ""}${brokerDailyPnl.toFixed(2)}
                           </p>
                         </div>
                         <div className="bg-slate-800 rounded-lg p-3">
@@ -848,7 +976,7 @@ export default function BotControlPage() {
                             <Activity size={14} />
                             <span className="text-xs">Posizioni Aperte</span>
                           </div>
-                          <p className="text-xl font-bold">{brokerStatus?.statistics?.open_positions || 0}</p>
+                          <p className="text-xl font-bold">{brokerOpenPositions}</p>
                         </div>
                         <div className="bg-slate-800 rounded-lg p-3">
                           <div className="flex items-center gap-2 text-slate-400 mb-1">
@@ -1369,50 +1497,70 @@ export default function BotControlPage() {
       )}
 
       {/* Open Positions */}
-      {currentStatus.open_positions.length > 0 && (
-        <div className="prometheus-panel-surface p-6">
-          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Activity size={20} />
-            Open Positions
-          </h3>
+      <div className="prometheus-panel-surface p-6">
+        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <Activity size={20} />
+          Open Positions (Live Broker Feed)
+        </h3>
+
+        {scopedLivePositions.length === 0 ? (
+          <div className="rounded-xl border border-dark-700/70 bg-dark-950/40 p-6 text-center">
+            <p className="text-sm text-dark-300">No open positions for the current scope.</p>
+          </div>
+        ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="text-left text-slate-400 text-sm">
                   <th className="pb-3">Symbol</th>
+                  <th className="pb-3">Broker</th>
                   <th className="pb-3">Direction</th>
                   <th className="pb-3">Entry</th>
-                  <th className="pb-3">SL</th>
-                  <th className="pb-3">TP</th>
-                  <th className="pb-3">Confidence</th>
+                  <th className="pb-3">Current</th>
+                  <th className="pb-3">Size</th>
+                  <th className="pb-3 text-right">Unrealized P&L</th>
+                  <th className="pb-3 text-right">P&L %</th>
                 </tr>
               </thead>
               <tbody>
-                {currentStatus.open_positions.map((pos, i) => (
-                  <tr key={i} className="border-t border-slate-700">
-                    <td className="py-3 font-medium">{pos.symbol}</td>
-                    <td className="py-3">
-                      <span
-                        className={`px-2 py-1 rounded text-xs ${
-                          pos.direction === "LONG"
-                            ? "bg-green-500/20 text-green-400"
-                            : "bg-red-500/20 text-red-400"
-                        }`}
-                      >
-                        {pos.direction}
-                      </span>
-                    </td>
-                    <td className="py-3 font-mono">{pos.entry.toFixed(5)}</td>
-                    <td className="py-3 font-mono text-red-400">{pos.sl.toFixed(5)}</td>
-                    <td className="py-3 font-mono text-green-400">{pos.tp.toFixed(5)}</td>
-                    <td className="py-3">{pos.confidence.toFixed(1)}%</td>
-                  </tr>
-                ))}
+                {scopedLivePositions.map((pos) => {
+                  const pnl = Number.parseFloat(pos.unrealized_pnl || "0");
+                  const pnlPercent = Number.parseFloat(pos.unrealized_pnl_percent || "0");
+                  const isProfit = pnl >= 0;
+                  const direction = String(pos.side).toUpperCase().includes("LONG") ? "LONG" : "SHORT";
+
+                  return (
+                    <tr key={`${pos.broker_id}-${pos.position_id}`} className="border-t border-slate-700">
+                      <td className="py-3 font-medium">{pos.symbol}</td>
+                      <td className="py-3 text-slate-400">{pos.broker_name}</td>
+                      <td className="py-3">
+                        <span
+                          className={`px-2 py-1 rounded text-xs ${
+                            direction === "LONG"
+                              ? "bg-profit/20 text-profit"
+                              : "bg-loss/20 text-loss"
+                          }`}
+                        >
+                          {direction}
+                        </span>
+                      </td>
+                      <td className="py-3 font-mono">{Number(pos.entry_price).toFixed(5)}</td>
+                      <td className="py-3 font-mono">{Number(pos.current_price).toFixed(5)}</td>
+                      <td className="py-3 font-mono">{Number(pos.size).toFixed(2)}</td>
+                      <td className={`py-3 text-right font-mono font-semibold ${isProfit ? "text-profit" : "text-loss"}`}>
+                        {isProfit ? "+" : ""}${pnl.toFixed(2)}
+                      </td>
+                      <td className={`py-3 text-right font-mono ${isProfit ? "text-profit" : "text-loss"}`}>
+                        {pnlPercent >= 0 ? "+" : ""}{pnlPercent.toFixed(2)}%
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* How It Works */}
       <div className="prometheus-panel-surface p-6">
