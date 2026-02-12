@@ -12,8 +12,34 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 _CONFIG_PATH = Path(__file__).resolve()
-_BACKEND_DIR = _CONFIG_PATH.parents[2]
-_REPO_ROOT = _CONFIG_PATH.parents[4]
+_CONFIG_PARENTS = tuple(_CONFIG_PATH.parents)
+
+
+def _resolve_backend_dir() -> Path:
+    """
+    Resolve backend root directory in a layout-agnostic way.
+
+    Works for both:
+    - local repo: <repo>/apps/backend/src/core/config.py
+    - container: /app/src/core/config.py
+    """
+    for candidate in (_CONFIG_PATH.parent, *_CONFIG_PARENTS):
+        if (candidate / "src" / "core").is_dir():
+            return candidate
+
+    # Fallback to historical relative position when structure is unexpected.
+    return _CONFIG_PARENTS[min(2, len(_CONFIG_PARENTS) - 1)]
+
+
+def _resolve_repo_root(backend_dir: Path) -> Path:
+    """Resolve repository root when backend lives under <repo>/apps/backend."""
+    if backend_dir.parent.name == "apps":
+        return backend_dir.parent.parent
+    return backend_dir
+
+
+_BACKEND_DIR = _resolve_backend_dir()
+_REPO_ROOT = _resolve_repo_root(_BACKEND_DIR)
 
 
 class Settings(BaseSettings):
