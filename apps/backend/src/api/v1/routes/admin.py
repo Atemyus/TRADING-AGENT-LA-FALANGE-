@@ -7,14 +7,14 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.api.v1.routes.auth import get_current_user
 from src.core.database import get_db
 from src.core.email import email_service
-from src.core.models import License, LicenseStatus, User, WhopOrder, WhopOrderStatus, WhopProduct
+from src.core.models import BrokerAccount, License, LicenseStatus, User, WhopOrder, WhopOrderStatus, WhopProduct
 
 router = APIRouter()
 
@@ -670,6 +670,11 @@ async def delete_user(
     # Free up the license slot
     if user.license:
         user.license.current_uses = max(0, user.license.current_uses - 1)
+
+    # Remove broker accounts tied to this user to avoid FK violations.
+    await db.execute(
+        delete(BrokerAccount).where(BrokerAccount.user_id == user.id)
+    )
 
     await db.delete(user)
     await db.flush()

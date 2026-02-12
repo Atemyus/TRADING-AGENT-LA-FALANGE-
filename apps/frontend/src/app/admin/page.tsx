@@ -382,6 +382,32 @@ export default function AdminPage() {
     }
   }
 
+  const deleteUser = async (userId: number, username: string) => {
+    const token = getToken()
+    if (!token) return
+
+    const confirmed = window.confirm(
+      `Delete user "${username}"? This will remove the account and free the license slot.`
+    )
+    if (!confirmed) return
+
+    try {
+      const response = await fetch(`${API_URL}/api/v1/admin/users/${userId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+
+      if (response.ok) {
+        fetchData()
+      } else {
+        const data = await response.json()
+        setError(data.detail || 'Failed to delete user')
+      }
+    } catch {
+      setError('Failed to delete user')
+    }
+  }
+
   // Whop functions
   const createWhopProduct = async () => {
     const token = getToken()
@@ -956,6 +982,18 @@ export default function AdminPage() {
                       <td className="p-4 text-sm text-dark-400">{formatDate(u.last_login_at)}</td>
                       <td className="p-4 text-right">
                         <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => deleteUser(u.id, u.username)}
+                            disabled={user?.id === u.id}
+                            className={`p-2 rounded-lg transition-colors ${
+                              user?.id === u.id
+                                ? 'text-dark-700 cursor-not-allowed'
+                                : 'hover:bg-loss/10 text-dark-400 hover:text-loss'
+                            }`}
+                            title={user?.id === u.id ? 'Cannot delete yourself' : 'Delete User'}
+                          >
+                            <Trash2 size={16} />
+                          </button>
                           <button
                             onClick={() => toggleUserActive(u.id)}
                             className={`p-2 rounded-lg transition-colors ${
