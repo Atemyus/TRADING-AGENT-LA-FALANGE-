@@ -2,8 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Import fonts - including Cinzel for imperial headers */
-@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+/* Global font system - Prometheus theme */
+@import url('https://fonts.googleapis.com/css2?family=Bodoni+Moda+SC:wght@500;600;700&family=Cinzel:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
 @layer base {
   :root {
@@ -13,6 +13,9 @@
     --gold-dark: #F59E0B;
     --imperial: #7C3AED;
     --imperial-light: #A855F7;
+    --forge-ember: rgba(245, 158, 11, 0.2);
+    --forge-violet: rgba(124, 58, 237, 0.2);
+    --forge-steel: rgba(63, 63, 70, 0.36);
   }
 
   html {
@@ -23,12 +26,38 @@
 
   body {
     @apply bg-dark-abyss text-dark-100 overflow-x-hidden;
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: 'Sora', 'Space Grotesk', system-ui, sans-serif;
+    letter-spacing: 0.01em;
     max-width: 100vw;
     background-image:
-      radial-gradient(ellipse at top, rgba(124, 58, 237, 0.05) 0%, transparent 50%),
-      radial-gradient(ellipse at bottom, rgba(245, 158, 11, 0.03) 0%, transparent 50%);
+      radial-gradient(circle at 12% 15%, rgba(245, 158, 11, 0.14) 0%, transparent 34%),
+      radial-gradient(circle at 88% 12%, rgba(124, 58, 237, 0.12) 0%, transparent 28%),
+      radial-gradient(circle at 50% 100%, rgba(245, 158, 11, 0.08) 0%, transparent 42%),
+      repeating-linear-gradient(
+        120deg,
+        rgba(255, 255, 255, 0.018) 0px,
+        rgba(255, 255, 255, 0.018) 1px,
+        transparent 1px,
+        transparent 22px
+      ),
+      repeating-linear-gradient(
+        -120deg,
+        rgba(255, 215, 0, 0.012) 0px,
+        rgba(255, 215, 0, 0.012) 1px,
+        transparent 1px,
+        transparent 28px
+      );
     min-height: 100vh;
+  }
+
+  h1, h2, h3 {
+    font-family: 'Cinzel', 'Bodoni Moda SC', serif;
+    letter-spacing: 0.02em;
+  }
+
+  h4, h5, h6 {
+    font-family: 'Space Grotesk', 'Sora', sans-serif;
+    letter-spacing: 0.01em;
   }
 
   /* Custom scrollbar - LA FALANGE themed */
@@ -65,8 +94,11 @@
   .card {
     @apply bg-dark-900/60 backdrop-blur-xl border border-dark-700/50 rounded-2xl;
     box-shadow:
-      0 4px 20px rgba(0, 0, 0, 0.4),
-      inset 0 1px 0 rgba(255, 255, 255, 0.03);
+      0 14px 34px rgba(0, 0, 0, 0.45),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    background-image:
+      linear-gradient(160deg, rgba(24, 24, 27, 0.9) 0%, rgba(12, 12, 15, 0.88) 100%),
+      radial-gradient(circle at 8% 14%, rgba(245, 158, 11, 0.09) 0%, transparent 38%);
   }
 
   .card-hover {
@@ -74,12 +106,12 @@
   }
 
   .card-hover:hover {
-    @apply border-primary-500/40;
+    @apply border-primary-500/50;
     box-shadow:
-      0 8px 30px rgba(0, 0, 0, 0.5),
-      0 0 20px rgba(245, 158, 11, 0.1),
-      inset 0 1px 0 rgba(255, 255, 255, 0.05);
-    transform: translateY(-2px);
+      0 18px 42px rgba(0, 0, 0, 0.56),
+      0 0 24px rgba(245, 158, 11, 0.14),
+      inset 0 1px 0 rgba(255, 255, 255, 0.07);
+    transform: translateY(-3px);
   }
 
   .card-gold {
@@ -102,7 +134,10 @@
 
   .card-glass {
     @apply bg-dark-900/40 backdrop-blur-2xl border border-white/5 rounded-2xl;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.38);
+    background-image:
+      linear-gradient(145deg, rgba(34, 34, 39, 0.62) 0%, rgba(12, 12, 14, 0.7) 100%),
+      radial-gradient(circle at 90% 10%, rgba(124, 58, 237, 0.1) 0%, transparent 42%);
   }
 
   /* ═══════════════════════════════════════════════════════════════
@@ -111,18 +146,22 @@
 
   .btn-primary {
     @apply relative px-6 py-3 font-semibold rounded-xl transition-all duration-300 overflow-hidden;
-    background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+    font-family: 'Space Grotesk', 'Sora', sans-serif;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    background: linear-gradient(135deg, #f8b73a 0%, #e59010 44%, #c56608 100%);
     color: #000;
     box-shadow:
-      0 4px 15px rgba(245, 158, 11, 0.3),
-      inset 0 1px 0 rgba(255, 255, 255, 0.2);
+      0 10px 24px rgba(245, 158, 11, 0.33),
+      inset 0 1px 0 rgba(255, 255, 255, 0.28);
   }
 
   .btn-primary:hover {
-    transform: translateY(-2px);
+    transform: translateY(-2px) scale(1.01);
     box-shadow:
-      0 8px 25px rgba(245, 158, 11, 0.4),
-      inset 0 1px 0 rgba(255, 255, 255, 0.3);
+      0 16px 30px rgba(245, 158, 11, 0.4),
+      0 0 24px rgba(255, 184, 30, 0.2),
+      inset 0 1px 0 rgba(255, 255, 255, 0.34);
   }
 
   .btn-primary:active {
@@ -131,6 +170,9 @@
 
   .btn-secondary {
     @apply px-6 py-3 font-semibold rounded-xl transition-all duration-300;
+    font-family: 'Space Grotesk', 'Sora', sans-serif;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
     background: rgba(39, 39, 42, 0.8);
     border: 1px solid rgba(113, 113, 122, 0.3);
     color: #fafafa;
@@ -184,9 +226,11 @@
 
   .input {
     @apply w-full px-4 py-3 rounded-xl transition-all duration-300;
+    font-family: 'Space Grotesk', 'Sora', sans-serif;
     background: rgba(24, 24, 27, 0.8);
     border: 1px solid rgba(63, 63, 70, 0.5);
     color: #fafafa;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
   }
 
   .input::placeholder {
@@ -440,8 +484,8 @@
 
   /* Imperial header font */
   .font-imperial {
-    font-family: 'Cinzel', serif;
-    letter-spacing: 0.1em;
+    font-family: 'Cinzel', 'Bodoni Moda SC', serif;
+    letter-spacing: 0.06em;
   }
 
   /* Number styling */
@@ -1327,6 +1371,114 @@
   box-shadow:
     0 30px 70px rgba(0, 0, 0, 0.55),
     0 0 30px rgba(245, 158, 11, 0.16);
+}
+
+.theme-forge {
+  position: relative;
+}
+
+.theme-forge::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 20% 14%, rgba(245, 158, 11, 0.1) 0%, transparent 35%),
+    radial-gradient(circle at 78% 84%, rgba(124, 58, 237, 0.08) 0%, transparent 40%);
+}
+
+.forge-pattern {
+  position: relative;
+  overflow: hidden;
+}
+
+.forge-pattern::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    repeating-linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.018) 0px,
+      rgba(255, 255, 255, 0.018) 1px,
+      transparent 1px,
+      transparent 20px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      rgba(245, 158, 11, 0.014) 0px,
+      rgba(245, 158, 11, 0.014) 1px,
+      transparent 1px,
+      transparent 24px
+    );
+  opacity: 0.6;
+}
+
+.forge-ring {
+  border: 1px solid rgba(245, 158, 11, 0.34);
+  background:
+    radial-gradient(circle at center, rgba(245, 158, 11, 0.16) 0%, rgba(24, 24, 27, 0.35) 64%, transparent 100%);
+  box-shadow:
+    inset 0 0 24px rgba(245, 158, 11, 0.14),
+    0 0 24px rgba(245, 158, 11, 0.12);
+}
+
+.story-grid-card {
+  position: relative;
+  border-radius: 1.1rem;
+  border: 1px solid rgba(82, 82, 91, 0.5);
+  background:
+    linear-gradient(145deg, rgba(25, 25, 30, 0.92) 0%, rgba(10, 10, 13, 0.9) 100%);
+  padding: 1.15rem;
+  transition: transform 220ms ease, border-color 220ms ease, box-shadow 220ms ease;
+}
+
+.story-grid-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: radial-gradient(circle at 12% 18%, rgba(245, 158, 11, 0.1) 0%, transparent 42%);
+}
+
+.story-grid-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(245, 158, 11, 0.42);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.42), 0 0 18px rgba(245, 158, 11, 0.12);
+}
+
+.myth-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 999px;
+  border: 1px solid rgba(124, 58, 237, 0.38);
+  background: rgba(124, 58, 237, 0.14);
+  color: rgba(233, 213, 255, 0.95);
+  font-family: 'Space Grotesk', 'Sora', sans-serif;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-weight: 600;
+  padding: 0.35rem 0.65rem;
+}
+
+.rune-divider {
+  height: 1px;
+  width: min(420px, 90%);
+  margin-inline: auto;
+  background:
+    linear-gradient(
+      to right,
+      transparent 0%,
+      rgba(245, 158, 11, 0.46) 25%,
+      rgba(255, 215, 0, 0.66) 50%,
+      rgba(124, 58, 237, 0.46) 75%,
+      transparent 100%
+    );
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -18,7 +18,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className="min-h-screen bg-gradient-dark">
+      <body className="min-h-screen bg-gradient-dark prometheus-page-shell">
         <Providers>
           {children}
         </Providers>

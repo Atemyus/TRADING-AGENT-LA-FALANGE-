@@ -20,6 +20,12 @@ import {
   Sparkles,
   Shield,
   LogIn,
+  Hammer,
+  BookOpen,
+  Eye,
+  Layers3,
+  Compass,
+  Fingerprint,
 } from 'lucide-react'
 import { MusicPlayer } from '@/components/common/MusicPlayer'
 import { LEGION_MODELS } from './legionModels'
@@ -30,6 +36,48 @@ const EDGE_PARTICLES = [
   { x: 62, size: 4, duration: 10.2, delay: 2.4, opacity: 0.4 },
   { x: 74, size: 2, duration: 8.6, delay: 3.1, opacity: 0.42 },
   { x: 34, size: 3, duration: 11, delay: 4.3, opacity: 0.34 },
+]
+
+const PROMETHEAN_PILLARS = [
+  {
+    icon: Hammer,
+    title: 'The Forge',
+    subtitle: 'Market structure tempered by live data',
+    description:
+      'Every cycle fuses raw price action, volatility and indicator state into a structured battlefield context.',
+  },
+  {
+    icon: Eye,
+    title: 'The Oracle',
+    subtitle: 'Multi-model tactical reasoning',
+    description:
+      'Independent AI agents challenge each other. Consensus is formed only when conviction and alignment are strong.',
+  },
+  {
+    icon: Fingerprint,
+    title: 'The Covenant',
+    subtitle: 'Identity, license and execution discipline',
+    description:
+      'Slot-based licensing and risk rules protect the system before a single order touches your broker.',
+  },
+]
+
+const RITUAL_FLOW = [
+  {
+    icon: Layers3,
+    title: 'Signal Layering',
+    body: 'Timeframe structure, liquidity zones and directional momentum are stacked before entries are evaluated.',
+  },
+  {
+    icon: Compass,
+    title: 'Route Selection',
+    body: 'The engine rejects weak setups and only deploys when risk profile, confidence and alignment are coherent.',
+  },
+  {
+    icon: BookOpen,
+    title: 'Execution Chronicle',
+    body: 'Every decision is logged with context, so you can audit behavior instead of trading in the dark.',
+  },
 ]
 
 export default function LandingPage() {
@@ -163,7 +211,7 @@ export default function LandingPage() {
         </motion.div>
 
         {/* Main content */}
-        <div className="text-center max-w-5xl mx-auto z-10 px-6 py-10 rounded-3xl hero-content-shell">
+        <div className="text-center max-w-5xl mx-auto z-10 px-6 py-10 rounded-3xl hero-content-shell prometheus-hero-card forge-pattern">
           {/* Badge */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -312,6 +360,81 @@ export default function LandingPage() {
             />
           </motion.div>
         </motion.div>
+      </section>
+
+      <section className="py-24 px-4 relative">
+        <div className="max-w-6xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 18 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.55 }}
+            className="text-center mb-10"
+          >
+            <span className="myth-badge mb-4">
+              <Sparkles size={12} />
+              Prometheus Protocol
+            </span>
+            <h2 className="font-imperial text-3xl md:text-5xl mb-4">
+              <span className="text-gradient-falange">Forged For System Traders</span>
+            </h2>
+            <p className="text-dark-400 max-w-3xl mx-auto text-sm md:text-base">
+              This is not a cosmetic dashboard. It is a tactical layer where model consensus,
+              risk architecture and broker execution work as a single command surface.
+            </p>
+          </motion.div>
+
+          <div className="rune-divider mb-10" />
+
+          <div className="grid md:grid-cols-3 gap-5 mb-10">
+            {PROMETHEAN_PILLARS.map((pillar, index) => {
+              const Icon = pillar.icon
+              return (
+                <motion.article
+                  key={pillar.title}
+                  initial={{ opacity: 0, y: 22 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.55, delay: index * 0.08 }}
+                  className="story-grid-card forge-pattern"
+                >
+                  <div className="w-12 h-12 rounded-2xl forge-ring flex items-center justify-center mb-4 text-primary-300">
+                    <Icon size={20} />
+                  </div>
+                  <h3 className="text-xl text-dark-50 mb-1">{pillar.title}</h3>
+                  <p className="text-xs uppercase tracking-[0.12em] text-primary-300/80 mb-3">
+                    {pillar.subtitle}
+                  </p>
+                  <p className="text-sm text-dark-400 leading-relaxed">{pillar.description}</p>
+                </motion.article>
+              )
+            })}
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-4">
+            {RITUAL_FLOW.map((item, index) => {
+              const Icon = item.icon
+              return (
+                <motion.div
+                  key={item.title}
+                  initial={{ opacity: 0, y: 16 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.45, delay: index * 0.08 }}
+                  className="card-glass p-5 border border-dark-700/60"
+                >
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="p-2 rounded-lg bg-primary-500/10 border border-primary-500/20">
+                      <Icon size={16} className="text-primary-300" />
+                    </div>
+                    <p className="font-semibold text-dark-100">{item.title}</p>
+                  </div>
+                  <p className="text-sm text-dark-400 leading-relaxed">{item.body}</p>
+                </motion.div>
+              )
+            })}
+          </div>
+        </div>
       </section>
 
       {/* Features Section */}
