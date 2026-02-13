@@ -95,7 +95,7 @@ export default function RegisterPage() {
       </div>
 
       {/* Header */}
-      <header className="fixed top-0 left-0 right-0 z-50 px-6 py-4">
+      <header className="prometheus-top-header-shell prometheus-top-header-shell-auth fixed top-0 left-0 right-0 z-50 px-6 py-4">
         <div className="max-w-[1720px] mx-auto flex items-center justify-between gap-4 prometheus-auth-header px-3 py-2">
           <Link href="/" className="flex items-center gap-3 group">
             <div className="p-2 rounded-lg bg-dark-800/50 border border-primary-500/20 hover:border-primary-500/40 transition-all">

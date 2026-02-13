@@ -1433,6 +1433,8 @@
     radial-gradient(circle at 14% 20%, rgba(245, 158, 11, 0.2) 0%, transparent 35%),
     radial-gradient(circle at 86% 14%, rgba(0, 245, 255, 0.17) 0%, transparent 30%),
     radial-gradient(circle at 50% 100%, rgba(245, 158, 11, 0.11) 0%, transparent 40%);
+  background-size: 136% 136%, 136% 136%, 146% 146%;
+  animation: authGradientDrift 20s ease-in-out infinite;
 }
 
 .prometheus-auth-shell::after {
@@ -1457,6 +1459,7 @@
       transparent 1px,
       transparent 30px
     );
+  animation: authPatternDrift 28s linear infinite;
 }
 
 .prometheus-auth-card {
@@ -1483,10 +1486,35 @@
 .prometheus-auth-header {
   position: relative;
   overflow: hidden;
-  border-radius: 0.95rem;
-  border: 1px solid rgba(113, 113, 122, 0.45);
+  border-radius: 1.02rem;
+  border: 1px solid rgba(92, 105, 123, 0.56);
+  min-height: 4.86rem;
   background:
-    linear-gradient(145deg, rgba(39, 39, 42, 0.72) 0%, rgba(15, 15, 17, 0.76) 100%);
+    linear-gradient(132deg, rgba(18, 25, 37, 0.92) 0%, rgba(9, 13, 21, 0.94) 46%, rgba(15, 23, 35, 0.94) 100%),
+    radial-gradient(circle at 8% 8%, rgba(255, 140, 0, 0.17) 0%, transparent 44%),
+    radial-gradient(circle at 92% 10%, rgba(0, 245, 255, 0.16) 0%, transparent 46%),
+    linear-gradient(90deg, rgba(255, 140, 0, 0.09) 0%, rgba(0, 245, 255, 0.09) 100%);
+  background-size: 140% 140%, 100% 100%, 100% 100%, 170% 170%;
+  background-position: 0% 50%, center, center, 0% 50%;
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.42),
+    0 20px 44px -34px rgba(255, 140, 0, 0.62),
+    0 22px 48px -36px rgba(0, 245, 255, 0.48),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: border-color 240ms ease, box-shadow 280ms ease, transform 220ms ease;
+  animation: navChromaShift 13s ease-in-out infinite;
+}
+
+.prometheus-auth-header::before {
+  content: '';
+  position: absolute;
+  left: 0.62rem;
+  right: 0.62rem;
+  top: 0.58rem;
+  height: 1.5px;
+  pointer-events: none;
+  opacity: 0.84;
+  background: linear-gradient(to right, transparent 0%, rgba(255, 215, 0, 0.46) 36%, rgba(0, 245, 255, 0.44) 66%, transparent 100%);
 }
 
 .prometheus-auth-header::after {
@@ -1494,7 +1522,9 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(120deg, rgba(245, 158, 11, 0.09) 0%, transparent 42%);
+  opacity: 0.86;
+  background:
+    linear-gradient(122deg, rgba(245, 158, 11, 0.13) 0%, rgba(0, 245, 255, 0.1) 62%, transparent 100%);
 }
 
 .prometheus-legal-shell {
@@ -1814,27 +1844,89 @@
     );
 }
 
+.prometheus-top-header-shell {
+  position: relative;
+  isolation: isolate;
+}
+
+.prometheus-top-header-shell::before {
+  content: '';
+  position: absolute;
+  top: 0.18rem;
+  left: clamp(0.7rem, 1.8vw, 1.2rem);
+  right: clamp(0.7rem, 1.8vw, 1.2rem);
+  height: 1px;
+  pointer-events: none;
+  opacity: 0.66;
+  background: linear-gradient(to right, transparent 0%, rgba(255, 215, 0, 0.48) 26%, rgba(0, 245, 255, 0.52) 70%, transparent 100%);
+}
+
+.prometheus-top-header-shell::after {
+  content: '';
+  position: absolute;
+  top: calc(100% - 0.85rem);
+  left: clamp(0.5rem, 1.2vw, 1rem);
+  right: clamp(0.5rem, 1.2vw, 1rem);
+  height: clamp(78px, 11vw, 156px);
+  border-radius: 0 0 1.8rem 1.8rem;
+  pointer-events: none;
+  z-index: -1;
+  opacity: 0.84;
+  filter: blur(24px);
+  transform-origin: top center;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 140, 0, 0.3) 0%,
+      rgba(0, 245, 255, 0.2) 42%,
+      rgba(8, 11, 17, 0) 100%
+    ),
+    radial-gradient(circle at 20% 0%, rgba(255, 215, 0, 0.26) 0%, transparent 72%),
+    radial-gradient(circle at 80% 0%, rgba(0, 245, 255, 0.24) 0%, transparent 72%);
+  animation: headerGlowBreath 7.2s ease-in-out infinite;
+}
+
+.prometheus-top-header-shell-auth::before {
+  opacity: 0.58;
+}
+
+.prometheus-top-header-shell-auth::after {
+  top: calc(100% - 0.95rem);
+  left: clamp(1rem, 2.3vw, 1.55rem);
+  right: clamp(1rem, 2.3vw, 1.55rem);
+  height: clamp(64px, 9vw, 118px);
+  opacity: 0.74;
+  filter: blur(20px);
+}
+
 .prometheus-top-nav {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.85rem;
-  min-height: 5.1rem;
-  border-radius: 0.95rem;
-  border: 1px solid rgba(75, 87, 104, 0.58);
+  min-height: 5.35rem;
+  border-radius: 1.05rem;
+  border: 1px solid rgba(92, 105, 123, 0.62);
   background:
-    linear-gradient(150deg, rgba(18, 25, 37, 0.9) 0%, rgba(10, 14, 23, 0.92) 100%);
-  padding: 0.85rem 1.08rem;
+    linear-gradient(132deg, rgba(18, 25, 37, 0.94) 0%, rgba(9, 13, 21, 0.95) 44%, rgba(15, 23, 35, 0.95) 100%),
+    radial-gradient(circle at 8% 8%, rgba(255, 140, 0, 0.18) 0%, transparent 44%),
+    radial-gradient(circle at 92% 6%, rgba(0, 245, 255, 0.18) 0%, transparent 46%),
+    linear-gradient(90deg, rgba(255, 140, 0, 0.09) 0%, rgba(0, 245, 255, 0.09) 100%);
+  background-size: 140% 140%, 100% 100%, 100% 100%, 170% 170%;
+  background-position: 0% 50%, center, center, 0% 50%;
+  padding: 0.9rem 1.12rem 1.04rem;
   transition:
-    border-color 220ms ease,
-    background 220ms ease,
-    box-shadow 260ms ease,
+    border-color 240ms ease,
+    box-shadow 280ms ease,
     transform 220ms ease,
-    padding 220ms ease;
+    padding 220ms ease,
+    min-height 220ms ease;
   box-shadow:
-    0 12px 30px rgba(0, 0, 0, 0.42),
-    0 0 16px rgba(255, 140, 0, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    0 16px 34px rgba(0, 0, 0, 0.44),
+    0 22px 58px -36px rgba(255, 140, 0, 0.62),
+    0 24px 62px -38px rgba(0, 245, 255, 0.52),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  animation: navChromaShift 12s ease-in-out infinite;
 }
 
 .prometheus-top-nav-double {
@@ -1848,30 +1940,37 @@
   position: absolute;
   left: 0.6rem;
   right: 0.6rem;
-  height: 1px;
+  height: 1.5px;
   pointer-events: none;
 }
 
 .prometheus-top-nav-double::before {
   top: 0.6rem;
-  background: linear-gradient(to right, transparent, rgba(255, 215, 0, 0.42), rgba(0, 245, 255, 0.42), transparent);
+  opacity: 0.92;
+  background: linear-gradient(to right, transparent 0%, rgba(255, 215, 0, 0.5) 38%, rgba(0, 245, 255, 0.48) 64%, transparent 100%);
 }
 
 .prometheus-top-nav-double::after {
-  bottom: 0.6rem;
-  background: linear-gradient(to right, transparent, rgba(0, 245, 255, 0.28), rgba(255, 140, 0, 0.34), transparent);
+  bottom: 0.56rem;
+  opacity: 0.8;
+  background: linear-gradient(to right, transparent 0%, rgba(0, 245, 255, 0.34) 34%, rgba(255, 140, 0, 0.42) 70%, transparent 100%);
 }
 
 .prometheus-top-nav-scrolled {
-  border-color: rgba(255, 140, 0, 0.5);
-  min-height: 4.6rem;
+  border-color: rgba(255, 140, 0, 0.58);
+  min-height: 4.78rem;
   background:
-    linear-gradient(150deg, rgba(20, 29, 43, 0.95) 0%, rgba(10, 14, 23, 0.97) 100%);
+    linear-gradient(132deg, rgba(20, 29, 43, 0.97) 0%, rgba(9, 13, 21, 0.98) 46%, rgba(15, 23, 35, 0.98) 100%),
+    radial-gradient(circle at 8% 10%, rgba(255, 140, 0, 0.24) 0%, transparent 44%),
+    radial-gradient(circle at 92% 8%, rgba(0, 245, 255, 0.2) 0%, transparent 46%),
+    linear-gradient(90deg, rgba(255, 140, 0, 0.13) 0%, rgba(0, 245, 255, 0.1) 100%);
+  background-size: 140% 140%, 100% 100%, 100% 100%, 180% 180%;
   box-shadow:
-    0 16px 36px rgba(0, 0, 0, 0.5),
-    0 0 22px rgba(255, 140, 0, 0.2),
-    0 0 12px rgba(0, 245, 255, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    0 16px 38px rgba(0, 0, 0, 0.52),
+    0 22px 54px -34px rgba(255, 140, 0, 0.64),
+    0 26px 64px -42px rgba(0, 245, 255, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  animation-duration: 8.6s;
 }
 
 .prometheus-top-nav-compressed {
@@ -1885,26 +1984,74 @@
 }
 
 .prometheus-nav-link {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-height: 2.3rem;
   border-radius: 0.52rem;
   border: 1px solid transparent;
+  overflow: hidden;
   padding: 0.52rem 0.82rem;
   font-size: 0.74rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-weight: 700;
-  color: rgba(224, 228, 234, 0.86);
-  transition: border-color 180ms ease, color 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
+  color: rgba(224, 228, 234, 0.9);
+  background: linear-gradient(140deg, rgba(255, 255, 255, 0.018) 0%, rgba(255, 255, 255, 0.004) 100%);
+  transition:
+    border-color 180ms ease,
+    color 180ms ease,
+    background-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.prometheus-nav-link::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -52%;
+  width: 42%;
+  pointer-events: none;
+  opacity: 0.7;
+  transform: skewX(-22deg);
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.34) 50%, transparent 100%);
+}
+
+.prometheus-nav-link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 220ms ease;
+  background: linear-gradient(124deg, rgba(255, 140, 0, 0.18) 0%, rgba(0, 245, 255, 0.14) 70%, transparent 100%);
 }
 
 .prometheus-nav-link:hover {
   color: rgba(255, 245, 214, 0.96);
-  border-color: rgba(0, 245, 255, 0.32);
+  border-color: rgba(0, 245, 255, 0.34);
   background: rgba(0, 245, 255, 0.09);
-  box-shadow: 0 0 14px rgba(0, 245, 255, 0.18);
+  box-shadow: 0 0 14px rgba(0, 245, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.prometheus-nav-link:hover::before {
+  animation: navLinkSheen 680ms ease;
+}
+
+.prometheus-nav-link:hover::after {
+  opacity: 1;
+}
+
+.prometheus-nav-link:focus-visible {
+  outline: none;
+  border-color: rgba(255, 140, 0, 0.64);
+  box-shadow:
+    0 0 0 3px rgba(255, 140, 0, 0.2),
+    0 0 18px rgba(0, 245, 255, 0.22);
 }
 
 .prometheus-home-shell {
@@ -1921,6 +2068,8 @@
     radial-gradient(circle at 12% 12%, rgba(255, 140, 0, 0.18) 0%, transparent 36%),
     radial-gradient(circle at 88% 8%, rgba(0, 245, 255, 0.16) 0%, transparent 32%),
     radial-gradient(circle at 50% 110%, rgba(255, 215, 0, 0.1) 0%, transparent 44%);
+  background-size: 135% 135%, 135% 135%, 145% 145%;
+  animation: homeGradientShift 22s ease-in-out infinite;
 }
 
 .prometheus-home-shell::after {
@@ -1945,6 +2094,31 @@
       transparent 1px,
       transparent 36px
     );
+  animation: homePatternDrift 26s linear infinite;
+}
+
+@media (max-width: 1024px) {
+  .prometheus-top-header-shell::after {
+    top: calc(100% - 0.72rem);
+    height: clamp(62px, 15vw, 122px);
+    opacity: 0.72;
+    filter: blur(20px);
+  }
+
+  .prometheus-top-header-shell-auth::after {
+    height: clamp(54px, 13vw, 98px);
+    opacity: 0.64;
+    filter: blur(16px);
+  }
+
+  .prometheus-top-nav {
+    min-height: 4.98rem;
+    padding: 0.82rem 0.92rem 0.92rem;
+  }
+
+  .prometheus-auth-header {
+    min-height: 4.6rem;
+  }
 }
 
 .prometheus-hero-theater {
@@ -2033,6 +2207,71 @@
   50% {
     transform: scale(1.02);
     border-color: rgba(255, 140, 0, 0.28);
+  }
+}
+
+@keyframes navChromaShift {
+  0%, 100% {
+    background-position: 0% 50%, center, center, 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%, center, center, 100% 50%;
+  }
+}
+
+@keyframes headerGlowBreath {
+  0%, 100% {
+    opacity: 0.72;
+    transform: translateY(0) scaleY(0.95);
+  }
+  50% {
+    opacity: 0.92;
+    transform: translateY(1px) scaleY(1.04);
+  }
+}
+
+@keyframes navLinkSheen {
+  0% {
+    left: -52%;
+  }
+  100% {
+    left: 136%;
+  }
+}
+
+@keyframes homeGradientShift {
+  0%, 100% {
+    background-position: 0% 0%, 100% 0%, 50% 100%;
+  }
+  50% {
+    background-position: 12% 8%, 88% 6%, 54% 92%;
+  }
+}
+
+@keyframes homePatternDrift {
+  0% {
+    background-position: 0 0, 0 0;
+  }
+  100% {
+    background-position: 38px -30px, -34px 26px;
+  }
+}
+
+@keyframes authGradientDrift {
+  0%, 100% {
+    background-position: 14% 20%, 86% 14%, 50% 100%;
+  }
+  50% {
+    background-position: 20% 12%, 80% 20%, 46% 90%;
+  }
+}
+
+@keyframes authPatternDrift {
+  0% {
+    background-position: 0 0, 0 0;
+  }
+  100% {
+    background-position: 30px -24px, -26px 22px;
   }
 }
 
@@ -2140,6 +2379,14 @@
   .edge-rail-particle,
   .prometheus-logo-ignite,
   .prometheus-logo-shell::after,
+  .prometheus-top-header-shell::after,
+  .prometheus-top-nav,
+  .prometheus-nav-link:hover::before,
+  .prometheus-home-shell::before,
+  .prometheus-home-shell::after,
+  .prometheus-auth-shell::before,
+  .prometheus-auth-shell::after,
+  .prometheus-auth-header,
   .prometheus-hero-grid-lines,
   .prometheus-hero-scan-beam,
   .prometheus-hero-arc-left,

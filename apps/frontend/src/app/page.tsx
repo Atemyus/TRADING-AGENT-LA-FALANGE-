@@ -212,7 +212,7 @@ export default function LandingPage() {
 
       {/* Top navigation */}
       <header
-        className={`fixed top-0 left-0 right-0 z-50 px-2 md:px-3 transition-all duration-300 ${
+        className={`prometheus-top-header-shell fixed top-0 left-0 right-0 z-50 px-2 md:px-3 transition-all duration-300 ${
           isNavScrolled ? 'py-2.5 md:py-3' : 'py-4 md:py-5'
         } ${isNavCompressed ? '-translate-y-[1px]' : 'translate-y-0'}`}
       >
