@@ -141,6 +141,8 @@ const HELP_LINKS = [
 export default function LandingPage() {
   const visibleLegionModels = LEGION_MODELS.filter((model) => model.visible)
   const [showArrivalOverlay, setShowArrivalOverlay] = useState(false)
+  const [isNavScrolled, setIsNavScrolled] = useState(false)
+  const [isNavCompressed, setIsNavCompressed] = useState(false)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -150,6 +152,29 @@ export default function LandingPage() {
     localStorage.setItem('prometheus_arrival_seen', '1')
     const timer = window.setTimeout(() => setShowArrivalOverlay(false), 3200)
     return () => window.clearTimeout(timer)
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    let lastScrollY = window.scrollY
+    const handleScroll = () => {
+      const currentY = window.scrollY
+      const scrollingDown = currentY > lastScrollY + 3
+
+      setIsNavScrolled(currentY > 18)
+      setIsNavCompressed(currentY > 90 && scrollingDown)
+
+      if (!scrollingDown && currentY < 90) {
+        setIsNavCompressed(false)
+      }
+
+      lastScrollY = currentY
+    }
+
+    handleScroll()
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
   return (
@@ -186,9 +211,13 @@ export default function LandingPage() {
       </AnimatePresence>
 
       {/* Top navigation */}
-      <header className="fixed top-0 left-0 right-0 z-50 px-3 py-3 md:px-5 md:py-4">
+      <header
+        className={`fixed top-0 left-0 right-0 z-50 px-3 md:px-5 transition-all duration-300 ${
+          isNavScrolled ? 'py-2 md:py-2.5' : 'py-3 md:py-4'
+        } ${isNavCompressed ? '-translate-y-[1px]' : 'translate-y-0'}`}
+      >
         <div className="max-w-[1720px] mx-auto">
-          <div className="prometheus-top-nav">
+          <div className={`prometheus-top-nav ${isNavScrolled ? 'prometheus-top-nav-scrolled' : ''} ${isNavCompressed ? 'prometheus-top-nav-compressed' : ''}`}>
             <Link href="/" className="prometheus-nav-brand">
               <Image
                 src="/images/logo.png"

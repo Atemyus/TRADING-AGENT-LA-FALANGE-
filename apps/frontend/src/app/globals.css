@@ -1824,10 +1824,31 @@
   background:
     linear-gradient(150deg, rgba(18, 25, 37, 0.9) 0%, rgba(10, 14, 23, 0.92) 100%);
   padding: 0.52rem 0.72rem;
+  transition:
+    border-color 220ms ease,
+    background 220ms ease,
+    box-shadow 260ms ease,
+    transform 220ms ease,
+    padding 220ms ease;
   box-shadow:
     0 12px 30px rgba(0, 0, 0, 0.42),
     0 0 16px rgba(255, 140, 0, 0.1),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.prometheus-top-nav-scrolled {
+  border-color: rgba(255, 140, 0, 0.5);
+  background:
+    linear-gradient(150deg, rgba(20, 29, 43, 0.95) 0%, rgba(10, 14, 23, 0.97) 100%);
+  box-shadow:
+    0 16px 36px rgba(0, 0, 0, 0.5),
+    0 0 22px rgba(255, 140, 0, 0.2),
+    0 0 12px rgba(0, 245, 255, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.prometheus-top-nav-compressed {
+  transform: translateY(-1px) scale(0.996);
 }
 
 .prometheus-nav-brand {
