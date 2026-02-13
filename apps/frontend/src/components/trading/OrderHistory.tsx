@@ -14,6 +14,8 @@ import {
 
 export interface Order {
   id: string
+  brokerId?: number
+  brokerName?: string
   symbol: string
   side: 'buy' | 'sell'
   type: 'market' | 'limit' | 'stop'

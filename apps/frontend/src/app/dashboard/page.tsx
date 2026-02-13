@@ -30,8 +30,8 @@ import { PriceTicker } from '@/components/trading/PriceTicker'
 import { PositionsTable } from '@/components/trading/PositionsTable'
 import { OrderHistory } from '@/components/trading/OrderHistory'
 import { StatCard } from '@/components/common/StatCard'
-import { aiApi, analyticsApi, tradingApi, botApi, brokerAccountsApi } from '@/lib/api'
-import type { BrokerAccountData, ConsensusResult, PerformanceMetrics } from '@/lib/api'
+import { aiApi, tradingApi, botApi, brokerAccountsApi } from '@/lib/api'
+import type { BrokerAccountData, ConsensusResult } from '@/lib/api'
 import type { Position } from '@/components/trading/PositionsTable'
 import { usePriceStream } from '@/hooks/useWebSocket'
 import { useAuth } from '@/contexts/AuthContext'
@@ -96,7 +96,6 @@ export default function DashboardPage() {
   const [selectedSymbol, setSelectedSymbol] = useState('EUR/USD')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [consensusResult, setConsensusResult] = useState<ConsensusResult | null>(null)
-  const [performance, setPerformance] = useState<PerformanceMetrics | null>(null)
   const [positions, setPositions] = useState<Position[]>([])
   const [orders, setOrders] = useState<import('@/components/trading/OrderHistory').Order[]>([])
   const [currentPrice, setCurrentPrice] = useState<number>(0)
@@ -244,14 +243,7 @@ export default function DashboardPage() {
       workspaceSnapshotsRef.current = {}
     }
 
-    try {
-      const performanceData = await analyticsApi.getPerformance()
-      setPerformance(performanceData)
-      setError(null)
-    } catch (err) {
-      console.error('Failed to fetch account data:', err)
-      setError('Could not connect to backend. Configure broker in Settings.')
-    }
+    setError(null)
 
     if (selectedBrokerId) {
       // Scoped view: one selected broker workspace
@@ -420,6 +412,8 @@ export default function DashboardPage() {
 
         return {
           id: t.id,
+          brokerId: t.broker_id,
+          brokerName: t.broker_name,
           symbol: t.symbol,
           side: (t.direction === 'LONG' || t.direction === 'DEAL_TYPE_BUY' ? 'buy' : 'sell') as 'buy' | 'sell',
           type: 'market' as const,
@@ -633,10 +627,16 @@ export default function DashboardPage() {
   const scopedOpenPositions = selectedSlotDisabled ? null : baseScopedOpenPositions
   const scopedTodayPnl = selectedSlotDisabled ? null : baseScopedTodayPnl
 
+  const scopedOrders = useMemo(() => {
+    if (selectedSlotDisabled) return []
+    if (!selectedBrokerId) return orders
+    return orders.filter((order) => order.brokerId === selectedBrokerId)
+  }, [orders, selectedBrokerId, selectedSlotDisabled])
+
   const performanceData = useMemo<PerformancePoint[]>(() => {
     const groupedByDay = new Map<string, number>()
 
-    for (const order of orders) {
+    for (const order of scopedOrders) {
       if (typeof order.pnl !== 'number' || Number.isNaN(order.pnl)) continue
       const reference = order.closedAt || order.createdAt
       const date = reference.slice(0, 10)
@@ -671,7 +671,17 @@ export default function DashboardPage() {
         balance: rollingBalance,
       }
     })
-  }, [orders, baseScopedBalance])
+  }, [scopedOrders, baseScopedBalance])
+
+  const scopedTradeStats = useMemo(() => {
+    const filled = scopedOrders.filter((order) => order.status === 'filled' && typeof order.pnl === 'number')
+    const totalTrades = filled.length
+    const winners = filled.filter((order) => (order.pnl || 0) > 0).length
+    const winRate = totalTrades > 0 ? (winners / totalTrades) * 100 : 0
+    const bestTrade = totalTrades > 0 ? Math.max(...filled.map((order) => order.pnl || 0)) : null
+    const worstTrade = totalTrades > 0 ? Math.min(...filled.map((order) => order.pnl || 0)) : null
+    return { totalTrades, winRate, bestTrade, worstTrade }
+  }, [scopedOrders])
 
   const accountBalanceValue = isLoading && !selectedSlotDisabled && scopedBalance === null
     ? 'Loading...'
@@ -693,26 +703,24 @@ export default function DashboardPage() {
       : 'Margin unavailable'
   const winRateValue = selectedSlotDisabled
     ? '--'
-    : performance
-      ? formatPercent(performance.win_rate)
+    : scopedTradeStats.totalTrades > 0
+      ? `${scopedTradeStats.winRate.toFixed(1)}%`
       : isLoading
         ? '...'
         : '0%'
   const winRateSubtext = selectedSlotDisabled
     ? '--'
-    : performance
-      ? `${performance.total_trades} trades`
-      : ''
-  const footerTotalTrades = selectedSlotDisabled ? '--' : String(performance?.total_trades ?? 0)
+    : `${scopedTradeStats.totalTrades} trades`
+  const footerTotalTrades = selectedSlotDisabled ? '--' : String(scopedTradeStats.totalTrades)
   const footerBestTrade = selectedSlotDisabled
     ? '--'
-    : performance
-      ? formatCurrency(performance.largest_win)
+    : scopedTradeStats.bestTrade !== null
+      ? formatCurrency(scopedTradeStats.bestTrade, scopedCurrency)
       : '$0.00'
   const footerWorstTrade = selectedSlotDisabled
     ? '--'
-    : performance
-      ? formatCurrency(performance.largest_loss)
+    : scopedTradeStats.worstTrade !== null
+      ? formatCurrency(scopedTradeStats.worstTrade, scopedCurrency)
       : '$0.00'
 
   return (
@@ -829,6 +837,7 @@ export default function DashboardPage() {
 
             const snapshot = workspaceSnapshots[broker.id]
             const isSelected = selectedBrokerId === broker.id
+            const isWorkspaceDisabled = (snapshot?.status === 'disabled') || !broker.is_enabled
             return (
               <div
                 key={broker.id}
@@ -891,23 +900,35 @@ export default function DashboardPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="workspace-metric-block">
                     <p className="workspace-metric-label">Balance</p>
-                    <p className="workspace-metric-value">{formatSigned(snapshot?.balance, snapshot?.currency || 'USD')}</p>
+                    <p className="workspace-metric-value">
+                      {isWorkspaceDisabled ? '--' : formatSigned(snapshot?.balance, snapshot?.currency || 'USD')}
+                    </p>
                   </div>
                   <div className="workspace-metric-block">
                     <p className="workspace-metric-label">Equity</p>
-                    <p className="workspace-metric-value">{formatSigned(snapshot?.equity, snapshot?.currency || 'USD')}</p>
+                    <p className="workspace-metric-value">
+                      {isWorkspaceDisabled ? '--' : formatSigned(snapshot?.equity, snapshot?.currency || 'USD')}
+                    </p>
                   </div>
                   <div className="workspace-metric-block">
                     <p className="workspace-metric-label">Live P&L</p>
                     <p className={`workspace-metric-value ${
-                      (snapshot?.unrealizedPnl || 0) > 0 ? 'text-profit' : (snapshot?.unrealizedPnl || 0) < 0 ? 'text-loss' : 'text-dark-200'
+                      isWorkspaceDisabled
+                        ? 'text-dark-300'
+                        : (snapshot?.unrealizedPnl || 0) > 0
+                          ? 'text-profit'
+                          : (snapshot?.unrealizedPnl || 0) < 0
+                            ? 'text-loss'
+                            : 'text-dark-200'
                     }`}>
-                      {formatSigned(snapshot?.unrealizedPnl, snapshot?.currency || 'USD')}
+                      {isWorkspaceDisabled ? '--' : formatSigned(snapshot?.unrealizedPnl, snapshot?.currency || 'USD')}
                     </p>
                   </div>
                   <div className="workspace-metric-block">
                     <p className="workspace-metric-label">Margin Used</p>
-                    <p className="workspace-metric-value">{formatSigned(snapshot?.marginUsed, snapshot?.currency || 'USD')}</p>
+                    <p className="workspace-metric-value">
+                      {isWorkspaceDisabled ? '--' : formatSigned(snapshot?.marginUsed, snapshot?.currency || 'USD')}
+                    </p>
                   </div>
                 </div>
 
@@ -1071,7 +1092,7 @@ export default function DashboardPage() {
 
             {/* Order History */}
             <motion.div variants={itemVariants}>
-              <OrderHistory orders={orders} isDisabled={selectedSlotDisabled} />
+              <OrderHistory orders={scopedOrders} isDisabled={selectedSlotDisabled} />
             </motion.div>
           </div>
 

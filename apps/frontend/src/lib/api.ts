@@ -547,6 +547,8 @@ export const botApi = {
   getTrades: async (limit: number = 50): Promise<{
     trades: Array<{
       id: string
+      broker_id?: number
+      broker_name?: string
       symbol: string
       direction: string
       entry_price: number

@@ -178,7 +178,7 @@ export default function LandingPage() {
   }, [])
 
   return (
-    <div className="min-h-screen overflow-hidden relative">
+    <div className="min-h-screen overflow-hidden relative prometheus-home-shell">
       <AnimatePresence>
         {showArrivalOverlay && (
           <motion.div
@@ -212,12 +212,12 @@ export default function LandingPage() {
 
       {/* Top navigation */}
       <header
-        className={`fixed top-0 left-0 right-0 z-50 px-3 md:px-5 transition-all duration-300 ${
-          isNavScrolled ? 'py-2 md:py-2.5' : 'py-3 md:py-4'
+        className={`fixed top-0 left-0 right-0 z-50 px-2 md:px-3 transition-all duration-300 ${
+          isNavScrolled ? 'py-2.5 md:py-3' : 'py-4 md:py-5'
         } ${isNavCompressed ? '-translate-y-[1px]' : 'translate-y-0'}`}
       >
-        <div className="max-w-[1720px] mx-auto">
-          <div className={`prometheus-top-nav ${isNavScrolled ? 'prometheus-top-nav-scrolled' : ''} ${isNavCompressed ? 'prometheus-top-nav-compressed' : ''}`}>
+        <div className="max-w-[1840px] mx-auto">
+          <div className={`prometheus-top-nav prometheus-top-nav-double ${isNavScrolled ? 'prometheus-top-nav-scrolled' : ''} ${isNavCompressed ? 'prometheus-top-nav-compressed' : ''}`}>
             <Link href="/" className="prometheus-nav-brand">
               <Image
                 src="/images/logo.png"
@@ -258,7 +258,14 @@ export default function LandingPage() {
       <EdgeFireRail side="left" />
       <EdgeFireRail side="right" />
       {/* Hero Section */}
-      <section id="home" className="relative min-h-screen flex flex-col items-center justify-center px-4 pt-28 md:pt-32 pb-16 hero-gradient particles-bg">
+      <section id="home" className="relative min-h-screen flex flex-col items-center justify-center px-4 pt-32 md:pt-36 pb-16 hero-gradient particles-bg prometheus-hero-theater">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="prometheus-hero-grid-lines" />
+          <div className="prometheus-hero-scan-beam" />
+          <div className="prometheus-hero-arc prometheus-hero-arc-left" />
+          <div className="prometheus-hero-arc prometheus-hero-arc-right" />
+        </div>
+
         {/* Animated background orbs */}
         <div className="absolute inset-0 -z-10 overflow-hidden">
           <motion.div

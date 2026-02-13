@@ -4,15 +4,16 @@ Bot configuration is persisted to database.
 """
 
 import json
-from datetime import UTC
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.v1.routes.auth import get_current_user
 from src.core.database import get_db
-from src.core.models import AppSettings
+from src.core.models import AppSettings, BrokerAccount, User
 from src.engines.trading.auto_trader import (
     AnalysisMode,
     BotStatus,
@@ -20,6 +21,7 @@ from src.engines.trading.auto_trader import (
 )
 
 router = APIRouter(prefix="/bot", tags=["Bot Control"])
+TRADE_HISTORY_KEY_PREFIX = "trade_history_user_"
 
 
 # ============ Database Helper Functions ============
@@ -55,10 +57,71 @@ async def save_bot_config_to_db(db: AsyncSession, config_dict: dict) -> None:
     await db.commit()
 
 
-async def _save_trade_history_to_db(db: AsyncSession, trades: list) -> None:
+def _trade_history_key_for_user(user_id: int) -> str:
+    """Build deterministic per-user key for persisted trade history."""
+    return f"{TRADE_HISTORY_KEY_PREFIX}{user_id}"
+
+
+def _safe_float(value: object, default: float = 0.0) -> float:
+    """Safely coerce unknown numeric payloads to float."""
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_iso_timestamp(value: object) -> str:
+    """Normalize timestamps so ordering and rendering remain stable."""
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC).isoformat()
+        return value.isoformat()
+
+    if isinstance(value, str) and value:
+        normalized = value.replace("Z", "+00:00")
+        try:
+            parsed = datetime.fromisoformat(normalized)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=UTC)
+            return parsed.isoformat()
+        except ValueError:
+            return value
+
+    return datetime.now(UTC).isoformat()
+
+
+async def _get_visible_brokers(db: AsyncSession, current_user: User) -> list[BrokerAccount]:
+    """Load brokers visible to the current user using the same access rules as broker routes."""
+    query = select(BrokerAccount).order_by(BrokerAccount.slot_index.is_(None), BrokerAccount.slot_index, BrokerAccount.id)
+    if current_user.is_superuser:
+        query = query.where(BrokerAccount.user_id.is_(None))
+    else:
+        query = query.where(BrokerAccount.user_id == current_user.id)
+
+    result = await db.execute(query)
+    return list(result.scalars().all())
+
+
+def _normalize_direction(raw_direction: str) -> str:
+    """Normalize direction labels from different providers."""
+    upper = raw_direction.upper()
+    if "BUY" in upper:
+        return "LONG"
+    if "SELL" in upper:
+        return "SHORT"
+    return raw_direction
+
+
+async def _save_trade_history_to_db(
+    db: AsyncSession,
+    trades: list,
+    settings_key: str = "trade_history",
+) -> None:
     """Save trade history to database for persistence across restarts."""
     result = await db.execute(
-        select(AppSettings).where(AppSettings.key == "trade_history")
+        select(AppSettings).where(AppSettings.key == settings_key)
     )
     setting = result.scalar_one_or_none()
 
@@ -68,16 +131,16 @@ async def _save_trade_history_to_db(db: AsyncSession, trades: list) -> None:
     if setting:
         setting.value = trades_json
     else:
-        setting = AppSettings(key="trade_history", value=trades_json)
+        setting = AppSettings(key=settings_key, value=trades_json)
         db.add(setting)
 
     await db.commit()
 
 
-async def _load_trade_history_from_db(db: AsyncSession) -> list:
+async def _load_trade_history_from_db(db: AsyncSession, settings_key: str = "trade_history") -> list:
     """Load trade history from database."""
     result = await db.execute(
-        select(AppSettings).where(AppSettings.key == "trade_history")
+        select(AppSettings).where(AppSettings.key == settings_key)
     )
     setting = result.scalar_one_or_none()
     if setting and setting.value:
@@ -86,6 +149,133 @@ async def _load_trade_history_from_db(db: AsyncSession) -> list:
         except Exception:
             pass
     return []
+
+
+async def collect_user_trades(db: AsyncSession, current_user: User) -> list[dict]:
+    """
+    Collect trade history scoped to the authenticated user.
+
+    Data sources:
+    1. In-memory trades from each visible broker instance.
+    2. Persisted per-user trade cache.
+    3. Broker deal history for visible brokers (last 30 days).
+    """
+    from src.engines.trading.multi_broker_manager import get_multi_broker_manager
+
+    manager = get_multi_broker_manager()
+    brokers = await _get_visible_brokers(db, current_user)
+
+    trades: list[dict] = []
+    seen_ids: set[str] = set()
+
+    # In-memory trades from broker-specific traders
+    for broker in brokers:
+        instance = manager.get_instance(broker.id)
+        if not instance:
+            continue
+
+        for trade in instance.trader.state.trade_history:
+            normalized_id = f"mem:{broker.id}:{trade.id}"
+            if normalized_id in seen_ids:
+                continue
+
+            timestamp_iso = _safe_iso_timestamp(trade.timestamp)
+            exit_timestamp_iso = _safe_iso_timestamp(trade.exit_timestamp) if trade.exit_timestamp else None
+            trades.append(
+                {
+                    "id": str(trade.id),
+                    "broker_id": broker.id,
+                    "broker_name": broker.name,
+                    "symbol": trade.symbol,
+                    "direction": _normalize_direction(trade.direction),
+                    "entry_price": _safe_float(trade.entry_price),
+                    "exit_price": _safe_float(trade.exit_price) if trade.exit_price is not None else None,
+                    "stop_loss": _safe_float(trade.stop_loss),
+                    "take_profit": _safe_float(trade.take_profit),
+                    "units": _safe_float(trade.units),
+                    "timestamp": timestamp_iso,
+                    "exit_timestamp": exit_timestamp_iso,
+                    "confidence": _safe_float(trade.confidence),
+                    "status": trade.status,
+                    "profit_loss": _safe_float(trade.profit_loss) if trade.profit_loss is not None else None,
+                }
+            )
+            seen_ids.add(normalized_id)
+
+    # Persisted per-user cache
+    settings_key = _trade_history_key_for_user(current_user.id)
+    db_trades = await _load_trade_history_from_db(db, settings_key=settings_key)
+    for trade in db_trades:
+        broker_id = trade.get("broker_id")
+        base_id = trade.get("id", "")
+        normalized_id = f"db:{broker_id}:{base_id}"
+        if normalized_id in seen_ids:
+            continue
+
+        trade["timestamp"] = _safe_iso_timestamp(trade.get("timestamp"))
+        if trade.get("exit_timestamp"):
+            trade["exit_timestamp"] = _safe_iso_timestamp(trade.get("exit_timestamp"))
+        trades.append(trade)
+        seen_ids.add(normalized_id)
+
+    # Broker deal history as fallback/source of truth for closed trades
+    start_time = (datetime.now(UTC) - timedelta(days=30)).isoformat()
+    for broker in brokers:
+        try:
+            broker_connection = await manager._ensure_broker_connection(broker.id, broker_account=broker)
+        except Exception:
+            broker_connection = None
+
+        if not broker_connection or not hasattr(broker_connection, "get_deals_history"):
+            continue
+
+        try:
+            deals = await broker_connection.get_deals_history(start_time)
+        except Exception:
+            deals = []
+
+        for deal in deals:
+            deal_id = str(deal.get("id") or deal.get("dealId") or "")
+            if not deal_id:
+                continue
+
+            normalized_id = f"deal:{broker.id}:{deal_id}"
+            if normalized_id in seen_ids:
+                continue
+
+            deal_type = str(deal.get("type", ""))
+            profit = _safe_float(deal.get("profit"))
+            swap = _safe_float(deal.get("swap"))
+            commission = _safe_float(deal.get("commission"))
+            total_pnl = profit + swap + commission
+
+            if total_pnl == 0 and "BUY" not in deal_type.upper() and "SELL" not in deal_type.upper():
+                continue
+
+            deal_time = _safe_iso_timestamp(deal.get("time") or deal.get("brokerTime"))
+            trades.append(
+                {
+                    "id": deal_id,
+                    "broker_id": broker.id,
+                    "broker_name": broker.name,
+                    "symbol": deal.get("symbol", "UNKNOWN"),
+                    "direction": _normalize_direction(deal_type),
+                    "entry_price": _safe_float(deal.get("price")),
+                    "exit_price": _safe_float(deal.get("price")),
+                    "stop_loss": 0.0,
+                    "take_profit": 0.0,
+                    "units": _safe_float(deal.get("volume")),
+                    "timestamp": deal_time,
+                    "exit_timestamp": deal_time,
+                    "confidence": 0.0,
+                    "status": "filled",
+                    "profit_loss": total_pnl,
+                }
+            )
+            seen_ids.add(normalized_id)
+
+    trades.sort(key=lambda item: item.get("timestamp", ""), reverse=True)
+    return trades
 
 
 def apply_config_to_bot(config_dict: dict) -> None:
@@ -493,94 +683,23 @@ async def get_config():
 
 
 @router.get("/trades")
-async def get_trades(limit: int = 50, db: AsyncSession = Depends(get_db)):
-    """Get trade history from bot memory + broker deal history + database."""
-    bot = get_auto_trader()
+async def get_trades(
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get trade history scoped to authenticated user."""
+    trades = await collect_user_trades(db, current_user)
 
-    # 1. Get in-memory bot trades
-    trades = []
-    seen_ids = set()
-    for t in bot.state.trade_history:
-        trades.append({
-            "id": t.id,
-            "symbol": t.symbol,
-            "direction": t.direction,
-            "entry_price": t.entry_price,
-            "exit_price": t.exit_price,
-            "stop_loss": t.stop_loss,
-            "take_profit": t.take_profit,
-            "units": t.units,
-            "timestamp": t.timestamp.isoformat(),
-            "exit_timestamp": t.exit_timestamp.isoformat() if t.exit_timestamp else None,
-            "confidence": t.confidence,
-            "status": t.status,
-            "profit_loss": t.profit_loss,
-        })
-        seen_ids.add(t.id)
-
-    # 2. Load saved trades from database (persisted across restarts)
+    # Persist a compact per-user cache for fast warm starts
     try:
-        db_trades = await _load_trade_history_from_db(db)
-        for t in db_trades:
-            tid = t.get("id", "")
-            if tid and tid not in seen_ids:
-                trades.append(t)
-                seen_ids.add(tid)
+        await _save_trade_history_to_db(
+            db,
+            trades,
+            settings_key=_trade_history_key_for_user(current_user.id),
+        )
     except Exception as e:
-        print(f"[Bot/trades] Error loading DB trades: {e}")
-
-    # 3. Also fetch broker deal history (last 30 days) for complete picture
-    try:
-        from src.services.trading_service import get_trading_service
-        service = await get_trading_service()
-        if hasattr(service._broker, 'get_deals_history'):
-            from datetime import datetime as dt
-            from datetime import timedelta
-            start = dt.now(UTC) - timedelta(days=30)
-            deals = await service._broker.get_deals_history(start.isoformat())
-            for deal in deals:
-                deal_id = str(deal.get("id", deal.get("dealId", "")))
-                if not deal_id or deal_id in seen_ids:
-                    continue
-                profit = float(deal.get("profit", 0))
-                swap = float(deal.get("swap", 0))
-                commission = float(deal.get("commission", 0))
-                total_pnl = profit + swap + commission
-                # Skip balance/credit operations and zero-profit entries without a type
-                deal_type = deal.get("type", "")
-                if total_pnl == 0 and deal_type not in ("DEAL_TYPE_SELL", "DEAL_TYPE_BUY"):
-                    continue
-                direction = "LONG" if "BUY" in deal_type else "SHORT" if "SELL" in deal_type else deal_type
-                deal_time = deal.get("time", deal.get("brokerTime", ""))
-                if not isinstance(deal_time, str):
-                    deal_time = str(deal_time)
-                trades.append({
-                    "id": deal_id,
-                    "symbol": deal.get("symbol", "UNKNOWN"),
-                    "direction": direction,
-                    "entry_price": float(deal.get("price", 0)),
-                    "exit_price": float(deal.get("price", 0)),
-                    "stop_loss": 0,
-                    "take_profit": 0,
-                    "units": float(deal.get("volume", 0)),
-                    "timestamp": deal_time,
-                    "exit_timestamp": deal_time,
-                    "confidence": 0,
-                    "status": "filled",
-                    "profit_loss": total_pnl,
-                })
-                seen_ids.add(deal_id)
-    except Exception as e:
-        print(f"[Bot/trades] Error fetching broker deals: {e}")
-
-    # Sort by timestamp descending (most recent first)
-    trades.sort(key=lambda t: t.get("timestamp", ""), reverse=True)
-
-    # Save current trade history to DB for persistence
-    try:
-        await _save_trade_history_to_db(db, trades)
-    except Exception as e:
-        print(f"[Bot/trades] Error saving trades to DB: {e}")
+        print(f"[Bot/trades] Error saving per-user trade cache: {e}")
 
     total = len(trades)
     return {"trades": trades[:limit], "total": total}

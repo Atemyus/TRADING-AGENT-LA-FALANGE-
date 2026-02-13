@@ -18,7 +18,7 @@ from src.core.email import (
     generate_verification_token,
     get_token_expiry,
 )
-from src.core.models import BrokerAccount, License, LicenseStatus, User
+from src.core.models import AppSettings, BrokerAccount, License, LicenseStatus, User
 from src.core.security import (
     create_access_token,
     create_refresh_token,
@@ -334,6 +334,16 @@ async def register(
 
     db.add(user)
     await db.flush()
+
+    # Initialize a fresh per-user trade history cache so new accounts always start at zero.
+    trade_history_key = f"trade_history_user_{user.id}"
+    result = await db.execute(select(AppSettings).where(AppSettings.key == trade_history_key))
+    existing_history = result.scalar_one_or_none()
+    if existing_history:
+        existing_history.value = "[]"
+    else:
+        db.add(AppSettings(key=trade_history_key, value="[]"))
+
     await db.refresh(user)
 
     # Send verification email in background

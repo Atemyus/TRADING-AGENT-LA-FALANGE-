@@ -1819,11 +1819,12 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.85rem;
-  border-radius: 0.75rem;
+  min-height: 5.1rem;
+  border-radius: 0.95rem;
   border: 1px solid rgba(75, 87, 104, 0.58);
   background:
     linear-gradient(150deg, rgba(18, 25, 37, 0.9) 0%, rgba(10, 14, 23, 0.92) 100%);
-  padding: 0.52rem 0.72rem;
+  padding: 0.85rem 1.08rem;
   transition:
     border-color 220ms ease,
     background 220ms ease,
@@ -1836,8 +1837,34 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
+.prometheus-top-nav-double {
+  position: relative;
+  overflow: hidden;
+}
+
+.prometheus-top-nav-double::before,
+.prometheus-top-nav-double::after {
+  content: '';
+  position: absolute;
+  left: 0.6rem;
+  right: 0.6rem;
+  height: 1px;
+  pointer-events: none;
+}
+
+.prometheus-top-nav-double::before {
+  top: 0.6rem;
+  background: linear-gradient(to right, transparent, rgba(255, 215, 0, 0.42), rgba(0, 245, 255, 0.42), transparent);
+}
+
+.prometheus-top-nav-double::after {
+  bottom: 0.6rem;
+  background: linear-gradient(to right, transparent, rgba(0, 245, 255, 0.28), rgba(255, 140, 0, 0.34), transparent);
+}
+
 .prometheus-top-nav-scrolled {
   border-color: rgba(255, 140, 0, 0.5);
+  min-height: 4.6rem;
   background:
     linear-gradient(150deg, rgba(20, 29, 43, 0.95) 0%, rgba(10, 14, 23, 0.97) 100%);
   box-shadow:
@@ -1878,6 +1905,135 @@
   border-color: rgba(0, 245, 255, 0.32);
   background: rgba(0, 245, 255, 0.09);
   box-shadow: 0 0 14px rgba(0, 245, 255, 0.18);
+}
+
+.prometheus-home-shell {
+  position: relative;
+}
+
+.prometheus-home-shell::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -2;
+  background:
+    radial-gradient(circle at 12% 12%, rgba(255, 140, 0, 0.18) 0%, transparent 36%),
+    radial-gradient(circle at 88% 8%, rgba(0, 245, 255, 0.16) 0%, transparent 32%),
+    radial-gradient(circle at 50% 110%, rgba(255, 215, 0, 0.1) 0%, transparent 44%);
+}
+
+.prometheus-home-shell::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  opacity: 0.32;
+  background-image:
+    repeating-linear-gradient(
+      130deg,
+      rgba(255, 255, 255, 0.018) 0px,
+      rgba(255, 255, 255, 0.018) 1px,
+      transparent 1px,
+      transparent 30px
+    ),
+    repeating-linear-gradient(
+      -130deg,
+      rgba(0, 245, 255, 0.016) 0px,
+      rgba(0, 245, 255, 0.016) 1px,
+      transparent 1px,
+      transparent 36px
+    );
+}
+
+.prometheus-hero-theater {
+  isolation: isolate;
+}
+
+.prometheus-hero-grid-lines {
+  position: absolute;
+  inset: -10% -8%;
+  background-image:
+    linear-gradient(rgba(0, 245, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 140, 0, 0.055) 1px, transparent 1px);
+  background-size: 52px 52px;
+  opacity: 0.25;
+  transform: perspective(1100px) rotateX(56deg) translateY(18%);
+  transform-origin: top center;
+  animation: heroGridDrift 18s linear infinite;
+}
+
+.prometheus-hero-scan-beam {
+  position: absolute;
+  inset: -12% 18%;
+  background:
+    linear-gradient(
+      180deg,
+      transparent 0%,
+      rgba(255, 140, 0, 0.05) 24%,
+      rgba(0, 245, 255, 0.18) 52%,
+      rgba(255, 140, 0, 0.06) 74%,
+      transparent 100%
+    );
+  filter: blur(20px);
+  opacity: 0.45;
+  animation: heroScanSweep 7s ease-in-out infinite;
+}
+
+.prometheus-hero-arc {
+  position: absolute;
+  width: 48vw;
+  height: 48vw;
+  max-width: 900px;
+  max-height: 900px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 245, 255, 0.16);
+  box-shadow: inset 0 0 26px rgba(255, 140, 0, 0.11), 0 0 40px rgba(0, 245, 255, 0.06);
+  opacity: 0.46;
+}
+
+.prometheus-hero-arc-left {
+  left: -20vw;
+  top: 16%;
+  animation: heroArcPulse 8.5s ease-in-out infinite;
+}
+
+.prometheus-hero-arc-right {
+  right: -20vw;
+  bottom: 6%;
+  animation: heroArcPulse 9.6s ease-in-out infinite reverse;
+}
+
+@keyframes heroGridDrift {
+  0% {
+    transform: perspective(1100px) rotateX(56deg) translateY(18%) translateX(0);
+  }
+  100% {
+    transform: perspective(1100px) rotateX(56deg) translateY(18%) translateX(-36px);
+  }
+}
+
+@keyframes heroScanSweep {
+  0%, 100% {
+    transform: translateY(-6%) scaleY(0.96);
+    opacity: 0.22;
+  }
+  50% {
+    transform: translateY(8%) scaleY(1.05);
+    opacity: 0.56;
+  }
+}
+
+@keyframes heroArcPulse {
+  0%, 100% {
+    transform: scale(0.98);
+    border-color: rgba(0, 245, 255, 0.14);
+  }
+  50% {
+    transform: scale(1.02);
+    border-color: rgba(255, 140, 0, 0.28);
+  }
 }
 
 .prometheus-side-module,
@@ -1983,7 +2139,11 @@
   .edge-rail-energy-soft,
   .edge-rail-particle,
   .prometheus-logo-ignite,
-  .prometheus-logo-shell::after {
+  .prometheus-logo-shell::after,
+  .prometheus-hero-grid-lines,
+  .prometheus-hero-scan-beam,
+  .prometheus-hero-arc-left,
+  .prometheus-hero-arc-right {
     animation: none !important;
   }
 

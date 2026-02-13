@@ -2,11 +2,16 @@
 Analytics routes - Performance metrics and reporting.
 """
 
-from datetime import UTC, date
+from datetime import UTC, date, datetime
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.v1.routes.auth import get_current_user
+from src.api.v1.routes.bot import collect_user_trades
+from src.core.database import get_db
+from src.core.models import User
 from src.engines.data.indicators import TechnicalIndicators
 from src.engines.data.market_data import get_market_data_service
 from src.engines.trading.broker_factory import NoBrokerConfiguredError
@@ -103,6 +108,22 @@ class AnalysisResponse(BaseModel):
     indicators: dict
 
 
+def _parse_trade_timestamp(raw: str | None) -> datetime | None:
+    """Parse timestamps from persisted trade payloads."""
+    if not raw:
+        return None
+
+    normalized = raw.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed
+
+
 @router.get("/account", response_model=AccountSummary)
 async def get_account_summary():
     """Get current account summary."""
@@ -172,91 +193,96 @@ async def get_account_summary():
 async def get_performance_metrics(
     start_date: date | None = None,
     end_date: date | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """Get overall performance metrics from bot trade history and broker deals."""
-    from src.engines.trading.auto_trader import get_auto_trader
+    """Get overall performance metrics scoped to the authenticated user."""
+    all_trades = await collect_user_trades(db, current_user)
 
-    bot = get_auto_trader()
-    closed_trades = [t for t in bot.state.trade_history if t.profit_loss is not None]
+    closed_trades: list[dict] = []
+    for trade in all_trades:
+        pnl = trade.get("profit_loss")
+        if pnl is None:
+            continue
 
-    # Also try to get data from broker deal history
-    try:
-        service = await get_trading_service()
-        if hasattr(service._broker, 'get_deals_history'):
-            from datetime import datetime as dt
-            from datetime import timedelta
-            # Get last 30 days of deals
-            start = dt.now(UTC) - timedelta(days=30)
-            deals = await service._broker.get_deals_history(start.isoformat())
-            # Extract profit from deals that have a profit field
-            for deal in deals:
-                profit = deal.get("profit", 0)
-                if profit and profit != 0:
-                    # Add broker deal as a pseudo-trade if not already tracked
-                    deal_id = str(deal.get("id", deal.get("dealId", "")))
-                    if not any(t.id == deal_id for t in closed_trades):
-                        from src.engines.trading.auto_trader import TradeRecord
-                        pseudo_trade = TradeRecord(
-                            id=deal_id,
-                            symbol=deal.get("symbol", "UNKNOWN"),
-                            direction=deal.get("type", "UNKNOWN"),
-                            entry_price=float(deal.get("price", 0)),
-                            units=float(deal.get("volume", 0)),
-                            timestamp=dt.now(UTC),
-                            profit_loss=float(profit) + float(deal.get("swap", 0)) + float(deal.get("commission", 0)),
-                            status="closed",
-                        )
-                        closed_trades.append(pseudo_trade)
-    except Exception as e:
-        print(f"[Analytics] Error fetching broker deals: {e}")
+        ts = _parse_trade_timestamp(trade.get("exit_timestamp") or trade.get("timestamp"))
+        if ts is None:
+            continue
+
+        trade_day = ts.date()
+        if start_date and trade_day < start_date:
+            continue
+        if end_date and trade_day > end_date:
+            continue
+
+        closed_trades.append(trade)
 
     if not closed_trades:
         return PerformanceMetrics(
-            total_trades=0, winning_trades=0, losing_trades=0,
-            win_rate="0.00", profit_factor="0.00", total_pnl="0.00",
-            average_win="0.00", average_loss="0.00",
-            largest_win="0.00", largest_loss="0.00",
-            max_drawdown="0.00", max_drawdown_percent="0.00",
-            sharpe_ratio=None, sortino_ratio=None,
-            expectancy="0.00", average_hold_time="0h",
+            total_trades=0,
+            winning_trades=0,
+            losing_trades=0,
+            win_rate="0.00",
+            profit_factor="0.00",
+            total_pnl="0.00",
+            average_win="0.00",
+            average_loss="0.00",
+            largest_win="0.00",
+            largest_loss="0.00",
+            max_drawdown="0.00",
+            max_drawdown_percent="0.00",
+            sharpe_ratio=None,
+            sortino_ratio=None,
+            expectancy="0.00",
+            average_hold_time="0h",
         )
 
-    # Calculate metrics
-    wins = [t for t in closed_trades if t.profit_loss and t.profit_loss > 0]
-    losses = [t for t in closed_trades if t.profit_loss and t.profit_loss < 0]
+    wins = [
+        t
+        for t in closed_trades
+        if isinstance(t.get("profit_loss"), (int, float)) and float(t["profit_loss"]) > 0
+    ]
+    losses = [
+        t
+        for t in closed_trades
+        if isinstance(t.get("profit_loss"), (int, float)) and float(t["profit_loss"]) < 0
+    ]
     total = len(closed_trades)
     win_count = len(wins)
     loss_count = len(losses)
     win_rate = (win_count / total * 100) if total > 0 else 0
 
-    total_pnl = sum(t.profit_loss for t in closed_trades if t.profit_loss)
-    total_wins = sum(t.profit_loss for t in wins if t.profit_loss)
-    total_losses = abs(sum(t.profit_loss for t in losses if t.profit_loss))
+    total_pnl = sum(float(t.get("profit_loss", 0)) for t in closed_trades)
+    total_wins = sum(float(t.get("profit_loss", 0)) for t in wins)
+    total_losses = abs(sum(float(t.get("profit_loss", 0)) for t in losses))
     avg_win = (total_wins / win_count) if win_count > 0 else 0
     avg_loss = (total_losses / loss_count) if loss_count > 0 else 0
-    profit_factor = (total_wins / total_losses) if total_losses > 0 else float('inf') if total_wins > 0 else 0
-    largest_win = max((t.profit_loss for t in wins if t.profit_loss), default=0)
-    largest_loss = min((t.profit_loss for t in losses if t.profit_loss), default=0)
+    profit_factor = (total_wins / total_losses) if total_losses > 0 else float("inf") if total_wins > 0 else 0
+    largest_win = max((float(t.get("profit_loss", 0)) for t in wins), default=0)
+    largest_loss = min((float(t.get("profit_loss", 0)) for t in losses), default=0)
     expectancy = (total_pnl / total) if total > 0 else 0
 
-    # Max drawdown
-    cumulative = 0
-    peak = 0
-    max_dd = 0
-    for t in closed_trades:
-        cumulative += (t.profit_loss or 0)
+    sorted_for_drawdown = sorted(
+        closed_trades,
+        key=lambda t: (t.get("exit_timestamp") or t.get("timestamp") or ""),
+    )
+    cumulative = 0.0
+    peak = 0.0
+    max_dd = 0.0
+    for t in sorted_for_drawdown:
+        cumulative += float(t.get("profit_loss", 0) or 0)
         if cumulative > peak:
             peak = cumulative
-        dd = peak - cumulative
-        if dd > max_dd:
-            max_dd = dd
+        drawdown = peak - cumulative
+        if drawdown > max_dd:
+            max_dd = drawdown
 
-    # Average hold time
-    hold_times = []
+    hold_times: list[float] = []
     for t in closed_trades:
-        if t.exit_timestamp and t.timestamp:
-            delta = t.exit_timestamp - t.timestamp
-            hold_times.append(delta.total_seconds() / 3600)  # hours
+        entry_ts = _parse_trade_timestamp(t.get("timestamp"))
+        exit_ts = _parse_trade_timestamp(t.get("exit_timestamp"))
+        if entry_ts and exit_ts and exit_ts >= entry_ts:
+            hold_times.append((exit_ts - entry_ts).total_seconds() / 3600)
     avg_hold = f"{sum(hold_times) / len(hold_times):.1f}h" if hold_times else "N/A"
 
     return PerformanceMetrics(
@@ -264,7 +290,7 @@ async def get_performance_metrics(
         winning_trades=win_count,
         losing_trades=loss_count,
         win_rate=f"{win_rate:.2f}",
-        profit_factor=f"{profit_factor:.2f}" if profit_factor != float('inf') else "∞",
+        profit_factor=f"{profit_factor:.2f}" if profit_factor != float("inf") else "Infinity",
         total_pnl=f"{total_pnl:.2f}",
         average_win=f"{avg_win:.2f}",
         average_loss=f"{avg_loss:.2f}",
@@ -391,3 +417,4 @@ async def get_analysis(
             for i in analysis.indicators
         },
     )
+
