@@ -1,7 +1,7 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
@@ -106,7 +106,12 @@ export default function DashboardPage() {
   const [brokers, setBrokers] = useState<BrokerAccountData[]>([])
   const [selectedBrokerId, setSelectedBrokerId] = useState<number | null>(null)
   const [workspaceSnapshots, setWorkspaceSnapshots] = useState<Record<number, WorkspaceSnapshot>>({})
+  const workspaceSnapshotsRef = useRef<Record<number, WorkspaceSnapshot>>({})
   const [toggleLoadingByBroker, setToggleLoadingByBroker] = useState<Record<number, boolean>>({})
+
+  useEffect(() => {
+    workspaceSnapshotsRef.current = workspaceSnapshots
+  }, [workspaceSnapshots])
 
   // WebSocket symbol format
   const wsSymbol = selectedSymbol.replace('/', '_')
@@ -209,28 +214,34 @@ export default function DashboardPage() {
       }
 
       const snapshots: Record<number, WorkspaceSnapshot> = {}
+      const previousSnapshots = workspaceSnapshotsRef.current
       for (const broker of brokerList) {
         const accountInfo = infoMap.get(broker.id)
         const statusEntry = statusMap.get(broker.id)
+        const previousSnapshot = previousSnapshots[broker.id]
         snapshots[broker.id] = {
           status: broker.is_enabled ? (statusEntry?.normalizedStatus || 'stopped') : 'disabled',
-          balance: accountInfo?.balance ?? null,
-          equity: accountInfo?.equity ?? null,
-          unrealizedPnl: accountInfo?.unrealized_pnl ?? null,
-          marginUsed: accountInfo?.margin_used ?? null,
-          openPositions: statusEntry?.openPositions ?? accountInfo?.open_positions ?? 0,
+          balance: accountInfo?.balance ?? previousSnapshot?.balance ?? null,
+          equity: accountInfo?.equity ?? previousSnapshot?.equity ?? null,
+          unrealizedPnl: accountInfo?.unrealized_pnl ?? previousSnapshot?.unrealizedPnl ?? null,
+          marginUsed: accountInfo?.margin_used ?? previousSnapshot?.marginUsed ?? null,
+          openPositions: statusEntry?.openPositions ?? accountInfo?.open_positions ?? previousSnapshot?.openPositions ?? 0,
           dailyPnl:
             statusEntry?.dailyPnl ??
             accountInfo?.realized_pnl_today ??
             accountInfo?.unrealized_pnl ??
+            previousSnapshot?.dailyPnl ??
+            previousSnapshot?.unrealizedPnl ??
             null,
-          currency: accountInfo?.currency || 'USD',
+          currency: accountInfo?.currency || previousSnapshot?.currency || 'USD',
         }
       }
       computedSnapshots = snapshots
       setWorkspaceSnapshots(snapshots)
+      workspaceSnapshotsRef.current = snapshots
     } catch {
       setWorkspaceSnapshots({})
+      workspaceSnapshotsRef.current = {}
     }
 
     try {
@@ -538,6 +549,13 @@ export default function DashboardPage() {
 
   const selectedBroker = brokers.find((b) => b.id === selectedBrokerId) || null
   const selectedSnapshot = selectedBrokerId ? workspaceSnapshots[selectedBrokerId] : null
+  const selectedSlotDisabled = Boolean(
+    selectedBrokerId &&
+    (
+      selectedSnapshot?.status === 'disabled' ||
+      (selectedBroker ? !selectedBroker.is_enabled : false)
+    ),
+  )
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -603,11 +621,17 @@ export default function DashboardPage() {
   }
 
   const scopedCurrency = selectedSnapshot?.currency || aggregatedStats?.currency || 'USD'
-  const scopedBalance = selectedSnapshot?.balance ?? aggregatedStats?.totalBalance ?? null
-  const scopedUnrealizedPnl = selectedSnapshot?.unrealizedPnl ?? aggregatedStats?.totalUnrealizedPnl ?? null
-  const scopedMarginUsed = selectedSnapshot?.marginUsed ?? aggregatedStats?.totalMarginUsed ?? null
-  const scopedOpenPositions = selectedSnapshot?.openPositions ?? aggregatedStats?.totalOpenPositions ?? 0
-  const scopedTodayPnl = selectedSnapshot?.dailyPnl ?? selectedSnapshot?.unrealizedPnl ?? aggregatedStats?.totalUnrealizedPnl ?? null
+  const baseScopedBalance = selectedSnapshot?.balance ?? aggregatedStats?.totalBalance ?? null
+  const baseScopedUnrealizedPnl = selectedSnapshot?.unrealizedPnl ?? aggregatedStats?.totalUnrealizedPnl ?? null
+  const baseScopedMarginUsed = selectedSnapshot?.marginUsed ?? aggregatedStats?.totalMarginUsed ?? null
+  const baseScopedOpenPositions = selectedSnapshot?.openPositions ?? aggregatedStats?.totalOpenPositions ?? 0
+  const baseScopedTodayPnl = selectedSnapshot?.dailyPnl ?? selectedSnapshot?.unrealizedPnl ?? aggregatedStats?.totalUnrealizedPnl ?? null
+
+  const scopedBalance = selectedSlotDisabled ? null : baseScopedBalance
+  const scopedUnrealizedPnl = selectedSlotDisabled ? null : baseScopedUnrealizedPnl
+  const scopedMarginUsed = selectedSlotDisabled ? null : baseScopedMarginUsed
+  const scopedOpenPositions = selectedSlotDisabled ? null : baseScopedOpenPositions
+  const scopedTodayPnl = selectedSlotDisabled ? null : baseScopedTodayPnl
 
   const performanceData = useMemo<PerformancePoint[]>(() => {
     const groupedByDay = new Map<string, number>()
@@ -624,19 +648,19 @@ export default function DashboardPage() {
       .sort((a, b) => a.date.localeCompare(b.date))
 
     if (sortedDays.length === 0) {
-      if (typeof scopedBalance !== 'number' || Number.isNaN(scopedBalance)) return []
+      if (typeof baseScopedBalance !== 'number' || Number.isNaN(baseScopedBalance)) return []
       return [
         {
           date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
           pnl: 0,
-          balance: scopedBalance,
+          balance: baseScopedBalance,
         },
       ]
     }
 
     const totalRealizedPnl = sortedDays.reduce((sum, point) => sum + point.pnl, 0)
-    let rollingBalance = typeof scopedBalance === 'number'
-      ? scopedBalance - totalRealizedPnl
+    let rollingBalance = typeof baseScopedBalance === 'number'
+      ? baseScopedBalance - totalRealizedPnl
       : 0
 
     return sortedDays.map((point) => {
@@ -647,7 +671,49 @@ export default function DashboardPage() {
         balance: rollingBalance,
       }
     })
-  }, [orders, scopedBalance])
+  }, [orders, baseScopedBalance])
+
+  const accountBalanceValue = isLoading && !selectedSlotDisabled && scopedBalance === null
+    ? 'Loading...'
+    : formatCurrencyNullable(scopedBalance, scopedCurrency)
+  const accountBalanceChange = selectedSlotDisabled
+    ? '--'
+    : scopedTodayPnl !== null
+      ? `${scopedTodayPnl >= 0 ? '+' : ''}${formatCurrency(scopedTodayPnl, scopedCurrency)} today`
+      : 'Today P&L unavailable'
+  const unrealizedValue = isLoading && !selectedSlotDisabled && scopedUnrealizedPnl === null
+    ? 'Loading...'
+    : formatCurrencyNullable(scopedUnrealizedPnl, scopedCurrency)
+  const unrealizedChange = scopedOpenPositions === null ? '--' : `${scopedOpenPositions} positions`
+  const openPositionsValue = scopedOpenPositions === null ? '--' : String(scopedOpenPositions)
+  const openPositionsSubtext = selectedSlotDisabled
+    ? '--'
+    : scopedMarginUsed !== null
+      ? `${formatCurrency(scopedMarginUsed, scopedCurrency)} margin`
+      : 'Margin unavailable'
+  const winRateValue = selectedSlotDisabled
+    ? '--'
+    : performance
+      ? formatPercent(performance.win_rate)
+      : isLoading
+        ? '...'
+        : '0%'
+  const winRateSubtext = selectedSlotDisabled
+    ? '--'
+    : performance
+      ? `${performance.total_trades} trades`
+      : ''
+  const footerTotalTrades = selectedSlotDisabled ? '--' : String(performance?.total_trades ?? 0)
+  const footerBestTrade = selectedSlotDisabled
+    ? '--'
+    : performance
+      ? formatCurrency(performance.largest_win)
+      : '$0.00'
+  const footerWorstTrade = selectedSlotDisabled
+    ? '--'
+    : performance
+      ? formatCurrency(performance.largest_loss)
+      : '$0.00'
 
   return (
     <motion.div
@@ -917,28 +983,16 @@ export default function DashboardPage() {
           >
             <StatCard
               label="Account Balance"
-              value={
-                isLoading && scopedBalance === null
-                  ? 'Loading...'
-                  : formatCurrencyNullable(scopedBalance, scopedCurrency)
-              }
-              change={
-                scopedTodayPnl !== null
-                  ? `${scopedTodayPnl >= 0 ? '+' : ''}${formatCurrency(scopedTodayPnl, scopedCurrency)} today`
-                  : 'Today P&L unavailable'
-              }
-              isPositive={scopedTodayPnl !== null ? scopedTodayPnl >= 0 : true}
+              value={accountBalanceValue}
+              change={accountBalanceChange}
+              isPositive={selectedSlotDisabled ? undefined : (scopedTodayPnl !== null ? scopedTodayPnl >= 0 : undefined)}
               icon={DollarSign}
             />
             <StatCard
               label="Unrealized P&L"
-              value={
-                isLoading && scopedUnrealizedPnl === null
-                  ? 'Loading...'
-                  : formatCurrencyNullable(scopedUnrealizedPnl, scopedCurrency)
-              }
-              change={`${scopedOpenPositions} positions`}
-              isPositive={scopedUnrealizedPnl !== null ? scopedUnrealizedPnl >= 0 : true}
+              value={unrealizedValue}
+              change={unrealizedChange}
+              isPositive={selectedSlotDisabled ? undefined : (scopedUnrealizedPnl !== null ? scopedUnrealizedPnl >= 0 : undefined)}
               icon={
                 scopedUnrealizedPnl === null || scopedUnrealizedPnl >= 0
                   ? TrendingUp
@@ -947,18 +1001,14 @@ export default function DashboardPage() {
             />
             <StatCard
               label="Open Positions"
-              value={String(scopedOpenPositions)}
-              subtext={
-                scopedMarginUsed !== null
-                  ? `${formatCurrency(scopedMarginUsed, scopedCurrency)} margin`
-                  : 'Margin unavailable'
-              }
+              value={openPositionsValue}
+              subtext={openPositionsSubtext}
               icon={Activity}
             />
             <StatCard
               label="Win Rate"
-              value={performance ? formatPercent(performance.win_rate) : isLoading ? '...' : '0%'}
-              subtext={performance ? `${performance.total_trades} trades` : ''}
+              value={winRateValue}
+              subtext={winRateSubtext}
               icon={Target}
             />
           </motion.div>
@@ -1044,7 +1094,7 @@ export default function DashboardPage() {
               </div>
               <div>
                 <p className="text-xs text-dark-500 uppercase tracking-wider">Total Trades</p>
-                <p className="font-mono font-bold text-lg text-gradient-gold">{performance?.total_trades ?? 0}</p>
+                <p className="font-mono font-bold text-lg text-gradient-gold">{footerTotalTrades}</p>
               </div>
             </div>
             <div className="card-gold p-5 flex items-center gap-4">
@@ -1054,7 +1104,7 @@ export default function DashboardPage() {
               <div>
                 <p className="text-xs text-dark-500 uppercase tracking-wider">Best Trade</p>
                 <p className="font-mono font-bold text-lg text-profit">
-                  {performance ? formatCurrency(performance.largest_win) : '$0.00'}
+                  {footerBestTrade}
                 </p>
               </div>
             </div>
@@ -1065,7 +1115,7 @@ export default function DashboardPage() {
               <div>
                 <p className="text-xs text-dark-500 uppercase tracking-wider">Worst Trade</p>
                 <p className="font-mono font-bold text-lg text-loss">
-                  {performance ? formatCurrency(performance.largest_loss) : '$0.00'}
+                  {footerWorstTrade}
                 </p>
               </div>
             </div>

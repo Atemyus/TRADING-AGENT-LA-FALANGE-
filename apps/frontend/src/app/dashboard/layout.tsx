@@ -245,20 +245,26 @@ export default function DashboardLayout({
     return () => clearInterval(interval)
   }, [selectedBrokerId, selectedBrokerSnapshot])
 
-  const balanceValue = accountData?.balance ?? null
-  const todayPnlValue = accountData?.todayPnl ?? null
+  const selectedSnapshotPreview =
+    selectedBrokerSnapshot && selectedBrokerId === selectedBrokerSnapshot.brokerId
+      ? selectedBrokerSnapshot
+      : null
+  const previewIsDisabled = Boolean(selectedSnapshotPreview?.isDisabled)
+  const balanceValue = previewIsDisabled
+    ? null
+    : (selectedSnapshotPreview?.balance ?? accountData?.balance ?? null)
+  const todayPnlValue = previewIsDisabled
+    ? null
+    : (selectedSnapshotPreview?.todayPnl ?? accountData?.todayPnl ?? null)
   const hasBalanceValue = typeof balanceValue === 'number'
   const hasTodayPnlValue = typeof todayPnlValue === 'number'
 
   return (
     <ProtectedRoute>
-    <div className="min-h-screen flex overflow-x-hidden max-w-[100vw] bg-dark-abyss prometheus-page-shell">
+    <div className="min-h-screen flex w-full overflow-x-hidden bg-dark-abyss prometheus-page-shell">
       {/* Sidebar */}
-      <motion.aside
-        initial={{ x: -280 }}
-        animate={{ x: sidebarOpen ? 0 : -280 }}
-        transition={{ duration: 0.3, ease: 'easeOut' }}
-        className="fixed left-0 top-0 h-full w-[280px] z-40 overflow-hidden prometheus-sidebar-shell"
+      <aside
+        className={`fixed left-0 top-0 h-full w-[280px] z-40 overflow-hidden transform-gpu will-change-transform transition-transform duration-300 ease-out prometheus-sidebar-shell ${sidebarOpen ? 'translate-x-0' : '-translate-x-[280px]'}`}
       >
         {/* Sidebar background with gradient */}
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(21,15,10,0.98)_0%,rgba(10,8,6,0.98)_100%)] backdrop-blur-2xl border-r border-primary-500/20" />
@@ -270,52 +276,18 @@ export default function DashboardLayout({
         {/* Rising flames effect on sidebar */}
         <div className="absolute bottom-0 left-0 right-0 h-64 pointer-events-none overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-t from-primary-500/12 via-primary-500/5 to-transparent" />
-          {/* Animated flame particles */}
-          <motion.div
-            animate={{
-              y: [0, -100, -200],
-              opacity: [0.6, 0.3, 0],
-              scale: [1, 1.2, 0.8],
-            }}
-            transition={{ duration: 4, repeat: Infinity, ease: 'easeOut' }}
-            className="absolute bottom-0 left-[20%] w-3 h-8 bg-gradient-to-t from-primary-500/30 to-transparent rounded-full blur-sm"
-          />
-          <motion.div
-            animate={{
-              y: [0, -80, -160],
-              opacity: [0.5, 0.25, 0],
-            }}
-            transition={{ duration: 3.5, repeat: Infinity, ease: 'easeOut', delay: 0.5 }}
-            className="absolute bottom-0 left-[50%] w-2 h-6 bg-gradient-to-t from-primary-500/30 to-transparent rounded-full blur-sm"
-          />
-          <motion.div
-            animate={{
-              y: [0, -120, -220],
-              opacity: [0.7, 0.35, 0],
-            }}
-            transition={{ duration: 5, repeat: Infinity, ease: 'easeOut', delay: 1 }}
-            className="absolute bottom-0 left-[75%] w-2.5 h-7 bg-gradient-to-t from-primary-400/30 to-transparent rounded-full blur-sm"
-          />
+          <div className="sidebar-flame-particle sidebar-flame-particle-one" />
+          <div className="sidebar-flame-particle sidebar-flame-particle-two" />
+          <div className="sidebar-flame-particle sidebar-flame-particle-three" />
         </div>
 
         {/* Glowing orb effect */}
-        <motion.div
-          animate={{
-            opacity: [0.3, 0.5, 0.3],
-            scale: [1, 1.1, 1],
-          }}
-          transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-          className="absolute top-1/3 -right-20 w-40 h-40 bg-primary-500/15 rounded-full blur-3xl pointer-events-none"
-        />
+        <div className="absolute top-1/3 -right-20 w-40 h-40 bg-primary-500/15 rounded-full blur-3xl pointer-events-none sidebar-orb-pulse" />
 
         {/* Vertical accent line with glow */}
         <div className="absolute right-0 top-20 bottom-20 w-px pointer-events-none">
           <div className="absolute inset-0 bg-gradient-to-b from-transparent via-primary-500/45 to-transparent" />
-          <motion.div
-            animate={{ y: ['-100%', '100%'] }}
-            transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
-            className="absolute w-full h-20 bg-gradient-to-b from-transparent via-primary-300/70 to-transparent"
-          />
+          <div className="absolute w-full h-20 bg-gradient-to-b from-transparent via-primary-300/70 to-transparent sidebar-energy-sweep" />
         </div>
 
         {/* Content */}
@@ -411,26 +383,20 @@ export default function DashboardLayout({
             </div>
           </div>
         </div>
-      </motion.aside>
+      </aside>
 
       {/* Sidebar -> Main blending seam */}
-      <motion.div
+      <div
         aria-hidden="true"
-        initial={false}
-        animate={{
-          opacity: sidebarOpen ? 1 : 0,
-          x: sidebarOpen ? 0 : -280,
-        }}
-        transition={{ duration: 0.28, ease: 'easeOut' }}
-        className="pointer-events-none fixed top-0 bottom-0 left-[280px] w-20 z-[35]"
+        className={`pointer-events-none fixed top-0 bottom-0 left-[280px] w-20 z-[35] transform-gpu will-change-[opacity,transform] transition-[opacity,transform] duration-300 ease-out ${sidebarOpen ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-[280px]'}`}
       >
         <div className="absolute inset-0 bg-gradient-to-r from-dark-950/85 via-primary-500/10 to-transparent" />
         <div className="absolute inset-y-0 left-0 w-px bg-gradient-to-b from-transparent via-primary-400/45 to-transparent" />
         <div className="absolute inset-y-0 left-0 w-9 bg-[radial-gradient(circle_at_left,rgba(245,158,11,0.2),transparent_72%)] blur-md" />
-      </motion.div>
+      </div>
 
       {/* Main content */}
-      <div className={`flex-1 transition-all duration-300 overflow-x-hidden max-w-full ${sidebarOpen ? 'ml-[280px]' : 'ml-0'}`}>
+      <div className={`flex-1 overflow-x-hidden max-w-full transform-gpu will-change-[margin-left] transition-[margin-left] duration-300 ${sidebarOpen ? 'ml-[280px]' : 'ml-0'}`}>
         {/* Top header */}
         <header className="sticky top-0 z-30 bg-dark-950/80 backdrop-blur-2xl border-b border-dark-800/50 overflow-hidden">
           {/* Left decorative fire effect */}
@@ -438,24 +404,8 @@ export default function DashboardLayout({
             <div className="absolute inset-0 bg-gradient-to-r from-primary-500/10 via-primary-500/5 to-transparent" />
             <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-16 bg-gradient-to-b from-transparent via-primary-500 to-transparent opacity-60 animate-pulse" />
             <div className="absolute left-4 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-primary-500/30 to-transparent" />
-            {/* Floating ember left */}
-            <motion.div
-              animate={{
-                y: [-20, -40, -20],
-                opacity: [0.3, 0.7, 0.3],
-                scale: [0.8, 1, 0.8],
-              }}
-              transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-              className="absolute left-6 top-1/2 w-1.5 h-1.5 rounded-full bg-primary-400 blur-[1px]"
-            />
-            <motion.div
-              animate={{
-                y: [-10, -30, -10],
-                opacity: [0.2, 0.5, 0.2],
-              }}
-              transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
-              className="absolute left-10 top-1/3 w-1 h-1 rounded-full bg-imperial-400 blur-[1px]"
-            />
+            <div className="absolute left-6 top-1/2 w-1.5 h-1.5 rounded-full bg-primary-400 blur-[1px] header-ember header-ember-left-1" />
+            <div className="absolute left-10 top-1/3 w-1 h-1 rounded-full bg-imperial-400 blur-[1px] header-ember header-ember-left-2" />
           </div>
 
           {/* Right decorative fire effect */}
@@ -463,30 +413,15 @@ export default function DashboardLayout({
             <div className="absolute inset-0 bg-gradient-to-l from-primary-500/10 via-primary-500/5 to-transparent" />
             <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-16 bg-gradient-to-b from-transparent via-primary-500 to-transparent opacity-60 animate-pulse" />
             <div className="absolute right-4 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-primary-500/30 to-transparent" />
-            {/* Floating ember right */}
-            <motion.div
-              animate={{
-                y: [-15, -35, -15],
-                opacity: [0.3, 0.7, 0.3],
-                scale: [0.8, 1, 0.8],
-              }}
-              transition={{ duration: 2.8, repeat: Infinity, ease: "easeInOut", delay: 0.3 }}
-              className="absolute right-6 top-1/2 w-1.5 h-1.5 rounded-full bg-primary-400 blur-[1px]"
-            />
-            <motion.div
-              animate={{
-                y: [-5, -25, -5],
-                opacity: [0.2, 0.5, 0.2],
-              }}
-              transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut", delay: 0.8 }}
-              className="absolute right-10 top-2/3 w-1 h-1 rounded-full bg-imperial-400 blur-[1px]"
-            />
+            <div className="absolute right-6 top-1/2 w-1.5 h-1.5 rounded-full bg-primary-400 blur-[1px] header-ember header-ember-right-1" />
+            <div className="absolute right-10 top-2/3 w-1 h-1 rounded-full bg-imperial-400 blur-[1px] header-ember header-ember-right-2" />
           </div>
 
           {/* Top gradient line */}
           <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-primary-500/50 to-transparent" />
 
-          <div className="relative flex items-center justify-between px-6 py-4">
+          <div className="relative px-4 py-4 md:px-6">
+            <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -566,6 +501,7 @@ export default function DashboardLayout({
                 </div>
               )}
             </div>
+            </div>
           </div>
         </header>
 
@@ -576,7 +512,7 @@ export default function DashboardLayout({
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="mx-6 mt-4"
+              className="mx-auto mt-4 w-full max-w-[1600px] px-4 md:px-6"
             >
               <div className="p-4 bg-primary-500/5 border border-primary-500/20 rounded-2xl flex items-center gap-4">
                 <div className="w-10 h-10 rounded-xl bg-primary-500/10 flex items-center justify-center">
@@ -598,11 +534,12 @@ export default function DashboardLayout({
         </AnimatePresence>
 
         {/* Page content */}
-        <main className="p-6 overflow-x-hidden">
+        <main className="overflow-x-hidden px-4 pb-6 pt-6 md:px-6">
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
+            className="mx-auto w-full max-w-[1600px]"
           >
             {children}
           </motion.div>

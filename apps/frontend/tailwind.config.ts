@@ -89,10 +89,10 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ['Oxanium', 'system-ui', 'sans-serif'],
-        mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
-        display: ['Marcellus SC', 'Cinzel', 'serif'], // Prometheus display stack
-        accent: ['Oxanium', 'system-ui', 'sans-serif'],
+        sans: ['Rajdhani', 'Exo 2', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+        display: ['Orbitron', 'Rajdhani', 'sans-serif'],
+        accent: ['Exo 2', 'Rajdhani', 'system-ui', 'sans-serif'],
       },
       animation: {
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
