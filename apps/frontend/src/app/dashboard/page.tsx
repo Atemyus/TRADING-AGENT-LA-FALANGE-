@@ -602,12 +602,14 @@ export default function DashboardPage() {
     }).format(abs)
   }
 
+  // When a selected slot is disabled, show "--" for all metrics in the stat cards below
+  const isSelectedSlotDisabled = selectedSnapshot?.status === 'disabled'
   const scopedCurrency = selectedSnapshot?.currency || aggregatedStats?.currency || 'USD'
-  const scopedBalance = selectedSnapshot?.balance ?? aggregatedStats?.totalBalance ?? null
-  const scopedUnrealizedPnl = selectedSnapshot?.unrealizedPnl ?? aggregatedStats?.totalUnrealizedPnl ?? null
-  const scopedMarginUsed = selectedSnapshot?.marginUsed ?? aggregatedStats?.totalMarginUsed ?? null
-  const scopedOpenPositions = selectedSnapshot?.openPositions ?? aggregatedStats?.totalOpenPositions ?? 0
-  const scopedTodayPnl = selectedSnapshot?.dailyPnl ?? selectedSnapshot?.unrealizedPnl ?? aggregatedStats?.totalUnrealizedPnl ?? null
+  const scopedBalance = isSelectedSlotDisabled ? null : (selectedSnapshot?.balance ?? aggregatedStats?.totalBalance ?? null)
+  const scopedUnrealizedPnl = isSelectedSlotDisabled ? null : (selectedSnapshot?.unrealizedPnl ?? aggregatedStats?.totalUnrealizedPnl ?? null)
+  const scopedMarginUsed = isSelectedSlotDisabled ? null : (selectedSnapshot?.marginUsed ?? aggregatedStats?.totalMarginUsed ?? null)
+  const scopedOpenPositions = isSelectedSlotDisabled ? 0 : (selectedSnapshot?.openPositions ?? aggregatedStats?.totalOpenPositions ?? 0)
+  const scopedTodayPnl = isSelectedSlotDisabled ? null : (selectedSnapshot?.dailyPnl ?? selectedSnapshot?.unrealizedPnl ?? aggregatedStats?.totalUnrealizedPnl ?? null)
 
   const performanceData = useMemo<PerformancePoint[]>(() => {
     const groupedByDay = new Map<string, number>()
@@ -918,14 +920,18 @@ export default function DashboardPage() {
             <StatCard
               label="Account Balance"
               value={
-                isLoading && scopedBalance === null
-                  ? 'Loading...'
-                  : formatCurrencyNullable(scopedBalance, scopedCurrency)
+                isSelectedSlotDisabled
+                  ? '--'
+                  : isLoading && scopedBalance === null
+                    ? 'Loading...'
+                    : formatCurrencyNullable(scopedBalance, scopedCurrency)
               }
               change={
-                scopedTodayPnl !== null
-                  ? `${scopedTodayPnl >= 0 ? '+' : ''}${formatCurrency(scopedTodayPnl, scopedCurrency)} today`
-                  : 'Today P&L unavailable'
+                isSelectedSlotDisabled
+                  ? '--'
+                  : scopedTodayPnl !== null
+                    ? `${scopedTodayPnl >= 0 ? '+' : ''}${formatCurrency(scopedTodayPnl, scopedCurrency)} today`
+                    : 'Today P&L unavailable'
               }
               isPositive={scopedTodayPnl !== null ? scopedTodayPnl >= 0 : true}
               icon={DollarSign}
@@ -933,11 +939,13 @@ export default function DashboardPage() {
             <StatCard
               label="Unrealized P&L"
               value={
-                isLoading && scopedUnrealizedPnl === null
-                  ? 'Loading...'
-                  : formatCurrencyNullable(scopedUnrealizedPnl, scopedCurrency)
+                isSelectedSlotDisabled
+                  ? '--'
+                  : isLoading && scopedUnrealizedPnl === null
+                    ? 'Loading...'
+                    : formatCurrencyNullable(scopedUnrealizedPnl, scopedCurrency)
               }
-              change={`${scopedOpenPositions} positions`}
+              change={isSelectedSlotDisabled ? '--' : `${scopedOpenPositions} positions`}
               isPositive={scopedUnrealizedPnl !== null ? scopedUnrealizedPnl >= 0 : true}
               icon={
                 scopedUnrealizedPnl === null || scopedUnrealizedPnl >= 0
@@ -947,18 +955,20 @@ export default function DashboardPage() {
             />
             <StatCard
               label="Open Positions"
-              value={String(scopedOpenPositions)}
+              value={isSelectedSlotDisabled ? '--' : String(scopedOpenPositions)}
               subtext={
-                scopedMarginUsed !== null
-                  ? `${formatCurrency(scopedMarginUsed, scopedCurrency)} margin`
-                  : 'Margin unavailable'
+                isSelectedSlotDisabled
+                  ? '--'
+                  : scopedMarginUsed !== null
+                    ? `${formatCurrency(scopedMarginUsed, scopedCurrency)} margin`
+                    : 'Margin unavailable'
               }
               icon={Activity}
             />
             <StatCard
               label="Win Rate"
-              value={performance ? formatPercent(performance.win_rate) : isLoading ? '...' : '0%'}
-              subtext={performance ? `${performance.total_trades} trades` : ''}
+              value={isSelectedSlotDisabled ? '--' : (performance ? formatPercent(performance.win_rate) : isLoading ? '...' : '0%')}
+              subtext={isSelectedSlotDisabled ? '--' : (performance ? `${performance.total_trades} trades` : '')}
               icon={Target}
             />
           </motion.div>
@@ -1044,7 +1054,7 @@ export default function DashboardPage() {
               </div>
               <div>
                 <p className="text-xs text-dark-500 uppercase tracking-wider">Total Trades</p>
-                <p className="font-mono font-bold text-lg text-gradient-gold">{performance?.total_trades ?? 0}</p>
+                <p className="font-mono font-bold text-lg text-gradient-gold">{isSelectedSlotDisabled ? '--' : (performance?.total_trades ?? 0)}</p>
               </div>
             </div>
             <div className="card-gold p-5 flex items-center gap-4">
@@ -1054,7 +1064,7 @@ export default function DashboardPage() {
               <div>
                 <p className="text-xs text-dark-500 uppercase tracking-wider">Best Trade</p>
                 <p className="font-mono font-bold text-lg text-profit">
-                  {performance ? formatCurrency(performance.largest_win) : '$0.00'}
+                  {isSelectedSlotDisabled ? '--' : (performance ? formatCurrency(performance.largest_win) : '$0.00')}
                 </p>
               </div>
             </div>
@@ -1065,7 +1075,7 @@ export default function DashboardPage() {
               <div>
                 <p className="text-xs text-dark-500 uppercase tracking-wider">Worst Trade</p>
                 <p className="font-mono font-bold text-lg text-loss">
-                  {performance ? formatCurrency(performance.largest_loss) : '$0.00'}
+                  {isSelectedSlotDisabled ? '--' : (performance ? formatCurrency(performance.largest_loss) : '$0.00')}
                 </p>
               </div>
             </div>
