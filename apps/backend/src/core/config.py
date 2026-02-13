@@ -154,6 +154,14 @@ class Settings(BaseSettings):
     METAAPI_ACCESS_TOKEN: str | None = None
     METAAPI_ACCOUNT_ID: str | None = None
 
+    # MetaTrader connection mode
+    # metaapi: existing MetaApi cloud integration
+    # bridge: custom self-hosted bridge service (MT terminal nodes)
+    METATRADER_CONNECTION_MODE: str = Field(default="metaapi", description="metaapi|bridge")
+    MT_BRIDGE_BASE_URL: str | None = None
+    MT_BRIDGE_API_KEY: str | None = None
+    MT_BRIDGE_TIMEOUT_SECONDS: float = 20.0
+
     # IG Markets
     IG_API_KEY: str | None = None
     IG_USERNAME: str | None = None

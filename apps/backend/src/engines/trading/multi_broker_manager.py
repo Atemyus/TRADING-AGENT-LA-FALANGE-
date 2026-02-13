@@ -4,7 +4,7 @@ Multi-Broker Manager - Manages multiple AutoTrader instances for different broke
 Each broker account runs independently with its own:
 - TradingView AI Agent analysis
 - Trading configuration (symbols, risk, hours)
-- Broker connection (MetaApi credentials)
+- Broker connection (MetaApi or Bridge/API credentials)
 """
 
 import asyncio
@@ -26,8 +26,10 @@ from src.services.broker_credentials_service import (
     resolve_dxtrade_runtime_credentials,
     resolve_ig_runtime_credentials,
     resolve_matchtrader_runtime_credentials,
+    resolve_mt_bridge_runtime_credentials,
     resolve_metaapi_runtime_credentials,
     resolve_oanda_runtime_credentials,
+    should_use_mt_bridge,
 )
 
 
@@ -59,7 +61,7 @@ class MultiBrokerManager:
     Manages multiple AutoTrader instances, one per broker account.
 
     Each broker runs completely independently:
-    - Own broker connection (MetaApi credentials)
+    - Own broker connection (MetaApi, Bridge or direct API credentials)
     - Own symbol list
     - Own risk settings
     - Own analysis interval
@@ -110,6 +112,64 @@ class MultiBrokerManager:
         credentials = normalize_credentials(account.credentials)
 
         if broker_type in {"metaapi", "metatrader", "mt4", "mt5"}:
+            mode = (credentials.get("mt_connection_mode") or credentials.get("connection_mode") or "").strip().lower()
+            if mode == "bridge":
+                runtime: dict[str, str] = {"connection_mode": "bridge"}
+                account_number = (
+                    credentials.get("account_number")
+                    or credentials.get("login")
+                    or credentials.get("account_id")
+                    or ""
+                ).strip()
+                password = (
+                    credentials.get("account_password")
+                    or credentials.get("password")
+                    or ""
+                ).strip()
+                server_name = (credentials.get("server_name") or credentials.get("server") or "").strip()
+                platform = (account.platform_id or credentials.get("platform") or "mt5").strip().lower()
+                if platform not in {"mt4", "mt5"}:
+                    platform = "mt5"
+                if account_number:
+                    runtime["account_number"] = account_number
+                if password:
+                    runtime["password"] = password
+                if server_name:
+                    runtime["server_name"] = server_name
+                runtime["platform"] = platform
+
+                bridge_keys = {
+                    "bridge_base_url": ("bridge_base_url", "mt_bridge_base_url", "mt_bridge_url"),
+                    "bridge_api_key": ("bridge_api_key", "mt_bridge_api_key"),
+                    "timeout_seconds": ("timeout_seconds", "mt_bridge_timeout_seconds"),
+                    "terminal_path": ("terminal_path", "mt_terminal_path"),
+                    "data_path": ("data_path", "mt_data_path"),
+                    "workspace_id": ("workspace_id", "mt_workspace_id"),
+                    "connect_endpoint": ("connect_endpoint", "mt_bridge_connect_endpoint"),
+                    "disconnect_endpoint": ("disconnect_endpoint", "mt_bridge_disconnect_endpoint"),
+                    "account_endpoint": ("account_endpoint", "mt_bridge_account_endpoint"),
+                    "positions_endpoint": ("positions_endpoint", "mt_bridge_positions_endpoint"),
+                    "price_endpoint": ("price_endpoint", "mt_bridge_price_endpoint"),
+                    "prices_endpoint": ("prices_endpoint", "mt_bridge_prices_endpoint"),
+                    "candles_endpoint": ("candles_endpoint", "mt_bridge_candles_endpoint"),
+                    "place_order_endpoint": ("place_order_endpoint", "mt_bridge_place_order_endpoint"),
+                    "open_orders_endpoint": ("open_orders_endpoint", "mt_bridge_open_orders_endpoint"),
+                    "order_endpoint": ("order_endpoint", "mt_bridge_order_endpoint"),
+                    "cancel_order_endpoint": ("cancel_order_endpoint", "mt_bridge_cancel_order_endpoint"),
+                    "close_position_endpoint": ("close_position_endpoint", "mt_bridge_close_position_endpoint"),
+                    "modify_position_endpoint": ("modify_position_endpoint", "mt_bridge_modify_position_endpoint"),
+                }
+                for runtime_key, aliases in bridge_keys.items():
+                    value = ""
+                    for alias in aliases:
+                        candidate = (credentials.get(alias) or "").strip()
+                        if candidate:
+                            value = candidate
+                            break
+                    if value:
+                        runtime[runtime_key] = value
+                return runtime
+
             runtime: dict[str, str] = {}
             metaapi_token = (account.metaapi_token or credentials.get("metaapi_token") or "").strip()
             metaapi_account_id = (account.metaapi_account_id or credentials.get("metaapi_account_id") or "").strip()
@@ -255,7 +315,10 @@ class MultiBrokerManager:
         runtime_credentials: dict[str, str] = {}
         try:
             if broker_type in {"metaapi", "metatrader", "mt4", "mt5"}:
-                runtime_credentials = await resolve_metaapi_runtime_credentials(broker_account)
+                if should_use_mt_bridge(broker_account):
+                    runtime_credentials = resolve_mt_bridge_runtime_credentials(broker_account)
+                else:
+                    runtime_credentials = await resolve_metaapi_runtime_credentials(broker_account)
             elif broker_type == "oanda":
                 runtime_credentials = resolve_oanda_runtime_credentials(broker_account)
             elif broker_type == "ig":
@@ -309,8 +372,15 @@ class MultiBrokerManager:
         try:
             # Credentials are now passed via BotConfig - no need to set env vars!
             # This ensures each broker instance uses its OWN credentials
-            runtime_account_id = runtime_credentials.get("account_id")
-            print(f"[MultiBrokerManager] Starting broker '{broker_account.name}' with account ...{runtime_account_id[-4:] if runtime_account_id else 'N/A'}")
+            runtime_account_id = (
+                runtime_credentials.get("account_id")
+                or runtime_credentials.get("account_number")
+                or ""
+            )
+            print(
+                f"[MultiBrokerManager] Starting broker '{broker_account.name}' with account "
+                f"...{runtime_account_id[-4:] if runtime_account_id else 'N/A'}"
+            )
             print(f"[MultiBrokerManager] Enabled models: {instance.trader.config.enabled_models}")
 
             # Start the trader
@@ -506,7 +576,10 @@ class MultiBrokerManager:
         if broker_account is not None:
             try:
                 if broker_type in {"metaapi", "metatrader", "mt4", "mt5"}:
-                    runtime_credentials = await resolve_metaapi_runtime_credentials(broker_account)
+                    if should_use_mt_bridge(broker_account):
+                        runtime_credentials = resolve_mt_bridge_runtime_credentials(broker_account)
+                    else:
+                        runtime_credentials = await resolve_metaapi_runtime_credentials(broker_account)
                 elif broker_type == "oanda":
                     runtime_credentials = resolve_oanda_runtime_credentials(broker_account)
                 elif broker_type == "ig":
@@ -529,14 +602,33 @@ class MultiBrokerManager:
 
         broker_kwargs: dict[str, Any] = {}
         if broker_type in {"metaapi", "metatrader", "mt4", "mt5"}:
-            access_token = runtime_credentials.get("access_token")
-            account_id = runtime_credentials.get("account_id")
-            if not access_token or not account_id:
-                return None
-            broker_kwargs = {
-                "access_token": access_token,
-                "account_id": account_id,
-            }
+            if (runtime_credentials.get("connection_mode") or "").lower() == "bridge":
+                account_number = (
+                    runtime_credentials.get("account_number")
+                    or runtime_credentials.get("login")
+                )
+                password = runtime_credentials.get("password")
+                server_name = runtime_credentials.get("server_name")
+                if not account_number or not password or not server_name:
+                    return None
+                broker_kwargs = dict(runtime_credentials)
+                broker_kwargs["account_number"] = account_number
+                broker_kwargs["password"] = password
+                broker_kwargs["server_name"] = server_name
+                broker_kwargs["connection_mode"] = "bridge"
+                broker_kwargs["platform"] = (
+                    runtime_credentials.get("platform")
+                    or ("mt4" if broker_type == "mt4" else "mt5")
+                )
+            else:
+                access_token = runtime_credentials.get("access_token")
+                account_id = runtime_credentials.get("account_id")
+                if not access_token or not account_id:
+                    return None
+                broker_kwargs = {
+                    "access_token": access_token,
+                    "account_id": account_id,
+                }
         elif broker_type == "oanda":
             api_key = runtime_credentials.get("api_key")
             account_id = runtime_credentials.get("account_id")
@@ -718,7 +810,33 @@ class MultiBrokerManager:
 
         instance = self._instances[broker_id]
         new_config = self._create_config_from_account(broker_account)
-        runtime_credentials = self._extract_runtime_credentials(broker_account)
+        broker_type = (broker_account.broker_type or "metaapi").lower()
+        runtime_credentials: dict[str, str] = {}
+        try:
+            if broker_type in {"metaapi", "metatrader", "mt4", "mt5"}:
+                if should_use_mt_bridge(broker_account):
+                    runtime_credentials = resolve_mt_bridge_runtime_credentials(broker_account)
+                else:
+                    runtime_credentials = await resolve_metaapi_runtime_credentials(broker_account)
+            elif broker_type == "oanda":
+                runtime_credentials = resolve_oanda_runtime_credentials(broker_account)
+            elif broker_type == "ig":
+                runtime_credentials = resolve_ig_runtime_credentials(broker_account)
+            elif broker_type == "alpaca":
+                runtime_credentials = resolve_alpaca_runtime_credentials(broker_account)
+            elif broker_type == "ctrader":
+                runtime_credentials = resolve_ctrader_runtime_credentials(broker_account)
+            elif broker_type == "dxtrade":
+                runtime_credentials = resolve_dxtrade_runtime_credentials(broker_account)
+            elif broker_type == "matchtrader":
+                runtime_credentials = resolve_matchtrader_runtime_credentials(broker_account)
+            else:
+                runtime_credentials = normalize_credentials(broker_account.credentials)
+        except HTTPException as exc:
+            return {"status": "error", "message": str(exc.detail)}
+        except Exception as exc:
+            return {"status": "error", "message": f"Credential resolution failed: {exc}"}
+
         if runtime_credentials:
             new_config.broker_credentials = dict(runtime_credentials)
             new_config.metaapi_token = runtime_credentials.get("access_token")

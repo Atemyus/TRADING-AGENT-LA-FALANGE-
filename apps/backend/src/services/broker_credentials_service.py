@@ -6,6 +6,7 @@ This module centralizes:
 - merge logic that preserves masked secrets on update
 - runtime credential resolution for supported broker adapters
 - optional MetaApi auto-provisioning for MT4/MT5 credentials
+- optional self-hosted MT bridge runtime resolution
 """
 
 import os
@@ -101,6 +102,26 @@ def _to_bool(value: Any, default: bool) -> bool:
     if lowered in {"false", "0", "no", "n", "off"}:
         return False
     return default
+
+
+def _resolve_mt_connection_mode(creds: dict[str, str], broker: BrokerAccount | None = None) -> str:
+    _ = broker  # Reserved for future per-broker overrides.
+    raw_mode = (
+        _first_non_empty(
+            creds.get("mt_connection_mode"),
+            creds.get("connection_mode"),
+            os.environ.get("METATRADER_CONNECTION_MODE"),
+            settings.METATRADER_CONNECTION_MODE,
+        )
+        or "metaapi"
+    )
+    mode = raw_mode.lower().strip()
+    return "bridge" if mode == "bridge" else "metaapi"
+
+
+def should_use_mt_bridge(broker: BrokerAccount) -> bool:
+    creds = normalize_credentials(broker.credentials)
+    return _resolve_mt_connection_mode(creds, broker=broker) == "bridge"
 
 
 def resolve_oanda_runtime_credentials(broker: BrokerAccount) -> dict[str, str]:
@@ -472,9 +493,117 @@ async def resolve_metaapi_runtime_credentials(
     return {"access_token": token, "account_id": account_id, "platform": platform}
 
 
+def resolve_mt_bridge_runtime_credentials(broker: BrokerAccount) -> dict[str, str]:
+    creds = normalize_credentials(broker.credentials)
+    mode = _resolve_mt_connection_mode(creds, broker=broker)
+
+    account_number = _first_non_empty(
+        creds.get("account_number"),
+        creds.get("login"),
+        creds.get("account_id"),
+    )
+    account_password = _first_non_empty(
+        creds.get("account_password"),
+        creds.get("password"),
+        creds.get("master_password"),
+    )
+    server_name = _first_non_empty(
+        creds.get("server_name"),
+        creds.get("server"),
+        creds.get("broker_server"),
+    )
+    platform = (_first_non_empty(broker.platform_id, creds.get("platform")) or "mt5").lower()
+    if platform not in {"mt4", "mt5"}:
+        platform = "mt5"
+
+    bridge_base_url = _first_non_empty(
+        creds.get("mt_bridge_base_url"),
+        creds.get("bridge_base_url"),
+        creds.get("mt_bridge_url"),
+        os.environ.get("MT_BRIDGE_BASE_URL"),
+        settings.MT_BRIDGE_BASE_URL,
+    )
+    bridge_api_key = _first_non_empty(
+        creds.get("mt_bridge_api_key"),
+        creds.get("bridge_api_key"),
+        os.environ.get("MT_BRIDGE_API_KEY"),
+        settings.MT_BRIDGE_API_KEY,
+    )
+    timeout_seconds = _first_non_empty(
+        creds.get("mt_bridge_timeout_seconds"),
+        creds.get("bridge_timeout_seconds"),
+        os.environ.get("MT_BRIDGE_TIMEOUT_SECONDS"),
+        settings.MT_BRIDGE_TIMEOUT_SECONDS,
+    ) or "20"
+
+    if mode != "bridge":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "MT bridge resolution requested but workspace is not configured for bridge mode. "
+                "Set mt_connection_mode=bridge."
+            ),
+        )
+
+    if not account_number or not account_password or not server_name:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Missing MT bridge credentials. Required: account number, password, server name."
+            ),
+        )
+    if not bridge_base_url:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "MT bridge base URL not configured. Set mt_bridge_base_url in workspace credentials "
+                "or MT_BRIDGE_BASE_URL in backend environment."
+            ),
+        )
+
+    runtime: dict[str, str] = {
+        "connection_mode": "bridge",
+        "account_number": account_number,
+        "password": account_password,
+        "server_name": server_name,
+        "platform": platform,
+        "bridge_base_url": bridge_base_url,
+        "timeout_seconds": str(timeout_seconds),
+    }
+    if bridge_api_key:
+        runtime["bridge_api_key"] = bridge_api_key
+
+    optional_passthrough_keys = {
+        "terminal_path": ["terminal_path", "mt_terminal_path"],
+        "data_path": ["data_path", "mt_data_path"],
+        "workspace_id": ["workspace_id", "mt_workspace_id"],
+        "connect_endpoint": ["connect_endpoint", "mt_bridge_connect_endpoint"],
+        "disconnect_endpoint": ["disconnect_endpoint", "mt_bridge_disconnect_endpoint"],
+        "account_endpoint": ["account_endpoint", "mt_bridge_account_endpoint"],
+        "positions_endpoint": ["positions_endpoint", "mt_bridge_positions_endpoint"],
+        "price_endpoint": ["price_endpoint", "mt_bridge_price_endpoint"],
+        "prices_endpoint": ["prices_endpoint", "mt_bridge_prices_endpoint"],
+        "candles_endpoint": ["candles_endpoint", "mt_bridge_candles_endpoint"],
+        "place_order_endpoint": ["place_order_endpoint", "mt_bridge_place_order_endpoint"],
+        "open_orders_endpoint": ["open_orders_endpoint", "mt_bridge_open_orders_endpoint"],
+        "order_endpoint": ["order_endpoint", "mt_bridge_order_endpoint"],
+        "cancel_order_endpoint": ["cancel_order_endpoint", "mt_bridge_cancel_order_endpoint"],
+        "close_position_endpoint": ["close_position_endpoint", "mt_bridge_close_position_endpoint"],
+        "modify_position_endpoint": ["modify_position_endpoint", "mt_bridge_modify_position_endpoint"],
+    }
+    for runtime_key, aliases in optional_passthrough_keys.items():
+        value = _first_non_empty(*(creds.get(alias) for alias in aliases))
+        if value:
+            runtime[runtime_key] = value
+
+    return runtime
+
+
 async def resolve_broker_runtime_kwargs(broker: BrokerAccount) -> dict[str, str]:
     broker_type = (broker.broker_type or "metaapi").lower()
     if broker_type in {"metaapi", "metatrader", "mt4", "mt5"}:
+        if should_use_mt_bridge(broker):
+            return resolve_mt_bridge_runtime_credentials(broker)
         return await resolve_metaapi_runtime_credentials(broker)
     if broker_type == "oanda":
         return resolve_oanda_runtime_credentials(broker)

@@ -192,6 +192,16 @@ METAAPI_ACCOUNT_ID=your-metaapi-account-id
 - Connetti il tuo account MT4/MT5 esistente
 - Ottieni access token e account ID dalla dashboard
 
+**MetaTrader 4/5** (self-hosted bridge, senza MetaApi)
+```env
+BROKER_TYPE=metatrader
+METATRADER_CONNECTION_MODE=bridge
+MT_BRIDGE_BASE_URL=http://your-bridge-node:9000
+MT_BRIDGE_API_KEY=your-bridge-api-key
+```
+- L'utente inserisce solo login/password/server nel workspace broker
+- Il backend usa il bridge per aprire la sessione terminale MT4/MT5
+
 #### 2. AI Provider (almeno uno)
 
 **OpenAI** (GPT-4o)

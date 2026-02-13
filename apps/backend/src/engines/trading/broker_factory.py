@@ -2,7 +2,7 @@
 Broker Factory
 
 Factory for creating broker instances based on configuration.
-Supports multiple brokers: OANDA, MetaTrader, IG, Interactive Brokers, Alpaca.
+Supports multiple brokers: OANDA, MetaTrader (MetaApi or Bridge), IG, Interactive Brokers, Alpaca.
 
 NOTE: This factory reads from os.environ directly (not Pydantic settings)
 to support dynamic credential updates without server restart.
@@ -13,6 +13,7 @@ import os
 from src.engines.trading.alpaca_broker import AlpacaBroker
 from src.engines.trading.base_broker import BaseBroker
 from src.engines.trading.ig_broker import IGBroker
+from src.engines.trading.metatrader_bridge_broker import MetaTraderBridgeBroker
 from src.engines.trading.metatrader_broker import MetaTraderBroker
 from src.engines.trading.oanda_broker import OANDABroker
 from src.engines.trading.platform_rest_broker import (
@@ -51,6 +52,16 @@ class BrokerFactory:
             account_id = os.environ.get("OANDA_ACCOUNT_ID", "")
             return bool(api_key and account_id)
         elif broker_type in ("metatrader", "metaapi", "mt4", "mt5"):
+            mode = (os.environ.get("METATRADER_CONNECTION_MODE", "metaapi") or "metaapi").strip().lower()
+            if mode == "bridge":
+                account_number = (
+                    os.environ.get("MT_BRIDGE_ACCOUNT_NUMBER", "")
+                    or os.environ.get("BROKER_ACCOUNT_NUMBER", "")
+                )
+                password = os.environ.get("MT_BRIDGE_PASSWORD", "") or os.environ.get("BROKER_PASSWORD", "")
+                server_name = os.environ.get("MT_BRIDGE_SERVER_NAME", "") or os.environ.get("BROKER_SERVER_NAME", "")
+                bridge_base_url = os.environ.get("MT_BRIDGE_BASE_URL", "")
+                return bool(account_number and password and server_name and bridge_base_url)
             token = os.environ.get("METAAPI_ACCESS_TOKEN", "")
             account = os.environ.get("METAAPI_ACCOUNT_ID", "")
             return bool(token and account)
@@ -121,6 +132,87 @@ class BrokerFactory:
             )
 
         elif broker_type in ("metatrader", "metaapi", "mt4", "mt5"):
+            mode = (
+                kwargs.get("connection_mode")
+                or kwargs.get("mt_connection_mode")
+                or os.environ.get("METATRADER_CONNECTION_MODE")
+                or "metaapi"
+            )
+            mode = str(mode).strip().lower()
+
+            if mode == "bridge":
+                account_number = (
+                    kwargs.get("account_number")
+                    or kwargs.get("login")
+                    or os.environ.get("MT_BRIDGE_ACCOUNT_NUMBER", "")
+                    or os.environ.get("BROKER_ACCOUNT_NUMBER", "")
+                )
+                password = (
+                    kwargs.get("password")
+                    or kwargs.get("account_password")
+                    or os.environ.get("MT_BRIDGE_PASSWORD", "")
+                    or os.environ.get("BROKER_PASSWORD", "")
+                )
+                server_name = (
+                    kwargs.get("server_name")
+                    or kwargs.get("server")
+                    or os.environ.get("MT_BRIDGE_SERVER_NAME", "")
+                    or os.environ.get("BROKER_SERVER_NAME", "")
+                )
+                bridge_base_url = (
+                    kwargs.get("bridge_base_url")
+                    or kwargs.get("mt_bridge_base_url")
+                    or os.environ.get("MT_BRIDGE_BASE_URL", "")
+                )
+                bridge_api_key = (
+                    kwargs.get("bridge_api_key")
+                    or kwargs.get("mt_bridge_api_key")
+                    or os.environ.get("MT_BRIDGE_API_KEY", "")
+                )
+                platform = (
+                    kwargs.get("platform")
+                    or ("mt4" if broker_type == "mt4" else "mt5")
+                )
+
+                if not account_number or not password or not server_name:
+                    raise NoBrokerConfiguredError(
+                        "MetaTrader bridge mode requires account number/login, password and server name. "
+                        "Configure in Settings."
+                    )
+                if not bridge_base_url:
+                    raise NoBrokerConfiguredError(
+                        "MetaTrader bridge mode requires bridge base URL. "
+                        "Set mt_bridge_base_url in credentials or MT_BRIDGE_BASE_URL in environment."
+                    )
+
+                bridge_kwargs = dict(kwargs)
+                for key in {
+                    "connection_mode",
+                    "mt_connection_mode",
+                    "account_number",
+                    "login",
+                    "password",
+                    "account_password",
+                    "server_name",
+                    "server",
+                    "bridge_base_url",
+                    "mt_bridge_base_url",
+                    "bridge_api_key",
+                    "mt_bridge_api_key",
+                    "platform",
+                }:
+                    bridge_kwargs.pop(key, None)
+
+                return MetaTraderBridgeBroker(
+                    account_number=str(account_number),
+                    password=str(password),
+                    server_name=str(server_name),
+                    platform=str(platform),
+                    bridge_base_url=str(bridge_base_url),
+                    bridge_api_key=str(bridge_api_key) if bridge_api_key else None,
+                    **bridge_kwargs,
+                )
+
             token = kwargs.get("access_token", os.environ.get("METAAPI_ACCESS_TOKEN", ""))
             account = kwargs.get("account_id", os.environ.get("METAAPI_ACCOUNT_ID", ""))
 

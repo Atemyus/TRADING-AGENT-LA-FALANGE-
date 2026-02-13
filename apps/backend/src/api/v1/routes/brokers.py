@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.v1.routes.auth import get_licensed_user
 from src.core.database import get_db
 from src.core.models import BrokerAccount, User
-from src.engines.trading.broker_factory import BrokerFactory
+from src.engines.trading.broker_factory import BrokerFactory, NoBrokerConfiguredError
 from src.services.broker_credentials_service import (
     MASKED_PREFIX,
     mask_credentials,
@@ -24,8 +24,10 @@ from src.services.broker_credentials_service import (
     resolve_dxtrade_runtime_credentials,
     resolve_ig_runtime_credentials,
     resolve_matchtrader_runtime_credentials,
+    resolve_mt_bridge_runtime_credentials,
     resolve_metaapi_runtime_credentials,
     resolve_oanda_runtime_credentials,
+    should_use_mt_bridge,
 )
 
 router = APIRouter(prefix="/brokers", tags=["Broker Accounts"])
@@ -464,6 +466,41 @@ async def test_broker_connection(
 
     if broker_type in {"metaapi", "metatrader", "mt4", "mt5"}:
         credentials = normalize_credentials(broker.credentials)
+        if should_use_mt_bridge(broker):
+            runtime = resolve_mt_bridge_runtime_credentials(broker)
+            try:
+                mt_bridge_broker = BrokerFactory.create(
+                    broker_type=broker_type,
+                    **runtime,
+                )
+                try:
+                    await mt_bridge_broker.connect()
+                    account_info = await mt_bridge_broker.get_account_info()
+                finally:
+                    await mt_bridge_broker.disconnect()
+
+                broker.is_connected = True
+                broker.last_connected_at = datetime.now(UTC)
+                await db.flush()
+                return {
+                    "status": "success",
+                    "message": "Connected to MetaTrader bridge successfully",
+                    "connection_mode": "bridge",
+                    "platform": runtime.get("platform", broker.platform_id or "mt5"),
+                    "server_name": runtime.get("server_name"),
+                    "bridge_base_url": runtime.get("bridge_base_url"),
+                    "account_id": account_info.account_id,
+                    "currency": account_info.currency,
+                    "balance": str(account_info.balance),
+                    "equity": str(account_info.equity),
+                }
+            except NoBrokerConfiguredError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Bridge connection test failed: {e}")
+
         runtime = await resolve_metaapi_runtime_credentials(broker)
         effective_metaapi_token = runtime["access_token"]
         effective_metaapi_account_id = runtime["account_id"]
