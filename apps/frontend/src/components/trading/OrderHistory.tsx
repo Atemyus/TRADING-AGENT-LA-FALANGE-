@@ -28,6 +28,7 @@ export interface Order {
 interface OrderHistoryProps {
   orders?: Order[]
   isLoading?: boolean
+  isDisabled?: boolean
 }
 
 const statusConfig = {
@@ -37,13 +38,14 @@ const statusConfig = {
   rejected: { icon: XCircle, color: 'text-neon-red', bg: 'bg-neon-red/20' },
 }
 
-export function OrderHistory({ orders = [], isLoading = false }: OrderHistoryProps) {
+export function OrderHistory({ orders = [], isLoading = false, isDisabled = false }: OrderHistoryProps) {
   const [filter, setFilter] = useState<'all' | 'filled' | 'pending' | 'cancelled'>('all')
 
-  const filteredOrders = filter === 'all' ? orders : orders.filter((o) => o.status === filter)
+  const scopedOrders = isDisabled ? [] : orders
+  const filteredOrders = filter === 'all' ? scopedOrders : scopedOrders.filter((o) => o.status === filter)
 
   // Calculate stats
-  const filledOrders = orders.filter((o) => o.status === 'filled')
+  const filledOrders = scopedOrders.filter((o) => o.status === 'filled')
   const totalPnL = filledOrders.reduce((sum, o) => sum + (o.pnl || 0), 0)
   const winningTrades = filledOrders.filter((o) => (o.pnl || 0) > 0).length
   const winRate = filledOrders.length > 0 ? (winningTrades / filledOrders.length) * 100 : 0
@@ -59,9 +61,12 @@ export function OrderHistory({ orders = [], isLoading = false }: OrderHistoryPro
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-lg font-semibold font-imperial">Order History</h2>
-            <p className="text-sm text-dark-400">{orders.length} total orders</p>
+            <p className="text-sm text-dark-400">{isDisabled ? '--' : `${scopedOrders.length} total orders`}</p>
           </div>
-          <button className="flex items-center gap-2 px-3 py-1.5 bg-dark-800 hover:bg-dark-700 rounded-lg text-sm transition-colors">
+          <button
+            disabled={isDisabled}
+            className="flex items-center gap-2 px-3 py-1.5 bg-dark-800 hover:bg-dark-700 rounded-lg text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
             <Download size={14} />
             Export
           </button>
@@ -71,17 +76,17 @@ export function OrderHistory({ orders = [], isLoading = false }: OrderHistoryPro
         <div className="grid grid-cols-3 gap-4 mb-4">
           <div className="p-3 bg-dark-800/50 rounded-lg">
             <p className="text-xs text-dark-400">Total P&L</p>
-            <p className={`font-mono font-bold ${totalPnL >= 0 ? 'text-neon-green' : 'text-neon-red'}`}>
-              {totalPnL >= 0 ? '+' : ''}${totalPnL.toFixed(2)}
+            <p className={`font-mono font-bold ${totalPnL >= 0 ? 'text-profit' : 'text-loss'}`}>
+              {isDisabled ? '--' : `${totalPnL >= 0 ? '+' : ''}$${totalPnL.toFixed(2)}`}
             </p>
           </div>
           <div className="p-3 bg-dark-800/50 rounded-lg">
             <p className="text-xs text-dark-400">Win Rate</p>
-            <p className="font-mono font-bold">{winRate.toFixed(1)}%</p>
+            <p className="font-mono font-bold">{isDisabled ? '--' : `${winRate.toFixed(1)}%`}</p>
           </div>
           <div className="p-3 bg-dark-800/50 rounded-lg">
             <p className="text-xs text-dark-400">Trades</p>
-            <p className="font-mono font-bold">{filledOrders.length}</p>
+            <p className="font-mono font-bold">{isDisabled ? '--' : filledOrders.length}</p>
           </div>
         </div>
 
@@ -91,11 +96,12 @@ export function OrderHistory({ orders = [], isLoading = false }: OrderHistoryPro
             <button
               key={f}
               onClick={() => setFilter(f)}
+              disabled={isDisabled}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                 filter === f
                   ? 'bg-primary-500/20 text-primary-400 border border-primary-500/30'
                   : 'bg-dark-800 text-dark-400 hover:text-dark-200'
-              }`}
+              } disabled:opacity-40 disabled:cursor-not-allowed`}
             >
               {f.charAt(0).toUpperCase() + f.slice(1)}
             </button>
@@ -105,7 +111,12 @@ export function OrderHistory({ orders = [], isLoading = false }: OrderHistoryPro
 
       {/* Orders List */}
       <div className="divide-y divide-dark-700/30 max-h-[400px] overflow-y-auto">
-        {filteredOrders.length === 0 ? (
+        {isDisabled ? (
+          <div className="p-8 text-center text-dark-400">
+            <p className="font-mono text-lg text-dark-300">--</p>
+            <p className="text-xs mt-2">Order history unavailable while this slot is disabled.</p>
+          </div>
+        ) : filteredOrders.length === 0 ? (
           <div className="p-8 text-center text-dark-400">
             No orders found
           </div>
@@ -125,11 +136,11 @@ export function OrderHistory({ orders = [], isLoading = false }: OrderHistoryPro
                 <div className="flex items-center justify-between">
                   {/* Left: Symbol & Side */}
                   <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg ${order.side === 'buy' ? 'bg-neon-green/20' : 'bg-neon-red/20'}`}>
+                    <div className={`p-2 rounded-lg ${order.side === 'buy' ? 'bg-profit/20' : 'bg-loss/20'}`}>
                       {order.side === 'buy' ? (
-                        <TrendingUp size={16} className="text-neon-green" />
+                        <TrendingUp size={16} className="text-profit" />
                       ) : (
-                        <TrendingDown size={16} className="text-neon-red" />
+                        <TrendingDown size={16} className="text-loss" />
                       )}
                     </div>
                     <div>
@@ -148,7 +159,7 @@ export function OrderHistory({ orders = [], isLoading = false }: OrderHistoryPro
                   {/* Right: Status & P&L */}
                   <div className="flex items-center gap-4">
                     {order.pnl !== undefined && (
-                      <div className={`text-right ${isPositive ? 'text-neon-green' : 'text-neon-red'}`}>
+                      <div className={`text-right ${isPositive ? 'text-profit' : 'text-loss'}`}>
                         <p className="font-mono font-semibold">
                           {isPositive ? '+' : ''}${order.pnl.toFixed(2)}
                         </p>

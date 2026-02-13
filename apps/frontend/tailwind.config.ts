@@ -12,56 +12,56 @@ const config: Config = {
       colors: {
         // LA FALANGE Theme - Imperial Warrior Colors
 
-        // Primary: Imperial Gold (ricchezza, vittoria, potere)
+        // Primary: Molten gold / ember orange
         primary: {
-          50: '#fffbeb',
-          100: '#fef3c7',
-          200: '#fde68a',
-          300: '#fcd34d',
-          400: '#fbbf24',
-          500: '#f59e0b',  // Main gold
-          600: '#d97706',
-          700: '#b45309',
-          800: '#92400e',
-          900: '#78350f',
-          950: '#451a03',
+          50: '#fff9eb',
+          100: '#fff0cc',
+          200: '#ffe0a1',
+          300: '#ffd174',
+          400: '#ffbb38',
+          500: '#ff8c00',  // Main gold
+          600: '#e97b00',
+          700: '#c85f00',
+          800: '#9f4700',
+          900: '#733300',
+          950: '#3f1b00',
         },
 
-        // Accent: Imperial Purple (regalità, potere)
+        // Accent: Electric cyan
         imperial: {
-          50: '#faf5ff',
-          100: '#f3e8ff',
-          200: '#e9d5ff',
-          300: '#d8b4fe',
-          400: '#c084fc',
-          500: '#a855f7',  // Main purple
-          600: '#9333ea',
-          700: '#7c3aed',
-          800: '#6b21a8',
-          900: '#581c87',
-          950: '#3b0764',
+          50: '#e8feff',
+          100: '#c8fcff',
+          200: '#9bf9ff',
+          300: '#62f6ff',
+          400: '#25f2ff',
+          500: '#00f5ff',  // Main purple
+          600: '#00d5df',
+          700: '#00aab3',
+          800: '#007e85',
+          900: '#05585d',
+          950: '#013236',
         },
 
         // Falange accent colors
         falange: {
           gold: '#FFD700',
-          amber: '#F59E0B',
+          amber: '#FF8C00',
           bronze: '#CD7F32',
           copper: '#B87333',
-          imperial: '#7C3AED',
-          violet: '#8B5CF6',
+          imperial: '#00F5FF',
+          violet: '#58F7FF',
           blood: '#DC2626',
           crimson: '#B91C1C',
-          emerald: '#10B981',
-          jade: '#059669',
+          emerald: '#FFD700',
+          jade: '#FFB347',
         },
 
         // Trading colors (profit/loss)
         profit: {
-          light: '#34D399',
-          DEFAULT: '#10B981',
-          dark: '#059669',
-          glow: '#10B98140',
+          light: '#ffe39a',
+          DEFAULT: '#FFD700',
+          dark: '#FFB347',
+          glow: '#FFD70040',
         },
         loss: {
           light: '#F87171',
@@ -70,22 +70,31 @@ const config: Config = {
           glow: '#EF444440',
         },
 
-        // Dark theme backgrounds - deeper, more dramatic
+        // Legacy aliases used in component classes
+        neon: {
+          blue: '#00F5FF',
+          green: '#FFD700',
+          yellow: '#FFD700',
+          red: '#FF5A5A',
+          purple: '#58F7FF',
+        },
+
+        // Dark theme backgrounds - obsidian deep space
         dark: {
-          50: '#fafafa',
-          100: '#f4f4f5',
-          200: '#e4e4e7',
-          300: '#d4d4d8',
-          400: '#a1a1aa',
-          500: '#71717a',
-          600: '#52525b',
-          700: '#3f3f46',
-          800: '#27272a',
-          850: '#1f1f23',
-          900: '#18181b',
-          925: '#121214',
-          950: '#09090b',
-          abyss: '#050506',
+          50: '#f6fbff',
+          100: '#e0e4ea',
+          200: '#c7ced8',
+          300: '#aeb8c7',
+          400: '#8d98aa',
+          500: '#687487',
+          600: '#4b5768',
+          700: '#354252',
+          800: '#242f3f',
+          850: '#1c2636',
+          900: '#141d2b',
+          925: '#0f1724',
+          950: '#0a0e17',
+          abyss: '#070b12',
         },
       },
       fontFamily: {
@@ -127,12 +136,12 @@ const config: Config = {
           '100%': { boxShadow: '0 0 20px rgba(255, 215, 0, 0.8), 0 0 40px rgba(255, 215, 0, 0.4)' },
         },
         glowImperial: {
-          '0%': { boxShadow: '0 0 5px rgba(124, 58, 237, 0.4), 0 0 10px rgba(124, 58, 237, 0.2)' },
-          '100%': { boxShadow: '0 0 20px rgba(124, 58, 237, 0.8), 0 0 40px rgba(124, 58, 237, 0.4)' },
+          '0%': { boxShadow: '0 0 5px rgba(0, 245, 255, 0.35), 0 0 10px rgba(0, 245, 255, 0.2)' },
+          '100%': { boxShadow: '0 0 20px rgba(0, 245, 255, 0.7), 0 0 40px rgba(0, 245, 255, 0.35)' },
         },
         glowProfit: {
-          '0%': { boxShadow: '0 0 5px rgba(16, 185, 129, 0.4)' },
-          '100%': { boxShadow: '0 0 20px rgba(16, 185, 129, 0.8)' },
+          '0%': { boxShadow: '0 0 5px rgba(255, 215, 0, 0.4)' },
+          '100%': { boxShadow: '0 0 20px rgba(255, 215, 0, 0.8)' },
         },
         glowLoss: {
           '0%': { boxShadow: '0 0 5px rgba(239, 68, 68, 0.4)' },
@@ -206,20 +215,20 @@ const config: Config = {
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
         'gradient-conic': 'conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))',
-        'gradient-dark': 'linear-gradient(to bottom, #18181b, #09090b)',
-        'gradient-falange': 'linear-gradient(135deg, #F59E0B 0%, #7C3AED 50%, #F59E0B 100%)',
-        'gradient-gold': 'linear-gradient(135deg, #FFD700 0%, #F59E0B 50%, #CD7F32 100%)',
-        'gradient-imperial': 'linear-gradient(135deg, #7C3AED 0%, #A855F7 50%, #7C3AED 100%)',
-        'gradient-warrior': 'linear-gradient(180deg, rgba(245,158,11,0.1) 0%, rgba(124,58,237,0.1) 50%, rgba(9,9,11,1) 100%)',
-        'gradient-card': 'linear-gradient(180deg, rgba(39,39,42,0.8) 0%, rgba(24,24,27,0.9) 100%)',
+        'gradient-dark': 'linear-gradient(to bottom, #141d2b, #0a0e17)',
+        'gradient-falange': 'linear-gradient(135deg, #FF8C00 0%, #00F5FF 50%, #FF8C00 100%)',
+        'gradient-gold': 'linear-gradient(135deg, #FFD700 0%, #FF8C00 50%, #CD7F32 100%)',
+        'gradient-imperial': 'linear-gradient(135deg, #00F5FF 0%, #7DFBFF 50%, #00F5FF 100%)',
+        'gradient-warrior': 'linear-gradient(180deg, rgba(255,140,0,0.12) 0%, rgba(0,245,255,0.12) 50%, rgba(10,14,23,1) 100%)',
+        'gradient-card': 'linear-gradient(180deg, rgba(20,29,43,0.84) 0%, rgba(10,14,23,0.94) 100%)',
         'shimmer-gold': 'linear-gradient(90deg, transparent 0%, rgba(255,215,0,0.3) 50%, transparent 100%)',
       },
       boxShadow: {
         'glow-gold': '0 0 20px rgba(255, 215, 0, 0.3)',
         'glow-gold-lg': '0 0 40px rgba(255, 215, 0, 0.4)',
-        'glow-imperial': '0 0 20px rgba(124, 58, 237, 0.3)',
-        'glow-imperial-lg': '0 0 40px rgba(124, 58, 237, 0.4)',
-        'glow-profit': '0 0 15px rgba(16, 185, 129, 0.4)',
+        'glow-imperial': '0 0 20px rgba(0, 245, 255, 0.34)',
+        'glow-imperial-lg': '0 0 40px rgba(0, 245, 255, 0.4)',
+        'glow-profit': '0 0 15px rgba(255, 215, 0, 0.4)',
         'glow-loss': '0 0 15px rgba(239, 68, 68, 0.4)',
         'inner-gold': 'inset 0 0 20px rgba(255, 215, 0, 0.1)',
         'card': '0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2)',
@@ -234,3 +243,4 @@ const config: Config = {
 }
 
 export default config
+

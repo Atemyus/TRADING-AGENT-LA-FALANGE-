@@ -1070,7 +1070,7 @@ export default function DashboardPage() {
 
             {/* Order History */}
             <motion.div variants={itemVariants}>
-              <OrderHistory orders={orders} />
+              <OrderHistory orders={orders} isDisabled={selectedSlotDisabled} />
             </motion.div>
           </div>
 

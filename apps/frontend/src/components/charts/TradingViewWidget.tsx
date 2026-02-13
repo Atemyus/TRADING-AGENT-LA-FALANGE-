@@ -112,8 +112,8 @@ function TradingViewWidget({
         "STD;RSI",
       ],
       // Custom colors for dark theme
-      backgroundColor: theme === "dark" ? "rgba(15, 23, 42, 1)" : "rgba(255, 255, 255, 1)",
-      gridColor: theme === "dark" ? "rgba(30, 41, 59, 1)" : "rgba(240, 240, 240, 1)",
+      backgroundColor: theme === "dark" ? "rgba(10, 14, 23, 1)" : "rgba(255, 255, 255, 1)",
+      gridColor: theme === "dark" ? "rgba(0, 245, 255, 0.14)" : "rgba(240, 240, 240, 1)",
       // Toolbar settings
       withdateranges: true,
       hide_side_toolbar: !showDrawingTools,

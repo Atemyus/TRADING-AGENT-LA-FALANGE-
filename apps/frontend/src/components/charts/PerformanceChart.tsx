@@ -58,7 +58,9 @@ export function PerformanceChart({
   }
   const totalPnL = data.reduce((sum, d) => sum + d.pnl, 0)
   const isPositive = totalPnL >= 0
-  const trendColor = isPositive ? '#10B981' : '#EF4444'
+  const trendColor = isPositive ? '#FFD700' : '#EF4444'
+  const chartLineColor = '#00F5FF'
+  const chartAreaOpacity = isPositive ? 0.28 : 0.2
   const startBalance = data[0]?.balance || 0
   const endBalance = data[data.length - 1]?.balance || 0
   const percentChange = startBalance > 0 ? ((endBalance - startBalance) / startBalance) * 100 : 0
@@ -104,17 +106,17 @@ export function PerformanceChart({
             <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
               <stop
                 offset="5%"
-                stopColor={trendColor}
-                stopOpacity={0.3}
+                stopColor={chartLineColor}
+                stopOpacity={chartAreaOpacity}
               />
               <stop
                 offset="95%"
-                stopColor={trendColor}
+                stopColor={chartLineColor}
                 stopOpacity={0}
               />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} />
+          <CartesianGrid strokeDasharray="3 3" stroke="#1f3a46" opacity={0.65} />
           <XAxis
             dataKey="date"
             stroke="#64748b"
@@ -131,8 +133,8 @@ export function PerformanceChart({
           />
           <Tooltip
             contentStyle={{
-              backgroundColor: '#1e293b',
-              border: '1px solid #334155',
+              backgroundColor: '#0f1724',
+              border: '1px solid #1f3a46',
               borderRadius: '8px',
               boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
             }}
@@ -142,11 +144,11 @@ export function PerformanceChart({
               name === 'balance' ? 'Balance' : 'P&L',
             ]}
           />
-          <ReferenceLine y={startBalance} stroke="#64748b" strokeDasharray="3 3" />
+          <ReferenceLine y={startBalance} stroke="#ff8c00" strokeDasharray="3 3" />
           <Area
             type="monotone"
             dataKey="balance"
-            stroke={trendColor}
+            stroke={chartLineColor}
             strokeWidth={2}
             fill={`url(#${gradientId})`}
             animationDuration={1500}
