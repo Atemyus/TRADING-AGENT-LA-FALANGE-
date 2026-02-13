@@ -287,10 +287,13 @@ class BrokerAccount(Base):
     # Account identification
     name: Mapped[str] = mapped_column(String(100), nullable=False)  # e.g., "Ultima Markets Demo", "IC Markets Live"
     broker_type: Mapped[str] = mapped_column(String(50), default="metaapi")  # "metaapi", "alpaca", etc.
+    broker_catalog_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    platform_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     # MetaApi credentials
     metaapi_account_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     metaapi_token: Mapped[str | None] = mapped_column(Text, nullable=True)  # Encrypted in production
+    credentials_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Status
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -348,6 +351,21 @@ class BrokerAccount(Base):
     @enabled_models.setter
     def enabled_models(self, value: list[str]):
         self.enabled_models_json = json.dumps(value)
+
+    @property
+    def credentials(self) -> dict[str, str]:
+        if self.credentials_json:
+            try:
+                data = json.loads(self.credentials_json)
+                if isinstance(data, dict):
+                    return {str(k): str(v) for k, v in data.items() if v is not None}
+            except Exception:
+                pass
+        return {}
+
+    @credentials.setter
+    def credentials(self, value: dict[str, str]):
+        self.credentials_json = json.dumps(value or {})
 
     def __repr__(self) -> str:
         return f"<BrokerAccount(id={self.id}, name={self.name}, enabled={self.is_enabled})>"

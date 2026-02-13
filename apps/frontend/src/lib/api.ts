@@ -719,8 +719,11 @@ export interface BrokerAccountData {
   slot_index?: number
   name: string
   broker_type: string
+  broker_catalog_id?: string
+  platform_id?: string
   metaapi_account_id?: string
   metaapi_token?: string
+  credentials?: Record<string, string>
   is_enabled: boolean
   is_connected: boolean
   last_connected_at?: string
@@ -744,9 +747,12 @@ export interface BrokerAccountData {
 export interface BrokerAccountCreate {
   name: string
   broker_type?: string
+  broker_catalog_id?: string
+  platform_id?: string
   slot_index?: number
   metaapi_account_id?: string
   metaapi_token?: string
+  credentials?: Record<string, string>
   is_enabled?: boolean
   symbols?: string[]
   risk_per_trade_percent?: number

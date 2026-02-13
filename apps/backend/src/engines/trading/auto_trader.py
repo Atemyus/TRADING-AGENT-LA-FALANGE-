@@ -140,6 +140,7 @@ class BotConfig:
     broker_type: str | None = None
     metaapi_token: str | None = None
     metaapi_account_id: str | None = None
+    broker_credentials: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -411,18 +412,29 @@ class AutoTrader:
 
             # Initialize broker
             print("[AutoTrader] Initializing broker connection...")
-            # Use config credentials if available (multi-broker support)
-            # Otherwise fall back to environment variables
-            if self.config.metaapi_token and self.config.metaapi_account_id:
-                print(f"[AutoTrader] Using broker credentials from config (account: ...{self.config.metaapi_account_id[-4:] if self.config.metaapi_account_id else 'N/A'})")
+            broker_type = self.config.broker_type or "metatrader"
+            broker_kwargs = dict(self.config.broker_credentials or {})
+
+            # Backward compatibility for legacy per-broker MetaApi fields.
+            if (
+                not broker_kwargs
+                and self.config.metaapi_token
+                and self.config.metaapi_account_id
+            ):
+                broker_kwargs = {
+                    "access_token": self.config.metaapi_token,
+                    "account_id": self.config.metaapi_account_id,
+                }
+
+            if broker_kwargs:
+                print(f"[AutoTrader] Using broker credentials from config ({broker_type})")
                 self.broker = BrokerFactory.create(
-                    broker_type=self.config.broker_type or "metatrader",
-                    access_token=self.config.metaapi_token,
-                    account_id=self.config.metaapi_account_id,
+                    broker_type=broker_type,
+                    **broker_kwargs,
                 )
             else:
                 print("[AutoTrader] Using broker credentials from environment variables")
-                self.broker = BrokerFactory.create()
+                self.broker = BrokerFactory.create(broker_type=broker_type)
             await self.broker.connect()
             print("[AutoTrader] Broker connected")
 

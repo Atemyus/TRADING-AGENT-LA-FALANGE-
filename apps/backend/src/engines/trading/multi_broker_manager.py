@@ -8,17 +8,21 @@ Each broker account runs independently with its own:
 """
 
 import asyncio
-import os
 from dataclasses import dataclass
 from datetime import datetime
 
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.config import settings
 from src.core.models import BrokerAccount
 from src.engines.trading.auto_trader import AnalysisMode, AutoTrader, BotConfig, BotStatus
 from src.engines.trading.broker_factory import BrokerFactory, NoBrokerConfiguredError
+from src.services.broker_credentials_service import (
+    normalize_credentials,
+    resolve_metaapi_runtime_credentials,
+    resolve_oanda_runtime_credentials,
+)
 
 
 @dataclass
@@ -33,8 +37,7 @@ class BrokerInstance:
     broker_name: str
     broker_type: str
     symbols: list[str]
-    metaapi_token: str
-    metaapi_account_id: str
+    runtime_credentials: dict[str, str]
 
     # AutoTrader instance
     trader: AutoTrader
@@ -81,10 +84,6 @@ class MultiBrokerManager:
             trader = AutoTrader()
             config = self._create_config_from_account(broker_account)
             trader.configure(config)
-            fallback_token = os.environ.get("METAAPI_ACCESS_TOKEN") or settings.METAAPI_ACCESS_TOKEN
-            fallback_account_id = os.environ.get("METAAPI_ACCOUNT_ID") or settings.METAAPI_ACCOUNT_ID
-            effective_metaapi_token = broker_account.metaapi_token or fallback_token
-            effective_metaapi_account_id = broker_account.metaapi_account_id or fallback_account_id
 
             # Copy plain data from SQLAlchemy object (avoids DetachedInstanceError)
             instance = BrokerInstance(
@@ -92,8 +91,7 @@ class MultiBrokerManager:
                 broker_name=broker_account.name,
                 broker_type=broker_account.broker_type,
                 symbols=list(broker_account.symbols),  # Copy the list
-                metaapi_token=effective_metaapi_token or "",
-                metaapi_account_id=effective_metaapi_account_id or "",
+                runtime_credentials=dict(config.broker_credentials or {}),
                 trader=trader,
                 status="initialized"
             )
@@ -101,13 +99,39 @@ class MultiBrokerManager:
             self._instances[broker_account.id] = instance
             return instance
 
+    def _extract_runtime_credentials(self, account: BrokerAccount) -> dict[str, str]:
+        broker_type = (account.broker_type or "metaapi").lower()
+        credentials = normalize_credentials(account.credentials)
+
+        if broker_type in {"metaapi", "metatrader", "mt4", "mt5"}:
+            runtime: dict[str, str] = {}
+            metaapi_token = (account.metaapi_token or credentials.get("metaapi_token") or "").strip()
+            metaapi_account_id = (account.metaapi_account_id or credentials.get("metaapi_account_id") or "").strip()
+            if metaapi_token:
+                runtime["access_token"] = metaapi_token
+            if metaapi_account_id:
+                runtime["account_id"] = metaapi_account_id
+            if account.platform_id:
+                runtime["platform"] = account.platform_id
+            return runtime
+
+        if broker_type == "oanda":
+            runtime: dict[str, str] = {}
+            api_key = (credentials.get("oanda_api_key") or credentials.get("api_key") or "").strip()
+            account_id = (credentials.get("oanda_account_id") or credentials.get("account_id") or "").strip()
+            environment = (credentials.get("oanda_environment") or credentials.get("environment") or "practice").strip()
+            if api_key:
+                runtime["api_key"] = api_key
+            if account_id:
+                runtime["account_id"] = account_id
+            runtime["environment"] = environment or "practice"
+            return runtime
+
+        return credentials
+
     def _create_config_from_account(self, account: BrokerAccount) -> BotConfig:
         """Create BotConfig from BrokerAccount database model."""
-        # Account-specific credentials override global broker settings.
-        fallback_token = os.environ.get("METAAPI_ACCESS_TOKEN") or settings.METAAPI_ACCESS_TOKEN
-        fallback_account_id = os.environ.get("METAAPI_ACCOUNT_ID") or settings.METAAPI_ACCOUNT_ID
-        effective_metaapi_token = account.metaapi_token or fallback_token
-        effective_metaapi_account_id = account.metaapi_account_id or fallback_account_id
+        runtime_credentials = self._extract_runtime_credentials(account)
 
         # Parse analysis mode
         try:
@@ -131,8 +155,9 @@ class MultiBrokerManager:
             enabled_models=account.enabled_models,
             # Broker credentials - CRITICAL for multi-broker isolation
             broker_type=account.broker_type,
-            metaapi_token=effective_metaapi_token,
-            metaapi_account_id=effective_metaapi_account_id,
+            metaapi_token=runtime_credentials.get("access_token"),
+            metaapi_account_id=runtime_credentials.get("account_id"),
+            broker_credentials=runtime_credentials,
         )
 
     async def start_broker(self, broker_id: int, db: AsyncSession) -> dict:
@@ -153,35 +178,46 @@ class MultiBrokerManager:
         if not broker_account.is_enabled:
             return {"status": "error", "message": "Broker is disabled"}
 
-        fallback_token = os.environ.get("METAAPI_ACCESS_TOKEN") or settings.METAAPI_ACCESS_TOKEN
-        fallback_account_id = os.environ.get("METAAPI_ACCOUNT_ID") or settings.METAAPI_ACCOUNT_ID
-        effective_metaapi_token = broker_account.metaapi_token or fallback_token
-        effective_metaapi_account_id = broker_account.metaapi_account_id or fallback_account_id
-
-        if not effective_metaapi_token or not effective_metaapi_account_id:
-            return {
-                "status": "error",
-                "message": "MetaApi credentials not configured. Set account ID on the broker or global MetaApi settings.",
-            }
+        broker_type = (broker_account.broker_type or "metaapi").lower()
+        runtime_credentials: dict[str, str] = {}
+        try:
+            if broker_type in {"metaapi", "metatrader", "mt4", "mt5"}:
+                runtime_credentials = await resolve_metaapi_runtime_credentials(broker_account)
+            elif broker_type == "oanda":
+                runtime_credentials = resolve_oanda_runtime_credentials(broker_account)
+            else:
+                runtime_credentials = normalize_credentials(broker_account.credentials)
+        except HTTPException as exc:
+            return {"status": "error", "message": str(exc.detail)}
+        except Exception as exc:
+            return {"status": "error", "message": f"Credential resolution failed: {exc}"}
 
         # Initialize if not exists, OR refresh config if exists
         if broker_id in self._instances:
             # Instance exists - refresh config from DB before starting
             instance = self._instances[broker_id]
             new_config = self._create_config_from_account(broker_account)
+            if runtime_credentials:
+                new_config.broker_credentials = dict(runtime_credentials)
+                new_config.metaapi_token = runtime_credentials.get("access_token")
+                new_config.metaapi_account_id = runtime_credentials.get("account_id")
             instance.trader.configure(new_config)
 
             # Update plain data fields
             instance.broker_name = broker_account.name
             instance.broker_type = broker_account.broker_type
             instance.symbols = list(broker_account.symbols)
-            instance.metaapi_token = effective_metaapi_token or ""
-            instance.metaapi_account_id = effective_metaapi_account_id or ""
+            instance.runtime_credentials = dict(runtime_credentials)
 
             print(f"[MultiBrokerManager] Refreshed config for broker '{broker_account.name}' - enabled_models: {new_config.enabled_models}")
         else:
             # New instance
             instance = await self.initialize_broker(broker_account)
+            if runtime_credentials:
+                instance.runtime_credentials = dict(runtime_credentials)
+                instance.trader.config.broker_credentials = dict(runtime_credentials)
+                instance.trader.config.metaapi_token = runtime_credentials.get("access_token")
+                instance.trader.config.metaapi_account_id = runtime_credentials.get("account_id")
 
         # Check if already running
         if instance.trader.state.status == BotStatus.RUNNING:
@@ -190,7 +226,8 @@ class MultiBrokerManager:
         try:
             # Credentials are now passed via BotConfig - no need to set env vars!
             # This ensures each broker instance uses its OWN credentials
-            print(f"[MultiBrokerManager] Starting broker '{broker_account.name}' with account ...{effective_metaapi_account_id[-4:] if effective_metaapi_account_id else 'N/A'}")
+            runtime_account_id = runtime_credentials.get("account_id")
+            print(f"[MultiBrokerManager] Starting broker '{broker_account.name}' with account ...{runtime_account_id[-4:] if runtime_account_id else 'N/A'}")
             print(f"[MultiBrokerManager] Enabled models: {instance.trader.config.enabled_models}")
 
             # Start the trader
@@ -381,16 +418,50 @@ class MultiBrokerManager:
             except Exception:
                 instance.trader.broker = None
 
-        fallback_token = os.environ.get("METAAPI_ACCESS_TOKEN") or settings.METAAPI_ACCESS_TOKEN
-        fallback_account_id = os.environ.get("METAAPI_ACCOUNT_ID") or settings.METAAPI_ACCOUNT_ID
-        broker_access_token = instance.metaapi_token or fallback_token
-        broker_account_id = instance.metaapi_account_id or fallback_account_id
+        broker_type = (instance.broker_type or "metaapi").lower()
+        runtime_credentials = dict(instance.runtime_credentials or {})
+        if broker_account is not None:
+            try:
+                if broker_type in {"metaapi", "metatrader", "mt4", "mt5"}:
+                    runtime_credentials = await resolve_metaapi_runtime_credentials(broker_account)
+                elif broker_type == "oanda":
+                    runtime_credentials = resolve_oanda_runtime_credentials(broker_account)
+                else:
+                    runtime_credentials = normalize_credentials(broker_account.credentials)
+                instance.runtime_credentials = dict(runtime_credentials)
+            except HTTPException:
+                return None
+            except Exception:
+                return None
+
+        broker_kwargs: dict[str, str] = {}
+        if broker_type in {"metaapi", "metatrader", "mt4", "mt5"}:
+            access_token = runtime_credentials.get("access_token")
+            account_id = runtime_credentials.get("account_id")
+            if not access_token or not account_id:
+                return None
+            broker_kwargs = {
+                "access_token": access_token,
+                "account_id": account_id,
+            }
+        elif broker_type == "oanda":
+            api_key = runtime_credentials.get("api_key")
+            account_id = runtime_credentials.get("account_id")
+            environment = runtime_credentials.get("environment") or "practice"
+            if not api_key or not account_id:
+                return None
+            broker_kwargs = {
+                "api_key": api_key,
+                "account_id": account_id,
+                "environment": environment,
+            }
+        else:
+            broker_kwargs = runtime_credentials
 
         try:
             broker = BrokerFactory.create(
                 broker_type=instance.broker_type,
-                access_token=broker_access_token,
-                account_id=broker_account_id,
+                **broker_kwargs,
             )
         except (NoBrokerConfiguredError, NotImplementedError):
             return None
@@ -528,18 +599,18 @@ class MultiBrokerManager:
 
         instance = self._instances[broker_id]
         new_config = self._create_config_from_account(broker_account)
+        runtime_credentials = self._extract_runtime_credentials(broker_account)
+        if runtime_credentials:
+            new_config.broker_credentials = dict(runtime_credentials)
+            new_config.metaapi_token = runtime_credentials.get("access_token")
+            new_config.metaapi_account_id = runtime_credentials.get("account_id")
         instance.trader.configure(new_config)
 
         # Update plain data fields (avoids DetachedInstanceError)
-        fallback_account_id = os.environ.get("METAAPI_ACCOUNT_ID") or settings.METAAPI_ACCOUNT_ID
-        effective_metaapi_account_id = broker_account.metaapi_account_id or fallback_account_id
-        fallback_token = os.environ.get("METAAPI_ACCESS_TOKEN") or settings.METAAPI_ACCESS_TOKEN
-        effective_metaapi_token = broker_account.metaapi_token or fallback_token
         instance.broker_name = broker_account.name
         instance.broker_type = broker_account.broker_type
         instance.symbols = list(broker_account.symbols)
-        instance.metaapi_token = effective_metaapi_token or ""
-        instance.metaapi_account_id = effective_metaapi_account_id or ""
+        instance.runtime_credentials = dict(runtime_credentials)
 
         return {
             "status": "success",

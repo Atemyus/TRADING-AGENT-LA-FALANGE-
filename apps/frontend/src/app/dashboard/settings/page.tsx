@@ -25,6 +25,13 @@ import {
   Users,
 } from 'lucide-react'
 import { settingsApi, brokerAccountsApi, type BrokerAccountData, type BrokerAccountCreate } from '@/lib/api'
+import {
+  BROKER_DIRECTORY,
+  getBrokerTypeByPlatform,
+  inferBrokerFromAccountName,
+  inferPlatformFromAccountName,
+  getClearbitLogoUrl,
+} from '@/lib/brokerCatalog'
 import { useAuth } from '@/contexts/AuthContext'
 
 // Reusable Toggle Component
@@ -63,14 +70,16 @@ function Toggle({
 function BrokerLogo({
   name,
   domain,
+  logoUrl,
   className = 'h-9 w-9',
 }: {
   name: string
   domain?: string
+  logoUrl?: string
   className?: string
 }) {
   const [failed, setFailed] = useState(false)
-  const logoSrc = domain ? getClearbitLogoUrl(domain) : ''
+  const logoSrc = logoUrl || (domain ? getClearbitLogoUrl(domain) : '')
 
   if (!logoSrc || failed) {
     return (
@@ -89,261 +98,6 @@ function BrokerLogo({
       loading="lazy"
     />
   )
-}
-
-type PlatformCredentialTemplate = {
-  primaryLabel: string
-  primaryPlaceholder: string
-  primaryHelp: string
-  secretLabel: string
-  secretPlaceholder: string
-  secretHelp: string
-}
-
-type BrokerPlatform = {
-  id: string
-  label: string
-  logoDomain: string
-  credentials: PlatformCredentialTemplate
-}
-
-type BrokerDirectoryEntry = {
-  id: string
-  name: string
-  kind: 'broker' | 'prop'
-  logoDomain: string
-  platforms: BrokerPlatform[]
-}
-
-const PLATFORM_DIRECTORY: Record<string, BrokerPlatform> = {
-  mt4: {
-    id: 'mt4',
-    label: 'MetaTrader 4',
-    logoDomain: 'metatrader4.com',
-    credentials: {
-      primaryLabel: 'Trading Account ID',
-      primaryPlaceholder: 'MT4 account identifier',
-      primaryHelp: 'Use the account ID assigned by your broker/prop.',
-      secretLabel: 'Investor/API Password or Token',
-      secretPlaceholder: 'Password or broker token',
-      secretHelp: 'Optional here if you already configured a global token in backend.',
-    },
-  },
-  mt5: {
-    id: 'mt5',
-    label: 'MetaTrader 5',
-    logoDomain: 'metatrader5.com',
-    credentials: {
-      primaryLabel: 'Trading Account ID',
-      primaryPlaceholder: 'MT5 account identifier',
-      primaryHelp: 'Use the account ID assigned by your broker/prop.',
-      secretLabel: 'Investor/API Password or Token',
-      secretPlaceholder: 'Password or broker token',
-      secretHelp: 'Optional here if you already configured a global token in backend.',
-    },
-  },
-  ctrader: {
-    id: 'ctrader',
-    label: 'cTrader',
-    logoDomain: 'ctrader.com',
-    credentials: {
-      primaryLabel: 'cTrader Account ID',
-      primaryPlaceholder: 'cTrader account identifier',
-      primaryHelp: 'Insert the account/workspace ID used by cTrader.',
-      secretLabel: 'cTrader Access Token',
-      secretPlaceholder: 'Paste cTrader token/secret',
-      secretHelp: 'Use your platform token, if provided by broker/prop.',
-    },
-  },
-  tradingview: {
-    id: 'tradingview',
-    label: 'TradingView',
-    logoDomain: 'tradingview.com',
-    credentials: {
-      primaryLabel: 'TradingView Workspace/User',
-      primaryPlaceholder: 'TradingView username or workspace id',
-      primaryHelp: 'Used to map this account to your TradingView workspace.',
-      secretLabel: 'TradingView Session/API Token',
-      secretPlaceholder: 'Session token or connector key',
-      secretHelp: 'Use token from your bridge/connector provider.',
-    },
-  },
-  matchtrader: {
-    id: 'matchtrader',
-    label: 'Match-Trader',
-    logoDomain: 'match-trader.com',
-    credentials: {
-      primaryLabel: 'Match-Trader Account ID',
-      primaryPlaceholder: 'Account identifier',
-      primaryHelp: 'Insert the account ID for your Match-Trader profile.',
-      secretLabel: 'Match-Trader Token/Password',
-      secretPlaceholder: 'API key or password',
-      secretHelp: 'Use your Match-Trader credential/token.',
-    },
-  },
-  tradelocker: {
-    id: 'tradelocker',
-    label: 'TradeLocker',
-    logoDomain: 'tradelocker.com',
-    credentials: {
-      primaryLabel: 'TradeLocker Account ID',
-      primaryPlaceholder: 'Account identifier',
-      primaryHelp: 'Insert the account ID for your TradeLocker account.',
-      secretLabel: 'TradeLocker Token/Password',
-      secretPlaceholder: 'API key or password',
-      secretHelp: 'Use your TradeLocker credential/token.',
-    },
-  },
-  dxtrade: {
-    id: 'dxtrade',
-    label: 'DXtrade',
-    logoDomain: 'dx.trade',
-    credentials: {
-      primaryLabel: 'DXtrade Account ID',
-      primaryPlaceholder: 'DXtrade account identifier',
-      primaryHelp: 'Insert the DXtrade account number.',
-      secretLabel: 'DXtrade Token/Password',
-      secretPlaceholder: 'API key or password',
-      secretHelp: 'Use your DXtrade credential/token.',
-    },
-  },
-  thinktrader: {
-    id: 'thinktrader',
-    label: 'ThinkTrader',
-    logoDomain: 'thinktrader.com',
-    credentials: {
-      primaryLabel: 'ThinkTrader Account ID',
-      primaryPlaceholder: 'ThinkTrader account ID',
-      primaryHelp: 'Insert the account linked to ThinkTrader.',
-      secretLabel: 'ThinkTrader Token/Password',
-      secretPlaceholder: 'API key or password',
-      secretHelp: 'Use the credential issued by ThinkMarkets/prop.',
-    },
-  },
-  oanda_api: {
-    id: 'oanda_api',
-    label: 'OANDA API',
-    logoDomain: 'oanda.com',
-    credentials: {
-      primaryLabel: 'OANDA Account ID',
-      primaryPlaceholder: '101-XXX-XXXXXXXX-XXX',
-      primaryHelp: 'Use your OANDA account ID.',
-      secretLabel: 'OANDA API Key',
-      secretPlaceholder: 'Paste your OANDA API key',
-      secretHelp: 'Generate key from OANDA account dashboard.',
-    },
-  },
-  ig_api: {
-    id: 'ig_api',
-    label: 'IG API',
-    logoDomain: 'ig.com',
-    credentials: {
-      primaryLabel: 'IG Account ID',
-      primaryPlaceholder: 'IG account identifier',
-      primaryHelp: 'Use your IG account ID.',
-      secretLabel: 'IG API Key',
-      secretPlaceholder: 'Paste your IG API key',
-      secretHelp: 'Generate key from IG developer portal.',
-    },
-  },
-  alpaca_api: {
-    id: 'alpaca_api',
-    label: 'Alpaca API',
-    logoDomain: 'alpaca.markets',
-    credentials: {
-      primaryLabel: 'Alpaca Account/Key ID',
-      primaryPlaceholder: 'Alpaca account or key id',
-      primaryHelp: 'Insert your Alpaca account/key identifier.',
-      secretLabel: 'Alpaca Secret Key',
-      secretPlaceholder: 'Paste Alpaca secret key',
-      secretHelp: 'Generate credentials from Alpaca dashboard.',
-    },
-  },
-  ib_api: {
-    id: 'ib_api',
-    label: 'Interactive Brokers API',
-    logoDomain: 'interactivebrokers.com',
-    credentials: {
-      primaryLabel: 'IB Account ID',
-      primaryPlaceholder: 'Interactive Brokers account ID',
-      primaryHelp: 'Insert IB account or gateway account id.',
-      secretLabel: 'IB API Secret / Session Token',
-      secretPlaceholder: 'IB token or session secret',
-      secretHelp: 'Use credentials generated from your IB integration.',
-    },
-  },
-}
-
-const platformsFor = (...platformIds: string[]) =>
-  platformIds
-    .map((id) => PLATFORM_DIRECTORY[id])
-    .filter((platform): platform is BrokerPlatform => Boolean(platform))
-
-const BROKER_DIRECTORY: BrokerDirectoryEntry[] = [
-  { id: 'ic_markets', name: 'IC Markets', kind: 'broker', logoDomain: 'icmarkets.com', platforms: platformsFor('mt4', 'mt5', 'ctrader') },
-  { id: 'pepperstone', name: 'Pepperstone', kind: 'broker', logoDomain: 'pepperstone.com', platforms: platformsFor('mt4', 'mt5', 'ctrader', 'tradingview') },
-  { id: 'roboforex', name: 'RoboForex', kind: 'broker', logoDomain: 'roboforex.com', platforms: platformsFor('mt4', 'mt5', 'ctrader') },
-  { id: 'xm', name: 'XM', kind: 'broker', logoDomain: 'xm.com', platforms: platformsFor('mt4', 'mt5') },
-  { id: 'exness', name: 'Exness', kind: 'broker', logoDomain: 'exness.com', platforms: platformsFor('mt4', 'mt5') },
-  { id: 'vantage', name: 'Vantage', kind: 'broker', logoDomain: 'vantagemarkets.com', platforms: platformsFor('mt4', 'mt5') },
-  { id: 'tickmill', name: 'Tickmill', kind: 'broker', logoDomain: 'tickmill.com', platforms: platformsFor('mt4', 'mt5') },
-  { id: 'fp_markets', name: 'FP Markets', kind: 'broker', logoDomain: 'fpmarkets.com', platforms: platformsFor('mt4', 'mt5', 'ctrader') },
-  { id: 'eightcap', name: 'Eightcap', kind: 'broker', logoDomain: 'eightcap.com', platforms: platformsFor('mt4', 'mt5', 'tradingview') },
-  { id: 'blackbull', name: 'BlackBull Markets', kind: 'broker', logoDomain: 'blackbull.com', platforms: platformsFor('mt4', 'mt5', 'ctrader') },
-  { id: 'thinkmarkets', name: 'ThinkMarkets', kind: 'broker', logoDomain: 'thinkmarkets.com', platforms: platformsFor('mt4', 'mt5', 'thinktrader') },
-  { id: 'admirals', name: 'Admirals', kind: 'broker', logoDomain: 'admiralmarkets.com', platforms: platformsFor('mt4', 'mt5') },
-  { id: 'oanda', name: 'OANDA', kind: 'broker', logoDomain: 'oanda.com', platforms: platformsFor('oanda_api', 'mt5') },
-  { id: 'ig', name: 'IG', kind: 'broker', logoDomain: 'ig.com', platforms: platformsFor('ig_api', 'mt4') },
-  { id: 'interactive_brokers', name: 'Interactive Brokers', kind: 'broker', logoDomain: 'interactivebrokers.com', platforms: platformsFor('ib_api') },
-  { id: 'alpaca', name: 'Alpaca', kind: 'broker', logoDomain: 'alpaca.markets', platforms: platformsFor('alpaca_api') },
-  { id: 'xtb', name: 'XTB', kind: 'broker', logoDomain: 'xtb.com', platforms: platformsFor('mt5') },
-  { id: 'forex_com', name: 'Forex.com', kind: 'broker', logoDomain: 'forex.com', platforms: platformsFor('mt5', 'tradingview') },
-  { id: 'cmc_markets', name: 'CMC Markets', kind: 'broker', logoDomain: 'cmcmarkets.com', platforms: platformsFor('tradingview') },
-  { id: 'swissquote', name: 'Swissquote', kind: 'broker', logoDomain: 'swissquote.com', platforms: platformsFor('mt4', 'mt5') },
-  { id: 'trade_station', name: 'TradeStation', kind: 'broker', logoDomain: 'tradestation.com', platforms: platformsFor('tradingview') },
-  { id: 'darwinex', name: 'Darwinex', kind: 'broker', logoDomain: 'darwinex.com', platforms: platformsFor('mt4', 'mt5') },
-  { id: 'topstepx', name: 'TopstepX', kind: 'broker', logoDomain: 'topstep.com', platforms: platformsFor('tradingview') },
-  { id: 'ftmo', name: 'FTMO', kind: 'prop', logoDomain: 'ftmo.com', platforms: platformsFor('mt4', 'mt5', 'dxtrade') },
-  { id: 'fundednext', name: 'FundedNext', kind: 'prop', logoDomain: 'fundednext.com', platforms: platformsFor('mt4', 'mt5', 'ctrader') },
-  { id: 'the5ers', name: 'The5ers', kind: 'prop', logoDomain: 'the5ers.com', platforms: platformsFor('mt5') },
-  { id: 'my_funded_fx', name: 'MyFundedFX', kind: 'prop', logoDomain: 'myfundedfx.com', platforms: platformsFor('mt5', 'matchtrader') },
-  { id: 'funded_trading_plus', name: 'Funded Trading Plus', kind: 'prop', logoDomain: 'fundedtradingplus.com', platforms: platformsFor('mt4', 'mt5', 'tradelocker') },
-  { id: 'e8_markets', name: 'E8 Markets', kind: 'prop', logoDomain: 'e8markets.com', platforms: platformsFor('mt5', 'matchtrader') },
-  { id: 'alpha_capital_group', name: 'Alpha Capital Group', kind: 'prop', logoDomain: 'alphacapitalgroup.uk', platforms: platformsFor('mt5') },
-  { id: 'true_forex_funds', name: 'True Forex Funds', kind: 'prop', logoDomain: 'trueforexfunds.com', platforms: platformsFor('mt4', 'mt5') },
-  { id: 'funded_peaks', name: 'Funded Peaks', kind: 'prop', logoDomain: 'fundedpeaks.com', platforms: platformsFor('mt5') },
-  { id: 'instant_funding', name: 'Instant Funding', kind: 'prop', logoDomain: 'instantfunding.io', platforms: platformsFor('mt5', 'tradelocker') },
-]
-
-const getClearbitLogoUrl = (domain: string) => `https://logo.clearbit.com/${domain}`
-
-const inferBrokerFromAccountName = (name: string): BrokerDirectoryEntry | null => {
-  const value = name.toLowerCase()
-  for (const broker of BROKER_DIRECTORY) {
-    if (value.includes(broker.name.toLowerCase()) || value.includes(broker.id.replace(/_/g, ' '))) {
-      return broker
-    }
-  }
-  return null
-}
-
-const inferPlatformFromAccountName = (name: string, broker: BrokerDirectoryEntry | null): string | null => {
-  if (!broker) return null
-  const value = name.toLowerCase()
-  for (const platform of broker.platforms) {
-    if (value.includes(platform.label.toLowerCase()) || value.includes(platform.id.toLowerCase())) {
-      return platform.id
-    }
-  }
-  return null
-}
-
-const getBrokerTypeByPlatform = (platformId: string): string => {
-  if (platformId === 'oanda_api') return 'oanda'
-  if (platformId === 'ig_api') return 'ig'
-  if (platformId === 'alpaca_api') return 'alpaca'
-  if (platformId === 'ib_api') return 'interactive_brokers'
-  return 'metaapi'
 }
 
 // AI Provider configurations
@@ -369,6 +123,27 @@ const AI_PROVIDERS = [
 ]
 
 type SettingsSection = 'accounts' | 'ai' | 'risk' | 'notifications'
+
+const DEFAULT_BROKER_SYMBOLS = ['EUR/USD', 'XAU/USD']
+const DEFAULT_ENABLED_MODELS = ['chatgpt', 'gemini', 'grok', 'qwen', 'llama', 'ernie', 'kimi', 'mistral']
+
+const createDefaultBrokerFormData = (): BrokerAccountCreate => ({
+  name: '',
+  broker_type: 'metaapi',
+  is_enabled: true,
+  symbols: [...DEFAULT_BROKER_SYMBOLS],
+  risk_per_trade_percent: 1.0,
+  max_open_positions: 3,
+  max_daily_trades: 10,
+  max_daily_loss_percent: 5.0,
+  analysis_mode: 'standard',
+  analysis_interval_seconds: 300,
+  min_confidence: 75.0,
+  min_models_agree: 4,
+  enabled_models: [...DEFAULT_ENABLED_MODELS],
+  trading_start_hour: 7,
+  trading_end_hour: 21,
+})
 
 export default function SettingsPage() {
   const [activeSection, setActiveSection] = useState<SettingsSection>('accounts')
@@ -1005,24 +780,9 @@ function BrokerAccountsSettings() {
   const [actionLoading, setActionLoading] = useState<Record<number, string>>({})
 
   // Form state
-  const [formData, setFormData] = useState<BrokerAccountCreate>({
-    name: '',
-    broker_type: 'metaapi',
-    metaapi_account_id: '',
-    metaapi_token: '',
-    is_enabled: true,
-    symbols: ['EUR/USD', 'XAU/USD'],
-    risk_per_trade_percent: 1.0,
-    max_open_positions: 3,
-    analysis_mode: 'standard',
-    analysis_interval_seconds: 300,
-    min_confidence: 75.0,
-    min_models_agree: 4,
-    enabled_models: ['chatgpt', 'gemini', 'grok', 'qwen', 'llama', 'ernie', 'kimi', 'mistral'],
-    trading_start_hour: 7,
-    trading_end_hour: 21,
-  })
-  const [showToken, setShowToken] = useState(false)
+  const [formData, setFormData] = useState<BrokerAccountCreate>(createDefaultBrokerFormData())
+  const [platformCredentials, setPlatformCredentials] = useState<Record<string, string>>({})
+  const [secretVisibility, setSecretVisibility] = useState<Record<string, boolean>>({})
   const [catalogQuery, setCatalogQuery] = useState('')
   const [selectedCatalogBrokerId, setSelectedCatalogBrokerId] = useState(BROKER_DIRECTORY[0]?.id || '')
   const [selectedPlatformId, setSelectedPlatformId] = useState(BROKER_DIRECTORY[0]?.platforms[0]?.id || '')
@@ -1057,6 +817,20 @@ function BrokerAccountsSettings() {
     }
   }, [selectedCatalogBroker, selectedPlatformId])
 
+  useEffect(() => {
+    if (!selectedPlatform) return
+    const validKeys = new Set(selectedPlatform.credentials.map((field) => field.key))
+    setPlatformCredentials((previous) => {
+      const next: Record<string, string> = {}
+      for (const [key, value] of Object.entries(previous)) {
+        if (validKeys.has(key)) {
+          next[key] = value
+        }
+      }
+      return next
+    })
+  }, [selectedPlatform])
+
   const maxSlots = user?.is_superuser ? Math.max(10, accounts.length) : Math.max(1, user?.license_broker_slots || 1)
   const takenSlots = new Set(accounts.map((a) => a.slot_index).filter((s): s is number => typeof s === 'number' && s > 0))
   const usedSlots = takenSlots.size
@@ -1070,22 +844,72 @@ function BrokerAccountsSettings() {
     })
   }
 
-  const buildAccountPayload = () => {
-    const metaapiAccountId = (formData.metaapi_account_id || '').trim()
-    const metaapiToken = (formData.metaapi_token || '').trim()
-    const generatedName = `${selectedCatalogBroker?.name || 'Broker'} ${selectedPlatform?.label || ''}`.trim()
+  const resetBrokerForm = () => {
+    setFormData(createDefaultBrokerFormData())
+    setPlatformCredentials({})
+    setSecretVisibility({})
+    setCatalogQuery('')
+    setSelectedCatalogBrokerId(BROKER_DIRECTORY[0]?.id || '')
+    setSelectedPlatformId(BROKER_DIRECTORY[0]?.platforms[0]?.id || '')
+  }
 
-    if (!metaapiAccountId) {
-      setError(selectedPlatform?.credentials.primaryHelp || 'Primary account credential is required.')
+  const platformIdFromBrokerType = (brokerType: string) => {
+    if (brokerType === 'oanda') return 'oanda_api'
+    if (brokerType === 'ig') return 'ig_api'
+    if (brokerType === 'alpaca') return 'alpaca_api'
+    if (brokerType === 'interactive_brokers') return 'ib_api'
+    if (brokerType === 'mt4') return 'mt4'
+    if (brokerType === 'mt5') return 'mt5'
+    return null
+  }
+
+  const buildAccountPayload = () => {
+    setError(null)
+    if (!selectedCatalogBroker || !selectedPlatform) {
+      setError('Select a broker and a platform first.')
       return null
     }
 
+    const normalizedCredentials = Object.fromEntries(
+      Object.entries(platformCredentials)
+        .map(([key, value]) => [key, (value || '').trim()])
+        .filter(([, value]) => value.length > 0),
+    )
+
+    const isMetaTraderPlatform = selectedPlatform.id === 'mt4' || selectedPlatform.id === 'mt5'
+    const mtCredentialKeys = ['account_number', 'account_password', 'server_name']
+    const hasAnyMtCredential = mtCredentialKeys.some((key) => Boolean(normalizedCredentials[key]))
+    const hasAllMtCredentials = mtCredentialKeys.every((key) => Boolean(normalizedCredentials[key]))
+    const hasLegacyMetaApiId = Boolean((editingAccount?.metaapi_account_id || '').trim())
+
+    const missingFields = selectedPlatform.credentials.filter((field) => {
+      if (field.required === false) return false
+      if (normalizedCredentials[field.key]) return false
+      if (isMetaTraderPlatform && hasLegacyMetaApiId && !hasAnyMtCredential) return false
+      return true
+    })
+
+    if (isMetaTraderPlatform && hasAnyMtCredential && !hasAllMtCredentials) {
+      setError('For MT4/MT5 complete all fields: Account Number, Password, Server Name.')
+      return null
+    }
+
+    if (missingFields.length > 0) {
+      setError(`Missing required fields: ${missingFields.map((field) => field.label).join(', ')}`)
+      return null
+    }
+
+    const generatedName = `${selectedCatalogBroker?.name || 'Broker'} ${selectedPlatform?.label || ''}`.trim()
+
     return {
       ...formData,
-      broker_type: getBrokerTypeByPlatform(selectedPlatformId),
+      broker_type: getBrokerTypeByPlatform(selectedPlatform.id),
+      broker_catalog_id: selectedCatalogBroker.id,
+      platform_id: selectedPlatform.id,
       name: (formData.name || '').trim() || generatedName,
-      metaapi_account_id: metaapiAccountId,
-      metaapi_token: metaapiToken || undefined,
+      metaapi_account_id: undefined,
+      metaapi_token: undefined,
+      credentials: normalizedCredentials,
     } as BrokerAccountCreate
   }
 
@@ -1118,25 +942,7 @@ function BrokerAccountsSettings() {
         type: 'success',
         message: `Broker workspace "${payload.name}" created successfully.`,
       })
-      setFormData({
-        name: '',
-        broker_type: 'metaapi',
-        metaapi_account_id: '',
-        metaapi_token: '',
-        is_enabled: true,
-        symbols: ['EUR/USD', 'XAU/USD'],
-        risk_per_trade_percent: 1.0,
-        max_open_positions: 3,
-        analysis_mode: 'standard',
-        analysis_interval_seconds: 300,
-        min_confidence: 75.0,
-        min_models_agree: 4,
-        enabled_models: ['chatgpt', 'gemini', 'grok', 'qwen', 'llama', 'ernie', 'kimi', 'mistral'],
-        trading_start_hour: 7,
-        trading_end_hour: 21,
-      })
-      setSelectedCatalogBrokerId(BROKER_DIRECTORY[0]?.id || '')
-      setSelectedPlatformId(BROKER_DIRECTORY[0]?.platforms[0]?.id || '')
+      resetBrokerForm()
       await loadAccounts()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create account')
@@ -1157,6 +963,8 @@ function BrokerAccountsSettings() {
         message: `Broker workspace "${payload.name}" updated successfully.`,
       })
       setEditingAccount(null)
+      setShowCreateForm(false)
+      resetBrokerForm()
       await loadAccounts()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update account')
@@ -1252,29 +1060,36 @@ function BrokerAccountsSettings() {
   }
 
   const openEditForm = (account: BrokerAccountData) => {
-    const inferredBroker = inferBrokerFromAccountName(account.name)
+    const brokerByCatalogId = BROKER_DIRECTORY.find((entry) => entry.id === account.broker_catalog_id) || null
+    const inferredBroker = brokerByCatalogId || inferBrokerFromAccountName(account.name)
     const inferredPlatformId = inferPlatformFromAccountName(account.name, inferredBroker)
-    const platformFromBrokerType =
-      account.broker_type === 'oanda'
-        ? 'oanda_api'
-        : account.broker_type === 'ig'
-        ? 'ig_api'
-        : account.broker_type === 'alpaca'
-        ? 'alpaca_api'
-        : account.broker_type === 'interactive_brokers'
-        ? 'ib_api'
-        : null
+    const platformFromBrokerType = platformIdFromBrokerType(account.broker_type)
+    const resolvedPlatformId =
+      account.platform_id ||
+      inferredPlatformId ||
+      platformFromBrokerType ||
+      inferredBroker?.platforms[0]?.id ||
+      BROKER_DIRECTORY[0]?.platforms[0]?.id ||
+      ''
+    const resolvedBrokerId =
+      inferredBroker?.id ||
+      BROKER_DIRECTORY.find((entry) => entry.platforms.some((platform) => platform.id === resolvedPlatformId))?.id ||
+      BROKER_DIRECTORY[0]?.id ||
+      ''
+
     setEditingAccount(account)
     setFormData({
       name: account.name,
       broker_type: account.broker_type,
+      broker_catalog_id: account.broker_catalog_id,
+      platform_id: account.platform_id,
       slot_index: account.slot_index,
-      metaapi_account_id: account.metaapi_account_id || '',
-      metaapi_token: account.metaapi_token || '',
       is_enabled: account.is_enabled,
       symbols: account.symbols,
       risk_per_trade_percent: account.risk_per_trade_percent,
       max_open_positions: account.max_open_positions,
+      max_daily_trades: account.max_daily_trades,
+      max_daily_loss_percent: account.max_daily_loss_percent,
       analysis_mode: account.analysis_mode,
       analysis_interval_seconds: account.analysis_interval_seconds,
       min_confidence: account.min_confidence,
@@ -1282,15 +1097,12 @@ function BrokerAccountsSettings() {
       enabled_models: account.enabled_models,
       trading_start_hour: account.trading_start_hour,
       trading_end_hour: account.trading_end_hour,
+      trade_on_weekends: account.trade_on_weekends,
     })
-    setSelectedCatalogBrokerId(inferredBroker?.id || BROKER_DIRECTORY[0]?.id || '')
-    setSelectedPlatformId(
-      inferredPlatformId ||
-      platformFromBrokerType ||
-      inferredBroker?.platforms[0]?.id ||
-      BROKER_DIRECTORY[0]?.platforms[0]?.id ||
-      '',
-    )
+    setPlatformCredentials(account.credentials || {})
+    setSecretVisibility({})
+    setSelectedCatalogBrokerId(resolvedBrokerId)
+    setSelectedPlatformId(resolvedPlatformId)
     setShowCreateForm(false)
   }
 
@@ -1334,25 +1146,7 @@ function BrokerAccountsSettings() {
               setShowCreateForm(true)
               setEditingAccount(null)
               setStatusBanner(null)
-              setFormData({
-                name: '',
-                broker_type: 'metaapi',
-                metaapi_account_id: '',
-                metaapi_token: '',
-                is_enabled: true,
-                symbols: ['EUR/USD', 'XAU/USD'],
-                risk_per_trade_percent: 1.0,
-                max_open_positions: 3,
-                analysis_mode: 'standard',
-                analysis_interval_seconds: 300,
-                min_confidence: 75.0,
-                min_models_agree: 4,
-                enabled_models: ['chatgpt', 'gemini', 'grok', 'qwen', 'llama', 'ernie', 'kimi', 'mistral'],
-                trading_start_hour: 7,
-                trading_end_hour: 21,
-              })
-              setSelectedCatalogBrokerId(BROKER_DIRECTORY[0]?.id || '')
-              setSelectedPlatformId(BROKER_DIRECTORY[0]?.platforms[0]?.id || '')
+              resetBrokerForm()
             }}
             disabled={!canAddMore}
             className="btn-primary flex items-center gap-2"
@@ -1392,8 +1186,9 @@ function BrokerAccountsSettings() {
         ) : (
           <div className="space-y-4">
             {accounts.map((account) => {
-              const inferredBroker = inferBrokerFromAccountName(account.name)
-              const inferredPlatformId = inferPlatformFromAccountName(account.name, inferredBroker)
+              const brokerFromCatalog = BROKER_DIRECTORY.find((entry) => entry.id === account.broker_catalog_id) || null
+              const inferredBroker = brokerFromCatalog || inferBrokerFromAccountName(account.name)
+              const inferredPlatformId = account.platform_id || inferPlatformFromAccountName(account.name, inferredBroker)
               const inferredPlatform = inferredBroker?.platforms.find((platform) => platform.id === inferredPlatformId) || null
 
               return (
@@ -1409,7 +1204,12 @@ function BrokerAccountsSettings() {
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <BrokerLogo name={inferredBroker?.name || account.name} domain={inferredBroker?.logoDomain} className="h-10 w-10" />
+                    <BrokerLogo
+                      name={inferredBroker?.name || account.name}
+                      domain={inferredBroker?.logoDomain}
+                      logoUrl={inferredBroker?.logoUrl}
+                      className="h-10 w-10"
+                    />
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-semibold">{account.name}</span>
@@ -1592,12 +1392,15 @@ function BrokerAccountsSettings() {
                       onClick={() => {
                         setSelectedCatalogBrokerId(entry.id)
                         setSelectedPlatformId(entry.platforms[0]?.id || '')
-                        if (!formData.name) {
-                          setFormData({
-                            ...formData,
+                        setPlatformCredentials({})
+                        setSecretVisibility({})
+                        setFormData((previous) => {
+                          if (previous.name) return previous
+                          return {
+                            ...previous,
                             name: `${entry.name} ${entry.platforms[0]?.label || ''}`.trim(),
-                          })
-                        }
+                          }
+                        })
                       }}
                       className={`min-w-[220px] p-3 rounded-xl border text-left transition-all ${
                         selectedCatalogBrokerId === entry.id
@@ -1606,7 +1409,7 @@ function BrokerAccountsSettings() {
                       }`}
                     >
                       <div className="flex items-center gap-2 mb-2">
-                        <BrokerLogo name={entry.name} domain={entry.logoDomain} />
+                        <BrokerLogo name={entry.name} domain={entry.logoDomain} logoUrl={entry.logoUrl} />
                         <div>
                           <span className="text-sm font-semibold text-dark-100">{entry.name}</span>
                           <p className={`text-[10px] ${
@@ -1642,7 +1445,12 @@ function BrokerAccountsSettings() {
                       }`}
                     >
                       <div className="flex items-center gap-2">
-                        <BrokerLogo name={platform.label} domain={platform.logoDomain} className="h-8 w-8" />
+                        <BrokerLogo
+                          name={platform.label}
+                          domain={platform.logoDomain}
+                          logoUrl={platform.logoUrl}
+                          className="h-8 w-8"
+                        />
                         <span className="text-sm font-medium text-dark-100">{platform.label}</span>
                       </div>
                     </button>
@@ -1665,46 +1473,88 @@ function BrokerAccountsSettings() {
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  {selectedPlatform?.credentials.primaryLabel || 'Primary Credential'}
-                </label>
-                <input
-                  type="text"
-                  value={formData.metaapi_account_id}
-                  onChange={(e) => setFormData({ ...formData, metaapi_account_id: e.target.value })}
-                  placeholder={selectedPlatform?.credentials.primaryPlaceholder || 'Primary credential'}
-                  className="input"
-                />
-                <p className="text-xs text-dark-500 mt-1">
-                  {selectedPlatform?.credentials.primaryHelp || 'This value is required to configure the workspace.'}
+              <div className="md:col-span-2 p-3 rounded-xl border border-primary-500/30 bg-primary-500/5">
+                <p className="text-sm font-medium text-primary-300">
+                  Metrics available for {selectedPlatform?.label || 'this platform'}
                 </p>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {(selectedPlatform?.metrics || []).map((metric) => (
+                    <span
+                      key={metric}
+                      className="px-2 py-1 rounded-full text-xs bg-dark-800 border border-dark-600 text-dark-200"
+                    >
+                      {metric}
+                    </span>
+                  ))}
+                </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  {selectedPlatform?.credentials.secretLabel || 'Secret / API Key (optional)'}
-                </label>
-                <div className="relative">
-                  <input
-                    type={showToken ? 'text' : 'password'}
-                    value={formData.metaapi_token}
-                    onChange={(e) => setFormData({ ...formData, metaapi_token: e.target.value })}
-                    placeholder={selectedPlatform?.credentials.secretPlaceholder || 'Optional secret / API key'}
-                    className="input pr-10"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowToken(!showToken)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-400 hover:text-dark-200"
-                  >
-                    {showToken ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
-                </div>
-                <p className="text-xs text-dark-500 mt-1">
-                  {selectedPlatform?.credentials.secretHelp || 'Optional. Use only if this platform requires a dedicated secret.'}
-                </p>
-              </div>
+              {(selectedPlatform?.credentials || []).map((field) => {
+                const fieldValue = platformCredentials[field.key] || ''
+                const isPassword = field.type === 'password'
+                const isNumber = field.type === 'number'
+                const isSelect = field.type === 'select'
+                const isVisible = secretVisibility[field.key] || false
+
+                return (
+                  <div key={field.key} className={field.fullWidth ? 'md:col-span-2' : ''}>
+                    <label className="block text-sm font-medium mb-2">
+                      {field.label}
+                      {field.required !== false && <span className="text-red-400 ml-1">*</span>}
+                    </label>
+
+                    {isSelect ? (
+                      <select
+                        value={fieldValue}
+                        onChange={(e) =>
+                          setPlatformCredentials((previous) => ({
+                            ...previous,
+                            [field.key]: e.target.value,
+                          }))
+                        }
+                        className="input"
+                      >
+                        <option value="">{field.placeholder || `Select ${field.label}`}</option>
+                        {(field.options || []).map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="relative">
+                        <input
+                          type={isPassword ? (isVisible ? 'text' : 'password') : isNumber ? 'number' : 'text'}
+                          value={fieldValue}
+                          onChange={(e) =>
+                            setPlatformCredentials((previous) => ({
+                              ...previous,
+                              [field.key]: e.target.value,
+                            }))
+                          }
+                          placeholder={field.placeholder}
+                          className={isPassword ? 'input pr-10' : 'input'}
+                        />
+                        {isPassword && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSecretVisibility((previous) => ({
+                                ...previous,
+                                [field.key]: !isVisible,
+                              }))
+                            }
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-400 hover:text-dark-200"
+                          >
+                            {isVisible ? <EyeOff size={18} /> : <Eye size={18} />}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    <p className="text-xs text-dark-500 mt-1">{field.help}</p>
+                  </div>
+                )
+              })}
 
               {/* Symbols */}
               <div className="md:col-span-2">
@@ -1892,6 +1742,7 @@ function BrokerAccountsSettings() {
                 onClick={() => {
                   setShowCreateForm(false)
                   setEditingAccount(null)
+                  resetBrokerForm()
                 }}
                 className="btn-secondary"
               >

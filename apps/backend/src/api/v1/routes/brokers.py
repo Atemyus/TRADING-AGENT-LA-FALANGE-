@@ -3,7 +3,7 @@ Broker Accounts API - Endpoints for managing multiple broker accounts.
 Each broker account runs independently with its own trading configuration.
 """
 
-from datetime import UTC
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -11,9 +11,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.v1.routes.auth import get_licensed_user
-from src.core.config import settings
 from src.core.database import get_db
 from src.core.models import BrokerAccount, User
+from src.services.broker_credentials_service import (
+    MASKED_PREFIX,
+    mask_credentials,
+    merge_credentials_preserving_masked,
+    normalize_credentials,
+    resolve_metaapi_runtime_credentials,
+    resolve_oanda_runtime_credentials,
+)
 
 router = APIRouter(prefix="/brokers", tags=["Broker Accounts"])
 
@@ -25,10 +32,14 @@ class BrokerAccountCreate(BaseModel):
 
     name: str
     broker_type: str = "metaapi"
+    broker_catalog_id: str | None = None
+    platform_id: str | None = None
     slot_index: int | None = Field(None, ge=1, le=100)
     # MetaApi credentials
     metaapi_account_id: str | None = None
     metaapi_token: str | None = None
+    # Platform credentials (account number/password/server/etc.)
+    credentials: dict[str, str] | None = None
     # Status
     is_enabled: bool = True
     # Trading configuration
@@ -56,10 +67,14 @@ class BrokerAccountUpdate(BaseModel):
 
     name: str | None = None
     broker_type: str | None = None
+    broker_catalog_id: str | None = None
+    platform_id: str | None = None
     slot_index: int | None = Field(None, ge=1, le=100)
     # MetaApi credentials
     metaapi_account_id: str | None = None
     metaapi_token: str | None = None
+    # Platform credentials
+    credentials: dict[str, str] | None = None
     # Status
     is_enabled: bool | None = None
     # Trading configuration
@@ -90,8 +105,11 @@ class BrokerAccountResponse(BaseModel):
     slot_index: int | None = None
     name: str
     broker_type: str
+    broker_catalog_id: str | None = None
+    platform_id: str | None = None
     metaapi_account_id: str | None = None
     metaapi_token: str | None = None  # Will be masked
+    credentials: dict[str, str] = Field(default_factory=dict)
     is_enabled: bool
     is_connected: bool
     last_connected_at: str | None = None
@@ -123,7 +141,7 @@ def mask_key(key: str | None) -> str | None:
 
 def preserve_if_masked(new_val: str | None, old_val: str | None) -> str | None:
     """Don't overwrite with masked values."""
-    if new_val and new_val.startswith("***"):
+    if new_val and new_val.startswith(MASKED_PREFIX):
         return old_val
     return new_val
 
@@ -136,8 +154,11 @@ def broker_to_response(broker: BrokerAccount) -> dict:
         "slot_index": broker.slot_index,
         "name": broker.name,
         "broker_type": broker.broker_type,
+        "broker_catalog_id": broker.broker_catalog_id,
+        "platform_id": broker.platform_id,
         "metaapi_account_id": broker.metaapi_account_id,
         "metaapi_token": mask_key(broker.metaapi_token),
+        "credentials": mask_credentials(broker.credentials),
         "is_enabled": broker.is_enabled,
         "is_connected": broker.is_connected,
         "last_connected_at": broker.last_connected_at.isoformat() if broker.last_connected_at else None,
@@ -307,6 +328,8 @@ async def create_broker(
         slot_index=slot_index,
         name=data.name,
         broker_type=data.broker_type,
+        broker_catalog_id=data.broker_catalog_id,
+        platform_id=data.platform_id,
         metaapi_account_id=data.metaapi_account_id,
         metaapi_token=data.metaapi_token,
         is_enabled=data.is_enabled,
@@ -328,6 +351,8 @@ async def create_broker(
         broker.symbols = data.symbols
     if data.enabled_models:
         broker.enabled_models = data.enabled_models
+    if data.credentials is not None:
+        broker.credentials = normalize_credentials(data.credentials)
 
     db.add(broker)
     await db.flush()
@@ -351,12 +376,28 @@ async def update_broker(
         broker.name = data.name
     if data.broker_type is not None:
         broker.broker_type = data.broker_type
+    if data.broker_catalog_id is not None:
+        broker.broker_catalog_id = data.broker_catalog_id
+    if data.platform_id is not None:
+        broker.platform_id = data.platform_id
     if data.slot_index is not None:
         broker.slot_index = await _validate_update_slot_index(db, current_user, broker, data.slot_index)
     if data.metaapi_account_id is not None:
         broker.metaapi_account_id = data.metaapi_account_id
     if data.metaapi_token is not None:
         broker.metaapi_token = preserve_if_masked(data.metaapi_token, broker.metaapi_token)
+    if data.credentials is not None:
+        existing_credentials = normalize_credentials(broker.credentials)
+        incoming_credentials = normalize_credentials(data.credentials)
+        broker.credentials = merge_credentials_preserving_masked(existing_credentials, incoming_credentials)
+        mt_login_keys = {"account_number", "account_password", "server_name"}
+        if any(
+            incoming_credentials.get(key)
+            and incoming_credentials.get(key) != existing_credentials.get(key)
+            for key in mt_login_keys
+        ):
+            # Force re-resolution/re-provision if MT login params changed.
+            broker.metaapi_account_id = None
     if data.is_enabled is not None:
         broker.is_enabled = data.is_enabled
     if data.symbols is not None:
@@ -413,18 +454,19 @@ async def test_broker_connection(
 ):
     """Test connection to a broker account."""
     broker = await _get_user_broker_or_404(db, broker_id, current_user)
+    broker_type = (broker.broker_type or "metaapi").lower()
 
-    if broker.broker_type == "metaapi":
-        effective_metaapi_token = broker.metaapi_token or settings.METAAPI_ACCESS_TOKEN
-        effective_metaapi_account_id = broker.metaapi_account_id or settings.METAAPI_ACCOUNT_ID
-        using_global_token = bool(not broker.metaapi_token and settings.METAAPI_ACCESS_TOKEN)
-        using_global_account_id = bool(not broker.metaapi_account_id and settings.METAAPI_ACCOUNT_ID)
-
-        if not effective_metaapi_token or not effective_metaapi_account_id:
-            raise HTTPException(
-                status_code=400,
-                detail="MetaApi credentials not configured. Provide broker account ID or configure global MetaApi settings.",
-            )
+    if broker_type in {"metaapi", "metatrader", "mt4", "mt5"}:
+        credentials = normalize_credentials(broker.credentials)
+        runtime = await resolve_metaapi_runtime_credentials(broker)
+        effective_metaapi_token = runtime["access_token"]
+        effective_metaapi_account_id = runtime["account_id"]
+        using_global_token = bool(
+            not broker.metaapi_token and not credentials.get("metaapi_token")
+        )
+        using_global_account_id = bool(
+            not broker.metaapi_account_id and not credentials.get("metaapi_account_id")
+        )
 
         try:
             import httpx
@@ -436,7 +478,6 @@ async def test_broker_connection(
                 )
                 if response.status_code == 200:
                     account_info = response.json()
-                    from datetime import datetime
 
                     broker.is_connected = True
                     broker.last_connected_at = datetime.now(UTC)
@@ -445,23 +486,63 @@ async def test_broker_connection(
                         "status": "success",
                         "message": "Connected successfully",
                         "account_name": account_info.get("name", "Unknown"),
-                        "platform": account_info.get("platform", "mt5"),
+                        "platform": account_info.get("platform", runtime.get("platform", "mt5")),
                         "state": account_info.get("state", "Unknown"),
                         "broker": account_info.get("broker", "Unknown"),
+                        "metaapi_account_id": effective_metaapi_account_id,
                         "using_global_token": using_global_token,
                         "using_global_account_id": using_global_account_id,
                     }
                 if response.status_code == 404:
-                    raise HTTPException(status_code=400, detail="Account not found. Check MetaApi Account ID.")
+                    raise HTTPException(status_code=400, detail="Account not found. Check MT credentials/server.")
                 if response.status_code == 401:
-                    raise HTTPException(status_code=400, detail="Invalid MetaApi Access Token")
+                    raise HTTPException(status_code=400, detail="Invalid MetaApi gateway token.")
                 raise HTTPException(status_code=400, detail=f"MetaApi error ({response.status_code})")
         except HTTPException:
             raise
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Connection test failed: {e}")
 
-    return {"status": "success", "message": f"Broker type '{broker.broker_type}' connection test not implemented"}
+    if broker_type == "oanda":
+        runtime = resolve_oanda_runtime_credentials(broker)
+        environment = runtime.get("environment", "practice")
+        base_url = "https://api-fxpractice.oanda.com" if environment == "practice" else "https://api-fxtrade.oanda.com"
+
+        try:
+            import httpx
+
+            async with httpx.AsyncClient(verify=False, timeout=15.0) as client:
+                response = await client.get(
+                    f"{base_url}/v3/accounts/{runtime['account_id']}/summary",
+                    headers={"Authorization": f"Bearer {runtime['api_key']}"},
+                )
+                if response.status_code == 200:
+                    broker.is_connected = True
+                    broker.last_connected_at = datetime.now(UTC)
+                    await db.flush()
+                    return {
+                        "status": "success",
+                        "message": "Connected to OANDA successfully",
+                        "platform": broker.platform_id or "oanda_api",
+                        "environment": environment,
+                    }
+                if response.status_code == 401:
+                    raise HTTPException(status_code=400, detail="Invalid OANDA API key.")
+                if response.status_code == 404:
+                    raise HTTPException(status_code=400, detail="OANDA account not found.")
+                raise HTTPException(status_code=400, detail=f"OANDA error ({response.status_code})")
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Connection test failed: {e}")
+
+    return {
+        "status": "success",
+        "message": (
+            f"Broker type '{broker.broker_type}' (platform '{broker.platform_id or 'n/a'}') "
+            "saved. Direct connection test is not implemented yet for this adapter."
+        ),
+    }
 
 
 @router.post("/{broker_id}/toggle")

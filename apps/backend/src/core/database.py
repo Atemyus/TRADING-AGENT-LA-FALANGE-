@@ -230,6 +230,9 @@ async def run_compat_migrations() -> None:
         # Multi-broker ownership and slot support
         "ALTER TABLE broker_accounts ADD COLUMN IF NOT EXISTS user_id INTEGER",
         "ALTER TABLE broker_accounts ADD COLUMN IF NOT EXISTS slot_index INTEGER",
+        "ALTER TABLE broker_accounts ADD COLUMN IF NOT EXISTS broker_catalog_id VARCHAR(100)",
+        "ALTER TABLE broker_accounts ADD COLUMN IF NOT EXISTS platform_id VARCHAR(50)",
+        "ALTER TABLE broker_accounts ADD COLUMN IF NOT EXISTS credentials_json TEXT",
         """
         DO $$
         BEGIN
