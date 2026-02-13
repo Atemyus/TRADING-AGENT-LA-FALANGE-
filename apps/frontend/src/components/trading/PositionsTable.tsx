@@ -148,12 +148,12 @@ export function PositionsTable({
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="card overflow-hidden"
+      className="card overflow-hidden forge-pattern"
     >
       {/* Header */}
       <div className="p-4 border-b border-dark-700/50 flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold">Open Positions</h2>
+          <h2 className="text-lg font-semibold font-imperial">Open Positions</h2>
           <p className="text-sm text-dark-400">{positions.length} active positions</p>
         </div>
         <div className="text-right">
@@ -175,7 +175,7 @@ export function PositionsTable({
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="bg-dark-800/50 text-left text-xs text-dark-400 uppercase tracking-wider">
+              <tr className="bg-dark-800/65 text-left text-xs text-dark-400 uppercase tracking-[0.11em]">
                 <th className="px-4 py-3">Symbol</th>
                 <th className="px-4 py-3">Size</th>
                 <th className="px-4 py-3 text-right">Entry</th>

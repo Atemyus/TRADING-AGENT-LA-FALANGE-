@@ -7,7 +7,7 @@ import { ArrowLeft, FileText } from 'lucide-react'
 
 export default function TermsPage() {
   return (
-    <div className="min-h-screen px-4 py-12 relative overflow-hidden">
+    <div className="min-h-screen px-4 py-12 relative overflow-hidden prometheus-legal-shell">
       {/* Background effects */}
       <div className="absolute inset-0 -z-10">
         <div className="absolute top-1/4 right-1/4 w-[500px] h-[500px] bg-imperial-500/10 rounded-full blur-3xl" />
@@ -16,7 +16,7 @@ export default function TermsPage() {
 
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-50 px-6 py-4 bg-dark-950/80 backdrop-blur-sm">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+        <div className="max-w-7xl mx-auto flex items-center justify-between prometheus-auth-header px-3 py-2">
           <Link href="/" className="flex items-center gap-3 group">
             <div className="p-2 rounded-lg bg-dark-800/50 border border-primary-500/20 hover:border-primary-500/40 transition-all">
               <ArrowLeft size={20} className="text-dark-300" />
@@ -31,7 +31,7 @@ export default function TermsPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="card-imperial p-8"
+          className="card-imperial p-8 prometheus-legal-card forge-pattern"
         >
           {/* Logo */}
           <div className="text-center mb-8">
@@ -47,12 +47,12 @@ export default function TermsPage() {
             </div>
             <div className="flex items-center justify-center gap-2 text-imperial-400">
               <FileText size={24} />
-              <h1 className="text-2xl font-bold">Terms of Service</h1>
+              <h1 className="text-2xl font-bold font-imperial">Terms of Service</h1>
             </div>
             <p className="text-dark-400 mt-2">Last updated: February 2026</p>
           </div>
 
-          <div className="prose prose-invert max-w-none space-y-6 text-dark-300">
+          <div className="prose prose-invert max-w-none space-y-6 text-dark-300 prometheus-legal-content">
             <section>
               <h2 className="text-xl font-semibold text-white mb-3">1. Acceptance of Terms</h2>
               <p>

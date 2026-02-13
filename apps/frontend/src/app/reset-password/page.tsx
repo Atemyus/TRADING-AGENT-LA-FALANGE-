@@ -96,7 +96,7 @@ function ResetPasswordContent() {
   // No token provided
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden">
+      <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden prometheus-auth-shell">
         <div className="absolute inset-0 -z-10">
           <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-loss/10 rounded-full blur-3xl" />
         </div>
@@ -106,7 +106,7 @@ function ResetPasswordContent() {
           animate={{ opacity: 1, y: 0 }}
           className="w-full max-w-md"
         >
-          <div className="card p-8 border-loss/30">
+          <div className="card p-8 border-loss/30 prometheus-auth-card forge-pattern">
             <div className="text-center">
               <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-loss to-red-600 flex items-center justify-center mb-4">
                 <AlertCircle className="w-8 h-8 text-white" />
@@ -129,7 +129,7 @@ function ResetPasswordContent() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-12 relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center px-4 py-12 relative overflow-hidden prometheus-auth-shell">
       {/* Background effects */}
       <div className="absolute inset-0 -z-10">
         <div className="absolute top-1/4 right-1/4 w-[500px] h-[500px] bg-imperial-500/10 rounded-full blur-3xl" />
@@ -138,7 +138,7 @@ function ResetPasswordContent() {
 
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-50 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+        <div className="max-w-7xl mx-auto flex items-center justify-between prometheus-auth-header px-3 py-2">
           <Link href="/login" className="flex items-center gap-3 group">
             <div className="p-2 rounded-lg bg-dark-800/50 border border-primary-500/20 hover:border-primary-500/40 transition-all">
               <ArrowLeft size={20} className="text-dark-300" />
@@ -162,7 +162,7 @@ function ResetPasswordContent() {
         transition={{ duration: 0.5 }}
         className="w-full max-w-md mt-16"
       >
-        <div className={`card p-8 ${status === 'success' ? 'border-profit/30' : 'border-imperial-500/30'}`}>
+        <div className={`card p-8 prometheus-auth-card forge-pattern ${status === 'success' ? 'border-profit/30' : 'border-imperial-500/30'}`}>
           {/* Logo */}
           <div className="text-center mb-8">
             <div className="relative inline-block mb-4">
@@ -332,7 +332,7 @@ function ResetPasswordContent() {
 
 function LoadingFallback() {
   return (
-    <div className="min-h-screen flex items-center justify-center">
+    <div className="min-h-screen flex items-center justify-center prometheus-auth-shell">
       <Loader2 className="w-10 h-10 text-primary-500 animate-spin" />
     </div>
   )

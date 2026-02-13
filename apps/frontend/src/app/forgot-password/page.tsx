@@ -52,7 +52,7 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden prometheus-auth-shell">
       {/* Background effects */}
       <div className="absolute inset-0 -z-10">
         <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-imperial-500/10 rounded-full blur-3xl" />
@@ -61,7 +61,7 @@ export default function ForgotPasswordPage() {
 
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-50 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+        <div className="max-w-7xl mx-auto flex items-center justify-between prometheus-auth-header px-3 py-2">
           <Link href="/login" className="flex items-center gap-3 group">
             <div className="p-2 rounded-lg bg-dark-800/50 border border-primary-500/20 hover:border-primary-500/40 transition-all">
               <ArrowLeft size={20} className="text-dark-300" />
@@ -85,7 +85,7 @@ export default function ForgotPasswordPage() {
         transition={{ duration: 0.5 }}
         className="w-full max-w-md"
       >
-        <div className="card-imperial p-8">
+        <div className="card-imperial p-8 prometheus-auth-card forge-pattern">
           {/* Logo */}
           <div className="text-center mb-8">
             <div className="relative inline-block mb-4">

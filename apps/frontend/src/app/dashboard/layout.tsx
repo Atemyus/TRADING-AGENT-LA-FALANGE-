@@ -252,7 +252,7 @@ export default function DashboardLayout({
 
   return (
     <ProtectedRoute>
-    <div className="min-h-screen flex overflow-x-hidden max-w-[100vw] bg-dark-abyss">
+    <div className="min-h-screen flex overflow-x-hidden max-w-[100vw] bg-dark-abyss prometheus-page-shell">
       {/* Sidebar */}
       <motion.aside
         initial={{ x: -280 }}

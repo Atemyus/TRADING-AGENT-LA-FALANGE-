@@ -228,7 +228,7 @@ export default function AIAnalysisPage() {
   }, [hasInitialized, loadingStatus, aiStatus, runAnalysis])
 
   return (
-    <div className="space-y-6 prometheus-page-shell">
+    <div className="space-y-6 prometheus-page-shell prometheus-dashboard-shell">
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}

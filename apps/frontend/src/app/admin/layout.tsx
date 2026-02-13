@@ -30,7 +30,7 @@ function AdminProtection({ children }: AdminLayoutProps) {
   // Show loading while checking auth and superuser status
   if (isLoading || isChecking) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-dark-abyss">
+      <div className="min-h-screen flex items-center justify-center bg-dark-abyss prometheus-auth-shell">
         <motion.div
           initial={{ opacity: 0, scale: 0.8 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -61,7 +61,7 @@ function AdminProtection({ children }: AdminLayoutProps) {
   // User is not a superuser - this should redirect but show fallback just in case
   if (!user?.is_superuser) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-dark-abyss px-4">
+      <div className="min-h-screen flex items-center justify-center bg-dark-abyss px-4 prometheus-auth-shell">
         <div className="text-center max-w-md">
           <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-loss/10 flex items-center justify-center">
             <Shield size={40} className="text-loss" />

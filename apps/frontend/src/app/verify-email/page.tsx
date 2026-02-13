@@ -65,7 +65,7 @@ function VerifyEmailContent() {
   }, [token, router])
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden prometheus-auth-shell">
       {/* Background effects */}
       <div className="absolute inset-0 -z-10">
         <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-primary-500/10 rounded-full blur-3xl" />
@@ -74,7 +74,7 @@ function VerifyEmailContent() {
 
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-50 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+        <div className="max-w-7xl mx-auto flex items-center justify-between prometheus-auth-header px-3 py-2">
           <Link href="/" className="flex items-center gap-3 group">
             <div className="p-2 rounded-lg bg-dark-800/50 border border-primary-500/20 hover:border-primary-500/40 transition-all">
               <ArrowLeft size={20} className="text-dark-300" />
@@ -98,7 +98,7 @@ function VerifyEmailContent() {
         transition={{ duration: 0.5 }}
         className="w-full max-w-md"
       >
-        <div className={`card p-8 ${status === 'success' ? 'border-profit/30' : status === 'error' ? 'border-loss/30' : 'border-primary-500/30'}`}>
+        <div className={`card p-8 prometheus-auth-card forge-pattern ${status === 'success' ? 'border-profit/30' : status === 'error' ? 'border-loss/30' : 'border-primary-500/30'}`}>
           {/* Logo */}
           <div className="text-center mb-8">
             <div className="relative inline-block mb-4">
@@ -177,7 +177,7 @@ function VerifyEmailContent() {
 
 function LoadingFallback() {
   return (
-    <div className="min-h-screen flex items-center justify-center">
+    <div className="min-h-screen flex items-center justify-center prometheus-auth-shell">
       <Loader2 className="w-10 h-10 text-primary-500 animate-spin" />
     </div>
   )

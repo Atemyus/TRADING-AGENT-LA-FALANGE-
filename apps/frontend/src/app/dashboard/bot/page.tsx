@@ -697,7 +697,7 @@ export default function BotControlPage() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="space-y-6 prometheus-page-shell"
+      className="space-y-6 prometheus-page-shell prometheus-dashboard-shell"
     >
       {/* Header */}
       <div className="prometheus-hero-card p-6 md:p-7">

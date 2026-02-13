@@ -40,11 +40,11 @@ export function StatCard({
   return (
     <Wrapper
       {...wrapperProps}
-      className="card p-4 hover:border-dark-600 transition-colors"
+      className="card p-4 hover:border-primary-500/35 transition-all duration-300 forge-pattern"
     >
       <div className="flex items-start justify-between">
         <div className="flex-1">
-          <p className="text-sm text-dark-400 mb-1">{label}</p>
+          <p className="text-[11px] text-dark-500 uppercase tracking-[0.09em] mb-1.5">{label}</p>
           <p className={`text-2xl font-bold font-mono ${
             isPositive ? 'text-profit' : showNegative ? 'text-loss' : ''
           }`}>
@@ -61,8 +61,8 @@ export function StatCard({
             <p className="text-xs text-dark-500 mt-1">{subtext}</p>
           )}
         </div>
-        <div className={`p-3 rounded-xl ${
-          isPositive ? 'bg-profit/10' : showNegative ? 'bg-loss/10' : 'bg-dark-800'
+        <div className={`p-3 rounded-xl border ${
+          isPositive ? 'bg-profit/10 border-profit/30' : showNegative ? 'bg-loss/10 border-loss/30' : 'bg-dark-800 border-dark-700'
         }`}>
           <Icon size={22} className={`${
             isPositive ? 'text-profit' : showNegative ? 'text-loss' : 'text-dark-400'

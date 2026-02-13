@@ -651,7 +651,7 @@ export default function DashboardPage() {
       variants={containerVariants}
       initial="hidden"
       animate="visible"
-      className="space-y-6 prometheus-page-shell"
+      className="space-y-6 prometheus-page-shell prometheus-dashboard-shell"
     >
       {/* Asset Price Cards (top priority) */}
       <motion.div variants={itemVariants}>

@@ -52,13 +52,13 @@ export function OrderHistory({ orders = [], isLoading = false }: OrderHistoryPro
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="card overflow-hidden"
+      className="card overflow-hidden forge-pattern"
     >
       {/* Header */}
       <div className="p-4 border-b border-dark-700/50">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-lg font-semibold">Order History</h2>
+            <h2 className="text-lg font-semibold font-imperial">Order History</h2>
             <p className="text-sm text-dark-400">{orders.length} total orders</p>
           </div>
           <button className="flex items-center gap-2 px-3 py-1.5 bg-dark-800 hover:bg-dark-700 rounded-lg text-sm transition-colors">

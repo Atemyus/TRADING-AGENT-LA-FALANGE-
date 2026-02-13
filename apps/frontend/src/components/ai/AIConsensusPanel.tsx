@@ -138,7 +138,7 @@ export function AIConsensusPanel({
 
   if (!result && !isLoading) {
     return (
-      <div className="card p-6">
+      <div className="card p-6 forge-pattern">
         <div className="text-center py-8">
           <Brain className="w-12 h-12 mx-auto text-dark-500 mb-4" />
           <h3 className="font-semibold mb-2">Nessuna Analisi</h3>
@@ -152,16 +152,16 @@ export function AIConsensusPanel({
   }
 
   return (
-    <div className="card overflow-hidden">
+    <div className="card overflow-hidden forge-pattern">
       {/* Header */}
-      <div className="p-4 bg-gradient-to-r from-primary-500/10 to-neon-purple/10 border-b border-dark-700/50">
+      <div className="p-4 bg-gradient-to-r from-primary-500/16 to-imperial-500/16 border-b border-dark-700/50">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-neon-purple flex items-center justify-center">
               <Brain className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h2 className="font-semibold">Consenso AI</h2>
+              <h2 className="font-semibold font-imperial">Consenso AI</h2>
               <p className="text-xs text-dark-400">
                 {result?.valid_votes} di {result?.total_votes} modelli hanno votato
               </p>

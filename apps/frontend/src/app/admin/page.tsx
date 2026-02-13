@@ -563,7 +563,7 @@ export default function AdminPage() {
 
   if (authLoading || isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-dark-abyss">
+      <div className="min-h-screen flex items-center justify-center bg-dark-abyss prometheus-auth-shell">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-primary-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
           <p className="text-dark-400">Loading admin panel...</p>
@@ -574,7 +574,7 @@ export default function AdminPage() {
 
   if (error === 'Access denied. Admin privileges required.') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-dark-abyss px-4">
+      <div className="min-h-screen flex items-center justify-center bg-dark-abyss px-4 prometheus-auth-shell">
         <div className="text-center max-w-md">
           <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-loss/10 flex items-center justify-center">
             <Shield size={40} className="text-loss" />
@@ -590,10 +590,10 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-dark-abyss">
+    <div className="min-h-screen bg-dark-abyss prometheus-page-shell">
       {/* Header */}
       <header className="sticky top-0 z-50 bg-dark-950/90 backdrop-blur-xl border-b border-primary-500/20">
-        <div className="max-w-7xl mx-auto px-6 py-4">
+        <div className="max-w-7xl mx-auto px-6 py-4 prometheus-auth-header">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <Link href="/dashboard" className="p-2 hover:bg-dark-800 rounded-lg transition-colors">

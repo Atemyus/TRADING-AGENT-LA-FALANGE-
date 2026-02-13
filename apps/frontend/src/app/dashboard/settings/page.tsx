@@ -493,14 +493,20 @@ export default function SettingsPage() {
   ] as const
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className="max-w-6xl mx-auto space-y-6 prometheus-page-shell">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="mb-8"
+        className="prometheus-hero-card p-6 md:p-7"
       >
-        <h1 className="text-3xl font-bold mb-2">Settings</h1>
-        <p className="text-dark-400">Manage broker workspaces, AI providers, and risk controls</p>
+        <div className="relative z-10">
+          <span className="prometheus-chip mb-3">
+            <Shield size={12} />
+            Configuration Core
+          </span>
+          <h1 className="text-3xl font-bold mb-2 text-gradient-falange">Settings</h1>
+          <p className="text-dark-300">Manage broker workspaces, AI providers, and risk controls</p>
+        </div>
       </motion.div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
