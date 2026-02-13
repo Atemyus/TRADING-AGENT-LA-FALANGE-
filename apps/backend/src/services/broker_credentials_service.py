@@ -222,6 +222,91 @@ def resolve_alpaca_runtime_credentials(broker: BrokerAccount) -> dict[str, str]:
     }
 
 
+def _resolve_platform_account_credentials(
+    broker: BrokerAccount,
+    *,
+    platform_label: str,
+    default_login_endpoint: str,
+    default_health_endpoint: str = "/",
+) -> dict[str, str]:
+    creds = normalize_credentials(broker.credentials)
+    account_id = _first_non_empty(
+        creds.get("account_id"),
+        creds.get("account_number"),
+        creds.get("login"),
+        creds.get("username"),
+    )
+    password = _first_non_empty(
+        creds.get("account_password"),
+        creds.get("password"),
+        creds.get("passphrase"),
+    )
+    server_name = _first_non_empty(
+        creds.get("server_name"),
+        creds.get("server"),
+        creds.get("broker_server"),
+        creds.get("host"),
+    )
+    api_base_url = _first_non_empty(
+        creds.get("api_base_url"),
+        creds.get("base_url"),
+        creds.get("url"),
+    )
+    login_endpoint = _first_non_empty(
+        creds.get("login_endpoint"),
+        creds.get("auth_endpoint"),
+    ) or default_login_endpoint
+    health_endpoint = _first_non_empty(
+        creds.get("health_endpoint"),
+        creds.get("ping_endpoint"),
+    ) or default_health_endpoint
+
+    if not account_id or not password or not server_name:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"{platform_label} credentials not configured for this workspace. "
+                "Required: account id/login, password, server name."
+            ),
+        )
+
+    return {
+        "account_id": account_id,
+        "password": password,
+        "server_name": server_name,
+        "api_base_url": api_base_url or "",
+        "login_endpoint": login_endpoint,
+        "health_endpoint": health_endpoint,
+    }
+
+
+def resolve_ctrader_runtime_credentials(broker: BrokerAccount) -> dict[str, str]:
+    return _resolve_platform_account_credentials(
+        broker,
+        platform_label="cTrader",
+        default_login_endpoint="/connect/token",
+        default_health_endpoint="/",
+    )
+
+
+def resolve_dxtrade_runtime_credentials(broker: BrokerAccount) -> dict[str, str]:
+    return _resolve_platform_account_credentials(
+        broker,
+        platform_label="DXtrade",
+        default_login_endpoint="/api/auth/login",
+        default_health_endpoint="/api/health",
+    )
+
+
+def resolve_matchtrader_runtime_credentials(broker: BrokerAccount) -> dict[str, str]:
+    return _resolve_platform_account_credentials(
+        broker,
+        platform_label="Match-Trader",
+        default_login_endpoint="/api/login",
+        default_health_endpoint="/api/health",
+    )
+
+
 async def _find_existing_metaapi_account(
     *,
     token: str,
@@ -397,4 +482,10 @@ async def resolve_broker_runtime_kwargs(broker: BrokerAccount) -> dict[str, str]
         return resolve_ig_runtime_credentials(broker)
     if broker_type == "alpaca":
         return resolve_alpaca_runtime_credentials(broker)
+    if broker_type == "ctrader":
+        return resolve_ctrader_runtime_credentials(broker)
+    if broker_type == "dxtrade":
+        return resolve_dxtrade_runtime_credentials(broker)
+    if broker_type == "matchtrader":
+        return resolve_matchtrader_runtime_credentials(broker)
     return normalize_credentials(broker.credentials)

@@ -82,6 +82,27 @@ export const PLATFORM_DIRECTORY: Record<string, BrokerPlatform> = {
       credential('account_id', 'cTrader Account ID', 'cTrader account id', 'cTrader account identifier provided by your broker.'),
       credential('account_password', 'Password', 'cTrader password', 'Password for this cTrader account.', { type: 'password' }),
       credential('server_name', 'Server / Environment', 'cTrader server or broker endpoint', 'Server/environment name required by your broker.'),
+      credential(
+        'api_base_url',
+        'API Base URL (optional)',
+        'https://api.your-platform.com',
+        'Optional explicit API URL used for connection test. If empty, server name is used as URL.',
+        { required: false, fullWidth: true },
+      ),
+      credential(
+        'login_endpoint',
+        'Login Endpoint (optional)',
+        '/connect/token',
+        'Optional login endpoint for credential validation.',
+        { required: false },
+      ),
+      credential(
+        'health_endpoint',
+        'Health Endpoint (optional)',
+        '/',
+        'Optional health endpoint used before login validation.',
+        { required: false },
+      ),
     ],
     metrics: ['Balance', 'Equity', 'Used Margin', 'Open Positions', 'Daily PnL'],
   },
@@ -93,6 +114,27 @@ export const PLATFORM_DIRECTORY: Record<string, BrokerPlatform> = {
       credential('account_id', 'Account ID', 'DXtrade account id', 'Account identifier shown inside DXtrade.'),
       credential('account_password', 'Password', 'DXtrade password', 'Password for this DXtrade account.', { type: 'password' }),
       credential('server_name', 'Server Name', 'Broker server / realm', 'Server or realm assigned by broker/prop.'),
+      credential(
+        'api_base_url',
+        'API Base URL (optional)',
+        'https://api.your-platform.com',
+        'Optional explicit API URL used for connection test. If empty, server name is used as URL.',
+        { required: false, fullWidth: true },
+      ),
+      credential(
+        'login_endpoint',
+        'Login Endpoint (optional)',
+        '/api/auth/login',
+        'Optional login endpoint for credential validation.',
+        { required: false },
+      ),
+      credential(
+        'health_endpoint',
+        'Health Endpoint (optional)',
+        '/api/health',
+        'Optional health endpoint used before login validation.',
+        { required: false },
+      ),
     ],
     metrics: ['Balance', 'Equity', 'Open Positions', 'Realized PnL', 'Unrealized PnL'],
   },
@@ -104,6 +146,27 @@ export const PLATFORM_DIRECTORY: Record<string, BrokerPlatform> = {
       credential('account_id', 'Account ID', 'Match-Trader account id', 'Account id for your Match-Trader workspace.'),
       credential('account_password', 'Password', 'Match-Trader password', 'Password for this Match-Trader account.', { type: 'password' }),
       credential('server_name', 'Server Name', 'Server / broker endpoint', 'Server or endpoint provided by broker.'),
+      credential(
+        'api_base_url',
+        'API Base URL (optional)',
+        'https://api.your-platform.com',
+        'Optional explicit API URL used for connection test. If empty, server name is used as URL.',
+        { required: false, fullWidth: true },
+      ),
+      credential(
+        'login_endpoint',
+        'Login Endpoint (optional)',
+        '/api/login',
+        'Optional login endpoint for credential validation.',
+        { required: false },
+      ),
+      credential(
+        'health_endpoint',
+        'Health Endpoint (optional)',
+        '/api/health',
+        'Optional health endpoint used before login validation.',
+        { required: false },
+      ),
     ],
     metrics: ['Balance', 'Equity', 'Open Positions', 'Margin Used', 'Daily PnL'],
   },
@@ -315,6 +378,9 @@ export const getBrokerTypeByPlatform = (platformId: string): string => {
   if (platformId === 'ig_api') return 'ig'
   if (platformId === 'alpaca_api') return 'alpaca'
   if (platformId === 'ib_api') return 'interactive_brokers'
+  if (platformId === 'ctrader') return 'ctrader'
+  if (platformId === 'dxtrade') return 'dxtrade'
+  if (platformId === 'matchtrader') return 'matchtrader'
   return 'metaapi'
 }
 

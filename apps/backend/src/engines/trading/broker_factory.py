@@ -144,6 +144,12 @@ class BrokerFactory:
         elif broker_type in ("ib", "interactive_brokers"):
             raise NotImplementedError("Interactive Brokers not yet implemented")
 
+        elif broker_type in ("ctrader", "dxtrade", "matchtrader"):
+            raise NotImplementedError(
+                f"Broker type '{broker_type}' is available for credential validation only. "
+                "Auto-trading adapter is not implemented yet."
+            )
+
         elif broker_type == "alpaca":
             api_key = kwargs.get("api_key", os.environ.get("ALPACA_API_KEY", ""))
             secret_key = kwargs.get("secret_key", os.environ.get("ALPACA_SECRET_KEY", ""))

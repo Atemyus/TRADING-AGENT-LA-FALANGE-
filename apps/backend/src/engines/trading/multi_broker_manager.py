@@ -22,7 +22,10 @@ from src.engines.trading.broker_factory import BrokerFactory, NoBrokerConfigured
 from src.services.broker_credentials_service import (
     normalize_credentials,
     resolve_alpaca_runtime_credentials,
+    resolve_ctrader_runtime_credentials,
+    resolve_dxtrade_runtime_credentials,
     resolve_ig_runtime_credentials,
+    resolve_matchtrader_runtime_credentials,
     resolve_metaapi_runtime_credentials,
     resolve_oanda_runtime_credentials,
 )
@@ -165,6 +168,37 @@ class MultiBrokerManager:
             runtime["paper"] = paper.lower() if paper else "true"
             return runtime
 
+        if broker_type in {"ctrader", "dxtrade", "matchtrader"}:
+            runtime: dict[str, str] = {}
+            account_id = (
+                credentials.get("account_id")
+                or credentials.get("account_number")
+                or credentials.get("login")
+                or ""
+            ).strip()
+            password = (
+                credentials.get("account_password")
+                or credentials.get("password")
+                or ""
+            ).strip()
+            server_name = (credentials.get("server_name") or credentials.get("server") or "").strip()
+            api_base_url = (credentials.get("api_base_url") or credentials.get("base_url") or "").strip()
+            login_endpoint = (credentials.get("login_endpoint") or credentials.get("auth_endpoint") or "").strip()
+            health_endpoint = (credentials.get("health_endpoint") or credentials.get("ping_endpoint") or "").strip()
+            if account_id:
+                runtime["account_id"] = account_id
+            if password:
+                runtime["password"] = password
+            if server_name:
+                runtime["server_name"] = server_name
+            if api_base_url:
+                runtime["api_base_url"] = api_base_url
+            if login_endpoint:
+                runtime["login_endpoint"] = login_endpoint
+            if health_endpoint:
+                runtime["health_endpoint"] = health_endpoint
+            return runtime
+
         return credentials
 
     def _create_config_from_account(self, account: BrokerAccount) -> BotConfig:
@@ -217,6 +251,15 @@ class MultiBrokerManager:
             return {"status": "error", "message": "Broker is disabled"}
 
         broker_type = (broker_account.broker_type or "metaapi").lower()
+        if broker_type in {"ctrader", "dxtrade", "matchtrader"}:
+            return {
+                "status": "error",
+                "message": (
+                    f"Auto-trading adapter for '{broker_type}' is not enabled yet. "
+                    "Use connection test in Settings to validate credentials."
+                ),
+            }
+
         runtime_credentials: dict[str, str] = {}
         try:
             if broker_type in {"metaapi", "metatrader", "mt4", "mt5"}:
@@ -227,6 +270,12 @@ class MultiBrokerManager:
                 runtime_credentials = resolve_ig_runtime_credentials(broker_account)
             elif broker_type == "alpaca":
                 runtime_credentials = resolve_alpaca_runtime_credentials(broker_account)
+            elif broker_type == "ctrader":
+                runtime_credentials = resolve_ctrader_runtime_credentials(broker_account)
+            elif broker_type == "dxtrade":
+                runtime_credentials = resolve_dxtrade_runtime_credentials(broker_account)
+            elif broker_type == "matchtrader":
+                runtime_credentials = resolve_matchtrader_runtime_credentials(broker_account)
             else:
                 runtime_credentials = normalize_credentials(broker_account.credentials)
         except HTTPException as exc:
@@ -472,6 +521,12 @@ class MultiBrokerManager:
                     runtime_credentials = resolve_ig_runtime_credentials(broker_account)
                 elif broker_type == "alpaca":
                     runtime_credentials = resolve_alpaca_runtime_credentials(broker_account)
+                elif broker_type == "ctrader":
+                    runtime_credentials = resolve_ctrader_runtime_credentials(broker_account)
+                elif broker_type == "dxtrade":
+                    runtime_credentials = resolve_dxtrade_runtime_credentials(broker_account)
+                elif broker_type == "matchtrader":
+                    runtime_credentials = resolve_matchtrader_runtime_credentials(broker_account)
                 else:
                     runtime_credentials = normalize_credentials(broker_account.credentials)
                 instance.runtime_credentials = dict(runtime_credentials)

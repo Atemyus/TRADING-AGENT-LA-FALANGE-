@@ -4,7 +4,9 @@ Each broker account runs independently with its own trading configuration.
 """
 
 from datetime import UTC, datetime
+from urllib.parse import urljoin
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -20,7 +22,10 @@ from src.services.broker_credentials_service import (
     merge_credentials_preserving_masked,
     normalize_credentials,
     resolve_alpaca_runtime_credentials,
+    resolve_ctrader_runtime_credentials,
+    resolve_dxtrade_runtime_credentials,
     resolve_ig_runtime_credentials,
+    resolve_matchtrader_runtime_credentials,
     resolve_metaapi_runtime_credentials,
     resolve_oanda_runtime_credentials,
 )
@@ -147,6 +152,117 @@ def preserve_if_masked(new_val: str | None, old_val: str | None) -> str | None:
     if new_val and new_val.startswith(MASKED_PREFIX):
         return old_val
     return new_val
+
+
+def _normalize_base_url(base_url: str | None, server_name: str) -> str:
+    candidate = (base_url or "").strip()
+    if not candidate:
+        candidate = server_name.strip()
+    if not candidate.startswith(("http://", "https://")):
+        candidate = f"https://{candidate}"
+    return candidate.rstrip("/")
+
+
+def _join_endpoint(base_url: str, endpoint: str | None) -> str:
+    path = (endpoint or "").strip() or "/"
+    return urljoin(f"{base_url}/", path.lstrip("/"))
+
+
+async def _test_platform_http_connection(
+    *,
+    platform_label: str,
+    runtime: dict[str, str],
+) -> dict:
+    base_url = _normalize_base_url(runtime.get("api_base_url"), runtime["server_name"])
+    health_url = _join_endpoint(base_url, runtime.get("health_endpoint"))
+    login_url = _join_endpoint(base_url, runtime.get("login_endpoint"))
+    account_id = runtime["account_id"]
+    password = runtime["password"]
+    server_name = runtime["server_name"]
+
+    async with httpx.AsyncClient(verify=False, timeout=15.0) as client:
+        health_status = None
+        health_reachable = False
+        try:
+            health_response = await client.get(health_url)
+            health_status = health_response.status_code
+            health_reachable = health_status < 500
+        except Exception:
+            health_reachable = False
+
+        if not health_reachable:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{platform_label} server is unreachable at {health_url}",
+            )
+
+        login_payload = {
+            "accountId": account_id,
+            "account_id": account_id,
+            "login": account_id,
+            "username": account_id,
+            "password": password,
+            "server": server_name,
+            "serverName": server_name,
+        }
+        login_form = {
+            "grant_type": "password",
+            "username": account_id,
+            "password": password,
+            "server": server_name,
+        }
+
+        login_status = None
+        credential_validation = "server_reachable_only"
+        detail = "Server reachable, credential endpoint not verifiable."
+
+        try:
+            login_response = await client.post(login_url, json=login_payload)
+            login_status = login_response.status_code
+        except Exception:
+            login_response = None
+
+        if login_response is None or login_status in {404, 405}:
+            try:
+                login_response = await client.post(login_url, data=login_form)
+                login_status = login_response.status_code
+            except Exception:
+                login_response = None
+
+        if login_response is not None and login_status is not None:
+            if login_status in {200, 201, 202, 204}:
+                credential_validation = "credentials_validated"
+                detail = "Server reachable and credentials validated."
+            elif login_status in {401, 403}:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{platform_label} credentials rejected by server ({login_status}).",
+                )
+            elif login_status in {404, 405}:
+                credential_validation = "server_reachable_only"
+                detail = "Server reachable, login endpoint not available for direct validation."
+            elif login_status >= 500:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{platform_label} server error during credential validation ({login_status}).",
+                )
+            else:
+                credential_validation = "server_reachable_only"
+                detail = f"Server reachable (login status: {login_status})."
+
+        return {
+            "status": "success",
+            "message": f"{platform_label} connection test passed",
+            "platform": platform_label.lower().replace(" ", "_"),
+            "server_name": server_name,
+            "base_url": base_url,
+            "health_url": health_url,
+            "health_status": health_status,
+            "login_url": login_url,
+            "login_status": login_status,
+            "credential_validation": credential_validation,
+            "detail": detail,
+        }
 
 
 def broker_to_response(broker: BrokerAccount) -> dict:
@@ -472,8 +588,6 @@ async def test_broker_connection(
         )
 
         try:
-            import httpx
-
             async with httpx.AsyncClient(verify=False, timeout=15.0) as client:
                 response = await client.get(
                     f"https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai/users/current/accounts/{effective_metaapi_account_id}",
@@ -512,8 +626,6 @@ async def test_broker_connection(
         base_url = "https://api-fxpractice.oanda.com" if environment == "practice" else "https://api-fxtrade.oanda.com"
 
         try:
-            import httpx
-
             async with httpx.AsyncClient(verify=False, timeout=15.0) as client:
                 response = await client.get(
                     f"{base_url}/v3/accounts/{runtime['account_id']}/summary",
@@ -600,6 +712,54 @@ async def test_broker_connection(
                 "balance": str(account_info.balance),
                 "equity": str(account_info.equity),
             }
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Connection test failed: {e}")
+
+    if broker_type == "ctrader":
+        runtime = resolve_ctrader_runtime_credentials(broker)
+        try:
+            result = await _test_platform_http_connection(
+                platform_label="cTrader",
+                runtime=runtime,
+            )
+            broker.is_connected = True
+            broker.last_connected_at = datetime.now(UTC)
+            await db.flush()
+            return result
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Connection test failed: {e}")
+
+    if broker_type == "dxtrade":
+        runtime = resolve_dxtrade_runtime_credentials(broker)
+        try:
+            result = await _test_platform_http_connection(
+                platform_label="DXtrade",
+                runtime=runtime,
+            )
+            broker.is_connected = True
+            broker.last_connected_at = datetime.now(UTC)
+            await db.flush()
+            return result
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Connection test failed: {e}")
+
+    if broker_type == "matchtrader":
+        runtime = resolve_matchtrader_runtime_credentials(broker)
+        try:
+            result = await _test_platform_http_connection(
+                platform_label="MatchTrader",
+                runtime=runtime,
+            )
+            broker.is_connected = True
+            broker.last_connected_at = datetime.now(UTC)
+            await db.flush()
+            return result
         except HTTPException:
             raise
         except Exception as e:

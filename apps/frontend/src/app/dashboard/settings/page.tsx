@@ -858,6 +858,9 @@ function BrokerAccountsSettings() {
     if (brokerType === 'ig') return 'ig_api'
     if (brokerType === 'alpaca') return 'alpaca_api'
     if (brokerType === 'interactive_brokers') return 'ib_api'
+    if (brokerType === 'ctrader') return 'ctrader'
+    if (brokerType === 'dxtrade') return 'dxtrade'
+    if (brokerType === 'matchtrader') return 'matchtrader'
     if (brokerType === 'mt4') return 'mt4'
     if (brokerType === 'mt5') return 'mt5'
     return null
