@@ -591,7 +591,7 @@ export default function DashboardPage() {
     : licenseSlots
   const workspaceGridCols = totalSlots <= 1
     ? 'grid-cols-1'
-    : 'grid-cols-1 xl:grid-cols-2'
+    : 'grid-cols-1 2xl:grid-cols-2'
   const brokersBySlot = new Map<number, BrokerAccountData>()
   for (const broker of brokers) {
     if (broker.slot_index && broker.slot_index >= 1 && broker.slot_index <= totalSlots) {
@@ -804,13 +804,13 @@ export default function DashboardPage() {
             </Link>
           </div>
         </div>
-        <div className={`grid ${workspaceGridCols} gap-4`}>
+        <div className={`grid ${workspaceGridCols} gap-4 w-full`}>
           {Array.from({ length: totalSlots }, (_, idx) => {
             const slot = idx + 1
             const broker = brokersBySlot.get(slot)
             if (!broker) {
               return (
-                <div key={`empty-${slot}`} className="workspace-panel-card workspace-panel-empty">
+                <div key={`empty-${slot}`} className="workspace-panel-card workspace-panel-empty w-full">
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-xs uppercase tracking-wider text-dark-500 mb-1">Slot {slot}</p>
@@ -841,7 +841,7 @@ export default function DashboardPage() {
                     setSelectedBrokerId(broker.id)
                   }
                 }}
-                className={`workspace-panel-card text-left cursor-pointer ${isSelected ? 'workspace-panel-card-active' : ''}`}
+                className={`workspace-panel-card w-full text-left cursor-pointer ${isSelected ? 'workspace-panel-card-active' : ''}`}
               >
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                   <div className="flex items-center gap-2">
@@ -1036,6 +1036,7 @@ export default function DashboardPage() {
                 data={performanceData}
                 title={selectedBroker ? `${selectedBroker.name} Performance` : 'Portfolio Performance'}
                 height={350}
+                isDisabled={selectedSlotDisabled}
               />
             </motion.div>
 

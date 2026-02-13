@@ -295,13 +295,13 @@ export default function DashboardLayout({
           {/* Logo */}
           <div className="p-6 border-b border-dark-800/50">
             <Link href="/" className="block group">
-              <div className="relative">
+              <div className="relative prometheus-logo-shell">
                 <Image
                   src="/images/logo.png"
                   alt="Prometheus AI Trading"
-                  width={320}
-                  height={96}
-                  className="h-20 w-auto group-hover:scale-105 transition-transform mix-blend-screen"
+                  width={420}
+                  height={128}
+                  className="h-24 md:h-28 w-auto group-hover:scale-[1.04] transition-transform duration-300 mix-blend-screen prometheus-logo-ignite"
                   priority
                 />
                 <div className="absolute -inset-2 bg-primary-500/10 rounded-xl blur-lg opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -421,7 +421,7 @@ export default function DashboardLayout({
           <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-primary-500/50 to-transparent" />
 
           <div className="relative px-4 py-4 md:px-6">
-            <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-4">
+            <div className="mx-auto flex w-full max-w-[1720px] items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -512,7 +512,7 @@ export default function DashboardLayout({
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="mx-auto mt-4 w-full max-w-[1600px] px-4 md:px-6"
+              className="mx-auto mt-4 w-full max-w-[1720px] px-4 md:px-6"
             >
               <div className="p-4 bg-primary-500/5 border border-primary-500/20 rounded-2xl flex items-center gap-4">
                 <div className="w-10 h-10 rounded-xl bg-primary-500/10 flex items-center justify-center">
@@ -539,7 +539,7 @@ export default function DashboardLayout({
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
-            className="mx-auto w-full max-w-[1600px]"
+            className="mx-auto w-full max-w-[1720px]"
           >
             {children}
           </motion.div>

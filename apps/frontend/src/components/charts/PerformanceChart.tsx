@@ -23,13 +23,68 @@ interface PerformanceChartProps {
   data?: PerformanceData[]
   title?: string
   height?: number
+  isDisabled?: boolean
 }
 
 export function PerformanceChart({
   data = [],
   title = 'Performance',
   height = 300,
+  isDisabled = false,
 }: PerformanceChartProps) {
+  if (isDisabled) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="card p-6"
+      >
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-dark-700">
+              <TrendingUp className="w-5 h-5 text-dark-500" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold">{title}</h3>
+              <p className="text-sm text-dark-400">Slot disabled</p>
+            </div>
+          </div>
+
+          <div className="text-right">
+            <p className="text-2xl font-bold font-mono text-dark-300">--</p>
+            <p className="text-sm text-dark-400">--</p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-center border border-dashed border-dark-700 rounded-lg" style={{ height }}>
+          <div className="text-center">
+            <p className="font-mono text-2xl text-dark-300">--</p>
+            <p className="text-sm text-dark-400 mt-2">Performance data unavailable while this slot is disabled.</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-4 gap-4 mt-6 pt-4 border-t border-dark-700/50">
+          <div>
+            <p className="text-xs text-dark-400">Start Balance</p>
+            <p className="font-mono font-medium text-dark-300">--</p>
+          </div>
+          <div>
+            <p className="text-xs text-dark-400">Current Balance</p>
+            <p className="font-mono font-medium text-dark-300">--</p>
+          </div>
+          <div>
+            <p className="text-xs text-dark-400">Best Day</p>
+            <p className="font-mono font-medium text-dark-300">--</p>
+          </div>
+          <div>
+            <p className="text-xs text-dark-400">Worst Day</p>
+            <p className="font-mono font-medium text-dark-300">--</p>
+          </div>
+        </div>
+      </motion.div>
+    )
+  }
+
   // Show empty state if no data
   if (data.length === 0) {
     return (

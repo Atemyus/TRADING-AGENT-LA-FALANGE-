@@ -1247,6 +1247,45 @@
   opacity: 0.94;
 }
 
+@keyframes logoIgnitePulse {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    filter:
+      drop-shadow(0 0 10px rgba(255, 140, 0, 0.28))
+      drop-shadow(0 0 8px rgba(0, 245, 255, 0.18));
+  }
+  50% {
+    transform: translate3d(0, -1px, 0) scale(1.015);
+    filter:
+      drop-shadow(0 0 16px rgba(255, 215, 0, 0.36))
+      drop-shadow(0 0 14px rgba(0, 245, 255, 0.3));
+  }
+}
+
+.prometheus-logo-shell {
+  position: relative;
+  display: inline-flex;
+}
+
+.prometheus-logo-shell::after {
+  content: '';
+  position: absolute;
+  inset: -0.4rem -0.9rem;
+  border-radius: 0.95rem;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 24% 50%, rgba(255, 140, 0, 0.2) 0%, transparent 44%),
+    radial-gradient(circle at 78% 50%, rgba(0, 245, 255, 0.16) 0%, transparent 46%);
+  opacity: 0.66;
+  animation: glowPulse 4.2s ease-in-out infinite alternate;
+}
+
+.prometheus-logo-ignite {
+  will-change: transform, filter;
+  transform: translateZ(0);
+  animation: logoIgnitePulse 4.8s ease-in-out infinite;
+}
+
 @keyframes edgeEnergySweep {
   0% {
     transform: translateY(120vh);
@@ -1777,7 +1816,9 @@
   .header-ember,
   .edge-rail-energy,
   .edge-rail-energy-soft,
-  .edge-rail-particle {
+  .edge-rail-particle,
+  .prometheus-logo-ignite,
+  .prometheus-logo-shell::after {
     animation: none !important;
   }
 

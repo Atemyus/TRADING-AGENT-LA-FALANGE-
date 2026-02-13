@@ -99,7 +99,7 @@ function PriceCard({
       whileTap={{ scale: 0.98 }}
       onClick={onClick}
       className={`
-        relative p-4 rounded-xl cursor-pointer transition-all duration-200 min-w-[160px] flex-shrink-0
+        relative p-4 rounded-xl cursor-pointer transition-all duration-200 min-w-[198px] flex-shrink-0
         ${isSelected
           ? 'bg-primary-500/20 border-2 border-primary-500/50'
           : 'bg-dark-800/50 border border-dark-700/50 hover:border-dark-600'
@@ -314,7 +314,7 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
           <div
             ref={scrollContainerRef}
             onScroll={handleScroll}
-            className="flex gap-3 overflow-x-scroll py-2 px-2 hide-scrollbar"
+            className="flex gap-3 overflow-x-scroll py-2 px-0 hide-scrollbar"
             style={{
               scrollBehavior: 'smooth',
               scrollbarWidth: 'none', /* Firefox */
