@@ -10,6 +10,7 @@ Each broker account runs independently with its own:
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -20,6 +21,8 @@ from src.engines.trading.auto_trader import AnalysisMode, AutoTrader, BotConfig,
 from src.engines.trading.broker_factory import BrokerFactory, NoBrokerConfiguredError
 from src.services.broker_credentials_service import (
     normalize_credentials,
+    resolve_alpaca_runtime_credentials,
+    resolve_ig_runtime_credentials,
     resolve_metaapi_runtime_credentials,
     resolve_oanda_runtime_credentials,
 )
@@ -127,6 +130,41 @@ class MultiBrokerManager:
             runtime["environment"] = environment or "practice"
             return runtime
 
+        if broker_type == "ig":
+            runtime: dict[str, str] = {}
+            api_key = (credentials.get("ig_api_key") or credentials.get("api_key") or "").strip()
+            username = (credentials.get("ig_username") or credentials.get("username") or "").strip()
+            password = (credentials.get("ig_password") or credentials.get("password") or "").strip()
+            account_id = (credentials.get("ig_account_id") or credentials.get("account_id") or "").strip()
+            environment = (credentials.get("ig_environment") or credentials.get("environment") or "demo").strip()
+            if api_key:
+                runtime["api_key"] = api_key
+            if username:
+                runtime["username"] = username
+            if password:
+                runtime["password"] = password
+            if account_id:
+                runtime["account_id"] = account_id
+            runtime["environment"] = environment or "demo"
+            return runtime
+
+        if broker_type == "alpaca":
+            runtime: dict[str, str] = {}
+            api_key = (credentials.get("alpaca_api_key") or credentials.get("api_key") or "").strip()
+            secret_key = (
+                credentials.get("alpaca_secret_key")
+                or credentials.get("secret_key")
+                or credentials.get("password")
+                or ""
+            ).strip()
+            paper = (credentials.get("alpaca_paper") or credentials.get("paper") or "true").strip()
+            if api_key:
+                runtime["api_key"] = api_key
+            if secret_key:
+                runtime["secret_key"] = secret_key
+            runtime["paper"] = paper.lower() if paper else "true"
+            return runtime
+
         return credentials
 
     def _create_config_from_account(self, account: BrokerAccount) -> BotConfig:
@@ -185,6 +223,10 @@ class MultiBrokerManager:
                 runtime_credentials = await resolve_metaapi_runtime_credentials(broker_account)
             elif broker_type == "oanda":
                 runtime_credentials = resolve_oanda_runtime_credentials(broker_account)
+            elif broker_type == "ig":
+                runtime_credentials = resolve_ig_runtime_credentials(broker_account)
+            elif broker_type == "alpaca":
+                runtime_credentials = resolve_alpaca_runtime_credentials(broker_account)
             else:
                 runtime_credentials = normalize_credentials(broker_account.credentials)
         except HTTPException as exc:
@@ -426,6 +468,10 @@ class MultiBrokerManager:
                     runtime_credentials = await resolve_metaapi_runtime_credentials(broker_account)
                 elif broker_type == "oanda":
                     runtime_credentials = resolve_oanda_runtime_credentials(broker_account)
+                elif broker_type == "ig":
+                    runtime_credentials = resolve_ig_runtime_credentials(broker_account)
+                elif broker_type == "alpaca":
+                    runtime_credentials = resolve_alpaca_runtime_credentials(broker_account)
                 else:
                     runtime_credentials = normalize_credentials(broker_account.credentials)
                 instance.runtime_credentials = dict(runtime_credentials)
@@ -434,7 +480,7 @@ class MultiBrokerManager:
             except Exception:
                 return None
 
-        broker_kwargs: dict[str, str] = {}
+        broker_kwargs: dict[str, Any] = {}
         if broker_type in {"metaapi", "metatrader", "mt4", "mt5"}:
             access_token = runtime_credentials.get("access_token")
             account_id = runtime_credentials.get("account_id")
@@ -454,6 +500,32 @@ class MultiBrokerManager:
                 "api_key": api_key,
                 "account_id": account_id,
                 "environment": environment,
+            }
+        elif broker_type == "ig":
+            api_key = runtime_credentials.get("api_key")
+            username = runtime_credentials.get("username")
+            password = runtime_credentials.get("password")
+            environment = runtime_credentials.get("environment") or "demo"
+            if not api_key or not username or not password:
+                return None
+            broker_kwargs = {
+                "api_key": api_key,
+                "username": username,
+                "password": password,
+                "environment": environment,
+            }
+            if runtime_credentials.get("account_id"):
+                broker_kwargs["account_id"] = runtime_credentials["account_id"]
+        elif broker_type == "alpaca":
+            api_key = runtime_credentials.get("api_key")
+            secret_key = runtime_credentials.get("secret_key")
+            if not api_key or not secret_key:
+                return None
+            paper = (runtime_credentials.get("paper") or "true").lower() == "true"
+            broker_kwargs = {
+                "api_key": api_key,
+                "secret_key": secret_key,
+                "paper": paper,
             }
         else:
             broker_kwargs = runtime_credentials

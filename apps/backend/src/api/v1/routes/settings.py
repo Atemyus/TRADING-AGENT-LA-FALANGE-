@@ -454,6 +454,65 @@ async def test_broker_connection(db: AsyncSession = Depends(get_db)):
                 else:
                     raise HTTPException(status_code=400, detail="Invalid OANDA credentials")
 
+        elif broker.broker_type == "ig":
+            if not broker.ig_api_key or not broker.ig_username or not broker.ig_password:
+                raise HTTPException(
+                    status_code=400,
+                    detail="IG credentials not configured (api key, username, password required)",
+                )
+
+            ig_broker = BrokerFactory.create(
+                broker_type="ig",
+                api_key=broker.ig_api_key,
+                username=broker.ig_username,
+                password=broker.ig_password,
+                account_id=broker.ig_account_id,
+                environment=broker.ig_environment,
+            )
+            try:
+                await ig_broker.connect()
+                account_info = await ig_broker.get_account_info()
+            finally:
+                await ig_broker.disconnect()
+
+            return {
+                "status": "success",
+                "message": "Connected to IG successfully",
+                "account_id": account_info.account_id,
+                "currency": account_info.currency,
+                "balance": str(account_info.balance),
+                "equity": str(account_info.equity),
+            }
+
+        elif broker.broker_type == "alpaca":
+            if not broker.alpaca_api_key or not broker.alpaca_secret_key:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Alpaca credentials not configured (api key and secret key required)",
+                )
+
+            alpaca_broker = BrokerFactory.create(
+                broker_type="alpaca",
+                api_key=broker.alpaca_api_key,
+                secret_key=broker.alpaca_secret_key,
+                paper=broker.alpaca_paper,
+            )
+            try:
+                await alpaca_broker.connect()
+                account_info = await alpaca_broker.get_account_info()
+            finally:
+                await alpaca_broker.disconnect()
+
+            return {
+                "status": "success",
+                "message": "Connected to Alpaca successfully",
+                "account_id": account_info.account_id,
+                "currency": account_info.currency,
+                "balance": str(account_info.balance),
+                "equity": str(account_info.equity),
+                "environment": "paper" if broker.alpaca_paper else "live",
+            }
+
         else:
             return {"status": "success", "message": f"Broker {broker.broker_type} configured (connection test not implemented)"}
 

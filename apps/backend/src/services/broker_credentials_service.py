@@ -90,6 +90,19 @@ def _first_non_empty(*values: Any) -> str | None:
     return None
 
 
+def _to_bool(value: Any, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    lowered = str(value).strip().lower()
+    if lowered in {"true", "1", "yes", "y", "on"}:
+        return True
+    if lowered in {"false", "0", "no", "n", "off"}:
+        return False
+    return default
+
+
 def resolve_oanda_runtime_credentials(broker: BrokerAccount) -> dict[str, str]:
     creds = normalize_credentials(broker.credentials)
     account_id = _first_non_empty(
@@ -118,6 +131,94 @@ def resolve_oanda_runtime_credentials(broker: BrokerAccount) -> dict[str, str]:
         "account_id": account_id,
         "api_key": api_key,
         "environment": environment,
+    }
+
+
+def resolve_ig_runtime_credentials(broker: BrokerAccount) -> dict[str, str]:
+    creds = normalize_credentials(broker.credentials)
+    api_key = _first_non_empty(
+        creds.get("ig_api_key"),
+        creds.get("api_key"),
+        os.environ.get("IG_API_KEY"),
+        settings.IG_API_KEY,
+    )
+    username = _first_non_empty(
+        creds.get("ig_username"),
+        creds.get("username"),
+        os.environ.get("IG_USERNAME"),
+        settings.IG_USERNAME,
+    )
+    password = _first_non_empty(
+        creds.get("ig_password"),
+        creds.get("password"),
+        os.environ.get("IG_PASSWORD"),
+        settings.IG_PASSWORD,
+    )
+    account_id = _first_non_empty(
+        creds.get("ig_account_id"),
+        creds.get("account_id"),
+        os.environ.get("IG_ACCOUNT_ID"),
+        settings.IG_ACCOUNT_ID,
+    )
+    environment = _first_non_empty(
+        creds.get("ig_environment"),
+        creds.get("environment"),
+        os.environ.get("IG_ENVIRONMENT"),
+        settings.IG_ENVIRONMENT,
+    ) or "demo"
+
+    if not api_key or not username or not password:
+        raise HTTPException(
+            status_code=400,
+            detail="IG credentials not configured for this workspace (api key, username, password required).",
+        )
+
+    runtime = {
+        "api_key": api_key,
+        "username": username,
+        "password": password,
+        "environment": environment,
+    }
+    if account_id:
+        runtime["account_id"] = account_id
+    return runtime
+
+
+def resolve_alpaca_runtime_credentials(broker: BrokerAccount) -> dict[str, str]:
+    creds = normalize_credentials(broker.credentials)
+    api_key = _first_non_empty(
+        creds.get("alpaca_api_key"),
+        creds.get("api_key"),
+        os.environ.get("ALPACA_API_KEY"),
+        settings.ALPACA_API_KEY,
+    )
+    secret_key = _first_non_empty(
+        creds.get("alpaca_secret_key"),
+        creds.get("secret_key"),
+        creds.get("password"),
+        os.environ.get("ALPACA_SECRET_KEY"),
+        settings.ALPACA_SECRET_KEY,
+    )
+    paper_bool = _to_bool(
+        _first_non_empty(
+            creds.get("alpaca_paper"),
+            creds.get("paper"),
+            os.environ.get("ALPACA_PAPER"),
+            settings.ALPACA_PAPER,
+        ),
+        default=True,
+    )
+
+    if not api_key or not secret_key:
+        raise HTTPException(
+            status_code=400,
+            detail="Alpaca credentials not configured for this workspace (api key and secret key required).",
+        )
+
+    return {
+        "api_key": api_key,
+        "secret_key": secret_key,
+        "paper": "true" if paper_bool else "false",
     }
 
 
@@ -292,4 +393,8 @@ async def resolve_broker_runtime_kwargs(broker: BrokerAccount) -> dict[str, str]
         return await resolve_metaapi_runtime_credentials(broker)
     if broker_type == "oanda":
         return resolve_oanda_runtime_credentials(broker)
+    if broker_type == "ig":
+        return resolve_ig_runtime_credentials(broker)
+    if broker_type == "alpaca":
+        return resolve_alpaca_runtime_credentials(broker)
     return normalize_credentials(broker.credentials)

@@ -10,7 +10,9 @@ to support dynamic credential updates without server restart.
 
 import os
 
+from src.engines.trading.alpaca_broker import AlpacaBroker
 from src.engines.trading.base_broker import BaseBroker
+from src.engines.trading.ig_broker import IGBroker
 from src.engines.trading.metatrader_broker import MetaTraderBroker
 from src.engines.trading.oanda_broker import OANDABroker
 
@@ -47,6 +49,15 @@ class BrokerFactory:
             token = os.environ.get("METAAPI_ACCESS_TOKEN", "")
             account = os.environ.get("METAAPI_ACCOUNT_ID", "")
             return bool(token and account)
+        elif broker_type == "ig":
+            api_key = os.environ.get("IG_API_KEY", "")
+            username = os.environ.get("IG_USERNAME", "")
+            password = os.environ.get("IG_PASSWORD", "")
+            return bool(api_key and username and password)
+        elif broker_type == "alpaca":
+            api_key = os.environ.get("ALPACA_API_KEY", "")
+            secret = os.environ.get("ALPACA_SECRET_KEY", "")
+            return bool(api_key and secret)
         elif broker_type == "none":
             return False
         else:
@@ -113,13 +124,43 @@ class BrokerFactory:
             )
 
         elif broker_type == "ig":
-            raise NotImplementedError("IG broker not yet implemented")
+            api_key = kwargs.get("api_key", os.environ.get("IG_API_KEY", ""))
+            username = kwargs.get("username", os.environ.get("IG_USERNAME", ""))
+            password = kwargs.get("password", os.environ.get("IG_PASSWORD", ""))
+            account_id = kwargs.get("account_id", os.environ.get("IG_ACCOUNT_ID", ""))
+            environment = kwargs.get("environment", os.environ.get("IG_ENVIRONMENT", "demo"))
+            if not api_key or not username or not password:
+                raise NoBrokerConfiguredError(
+                    "IG broker requires api key, username and password. Configure in Settings."
+                )
+            return IGBroker(
+                api_key=api_key,
+                username=username,
+                password=password,
+                account_id=account_id or None,
+                environment=environment,
+            )
 
         elif broker_type in ("ib", "interactive_brokers"):
             raise NotImplementedError("Interactive Brokers not yet implemented")
 
         elif broker_type == "alpaca":
-            raise NotImplementedError("Alpaca broker not yet implemented")
+            api_key = kwargs.get("api_key", os.environ.get("ALPACA_API_KEY", ""))
+            secret_key = kwargs.get("secret_key", os.environ.get("ALPACA_SECRET_KEY", ""))
+            raw_paper = kwargs.get("paper", os.environ.get("ALPACA_PAPER", "true"))
+            if isinstance(raw_paper, bool):
+                paper = raw_paper
+            else:
+                paper = str(raw_paper).lower() == "true"
+            if not api_key or not secret_key:
+                raise NoBrokerConfiguredError(
+                    "Alpaca broker requires api key and secret key. Configure in Settings."
+                )
+            return AlpacaBroker(
+                api_key=api_key,
+                secret_key=secret_key,
+                paper=paper,
+            )
 
         else:
             raise NoBrokerConfiguredError(f"Unknown broker type: {broker_type}. Configure in Settings.")

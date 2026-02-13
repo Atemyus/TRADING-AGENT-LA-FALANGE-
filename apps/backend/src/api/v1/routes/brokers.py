@@ -13,11 +13,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.v1.routes.auth import get_licensed_user
 from src.core.database import get_db
 from src.core.models import BrokerAccount, User
+from src.engines.trading.broker_factory import BrokerFactory
 from src.services.broker_credentials_service import (
     MASKED_PREFIX,
     mask_credentials,
     merge_credentials_preserving_masked,
     normalize_credentials,
+    resolve_alpaca_runtime_credentials,
+    resolve_ig_runtime_credentials,
     resolve_metaapi_runtime_credentials,
     resolve_oanda_runtime_credentials,
 )
@@ -531,6 +534,72 @@ async def test_broker_connection(
                 if response.status_code == 404:
                     raise HTTPException(status_code=400, detail="OANDA account not found.")
                 raise HTTPException(status_code=400, detail=f"OANDA error ({response.status_code})")
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Connection test failed: {e}")
+
+    if broker_type == "ig":
+        runtime = resolve_ig_runtime_credentials(broker)
+        try:
+            ig_broker = BrokerFactory.create(
+                broker_type="ig",
+                **runtime,
+            )
+            try:
+                await ig_broker.connect()
+                account_info = await ig_broker.get_account_info()
+            finally:
+                await ig_broker.disconnect()
+
+            broker.is_connected = True
+            broker.last_connected_at = datetime.now(UTC)
+            await db.flush()
+
+            return {
+                "status": "success",
+                "message": "Connected to IG successfully",
+                "platform": broker.platform_id or "ig_api",
+                "environment": runtime.get("environment", "demo"),
+                "account_id": account_info.account_id,
+                "currency": account_info.currency,
+                "balance": str(account_info.balance),
+                "equity": str(account_info.equity),
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Connection test failed: {e}")
+
+    if broker_type == "alpaca":
+        runtime = resolve_alpaca_runtime_credentials(broker)
+        try:
+            alpaca_broker = BrokerFactory.create(
+                broker_type="alpaca",
+                api_key=runtime.get("api_key"),
+                secret_key=runtime.get("secret_key"),
+                paper=(runtime.get("paper") or "true").lower() == "true",
+            )
+            try:
+                await alpaca_broker.connect()
+                account_info = await alpaca_broker.get_account_info()
+            finally:
+                await alpaca_broker.disconnect()
+
+            broker.is_connected = True
+            broker.last_connected_at = datetime.now(UTC)
+            await db.flush()
+
+            return {
+                "status": "success",
+                "message": "Connected to Alpaca successfully",
+                "platform": broker.platform_id or "alpaca_api",
+                "environment": "paper" if (runtime.get("paper") or "true").lower() == "true" else "live",
+                "account_id": account_info.account_id,
+                "currency": account_info.currency,
+                "balance": str(account_info.balance),
+                "equity": str(account_info.equity),
+            }
         except HTTPException:
             raise
         except Exception as e:

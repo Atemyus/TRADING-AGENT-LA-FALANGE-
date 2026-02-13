@@ -16,6 +16,8 @@ from .base_broker import (
     TimeInForce,
 )
 from .broker_factory import BrokerFactory, get_broker
+from .ig_broker import IGBroker
+from .alpaca_broker import AlpacaBroker
 from .oanda_broker import OANDABroker
 from .risk_manager import RiskManager, risk_manager
 
@@ -39,6 +41,8 @@ __all__ = [
     "risk_manager",
     # Broker implementations
     "OANDABroker",
+    "IGBroker",
+    "AlpacaBroker",
     "BrokerFactory",
     "get_broker",
 ]
