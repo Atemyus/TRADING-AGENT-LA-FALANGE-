@@ -13,6 +13,11 @@ import {
   LogIn,
   ArrowLeft,
   AlertCircle,
+  HelpCircle,
+  LifeBuoy,
+  Shield,
+  Cpu,
+  Sparkles,
 } from 'lucide-react'
 import { MusicPlayer } from '@/components/common/MusicPlayer'
 import { useAuth } from '@/contexts/AuthContext'
@@ -79,7 +84,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden prometheus-auth-shell">
+    <div className="min-h-screen px-4 py-28 md:py-32 relative overflow-hidden prometheus-auth-shell">
       {/* Background effects */}
       <div className="absolute inset-0 -z-10">
         <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-primary-500/10 rounded-full blur-3xl" />
@@ -88,24 +93,84 @@ export default function LoginPage() {
 
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-50 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between prometheus-auth-header px-3 py-2">
+        <div className="max-w-[1720px] mx-auto flex items-center justify-between gap-4 prometheus-auth-header px-3 py-2">
           <Link href="/" className="flex items-center gap-3 group">
             <div className="p-2 rounded-lg bg-dark-800/50 border border-primary-500/20 hover:border-primary-500/40 transition-all">
               <ArrowLeft size={20} className="text-dark-300" />
             </div>
             <span className="text-dark-400 hidden sm:block">Back to home</span>
           </Link>
-          <MusicPlayer size="md" showLabel={false} />
+
+          <nav className="hidden lg:flex items-center gap-2">
+            <Link href="/register" className="prometheus-nav-link">
+              Register
+            </Link>
+            <Link href="/#faq" className="prometheus-nav-link">
+              FAQ
+            </Link>
+            <Link href="/#help" className="prometheus-nav-link">
+              Help
+            </Link>
+          </nav>
+
+          <div className="flex items-center gap-2">
+            <MusicPlayer size="md" showLabel={false} />
+            <Link href="/register" className="btn-secondary btn-square px-4 py-2.5 hidden sm:inline-flex">
+              Registrati
+            </Link>
+          </div>
         </div>
       </header>
 
-      {/* Login Card */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="w-full max-w-md"
-      >
+      <div className="max-w-6xl mx-auto grid lg:grid-cols-[1.05fr_0.95fr] gap-8 items-start">
+        <motion.aside
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.55 }}
+          className="hidden lg:block"
+        >
+          <div className="prometheus-auth-side-shell p-7">
+            <p className="text-xs uppercase tracking-[0.16em] text-primary-300 mb-3">Access Layer</p>
+            <h1 className="font-imperial text-4xl text-gradient-falange mb-4">Return To Command</h1>
+            <p className="text-dark-300 mb-6">
+              Sign in to monitor your broker slots, AI consensus, and execution telemetry from one tactical surface.
+            </p>
+
+            <div className="space-y-3 mb-6">
+              <div className="prometheus-auth-side-item">
+                <Cpu size={16} className="text-primary-300" />
+                <span>Realtime model consensus and trade context.</span>
+              </div>
+              <div className="prometheus-auth-side-item">
+                <Shield size={16} className="text-primary-300" />
+                <span>Risk controls and slot state checks before execution.</span>
+              </div>
+              <div className="prometheus-auth-side-item">
+                <Sparkles size={16} className="text-primary-300" />
+                <span>Structured logs for every automated decision.</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Link href="/#faq" className="btn-secondary btn-square px-4 py-3 inline-flex items-center justify-center gap-2 text-sm">
+                <HelpCircle size={16} />
+                FAQ
+              </Link>
+              <Link href="/#help" className="btn-secondary btn-square px-4 py-3 inline-flex items-center justify-center gap-2 text-sm">
+                <LifeBuoy size={16} />
+                Help
+              </Link>
+            </div>
+          </div>
+        </motion.aside>
+
+        {/* Login Card */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="w-full max-w-md lg:max-w-none lg:w-full lg:justify-self-end"
+        >
         <div className="card-gold p-8 prometheus-auth-card forge-pattern">
           {/* Logo */}
           <div className="text-center mb-8">
@@ -145,7 +210,7 @@ export default function LoginPage() {
                 type="button"
                 onClick={handleResendVerification}
                 disabled={isResending}
-                className="btn-secondary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                className="btn-secondary btn-square w-full disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isResending ? 'Sending...' : 'Resend verification email'}
               </button>
@@ -221,7 +286,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="btn-primary w-full py-4 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary btn-square w-full py-4 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isLoading ? (
                 <div className="w-5 h-5 border-2 border-dark-950 border-t-transparent rounded-full animate-spin" />
@@ -249,7 +314,7 @@ export default function LoginPage() {
           {/* Register Link */}
           <Link
             href="/register"
-            className="btn-secondary w-full py-4 flex items-center justify-center gap-2"
+            className="btn-secondary btn-square w-full py-4 flex items-center justify-center gap-2"
           >
             <Flame size={20} />
             <span>Ignite Your Journey</span>
@@ -261,6 +326,8 @@ export default function LoginPage() {
           Protected by the sacred fire of Prometheus
         </p>
       </motion.div>
+      </div>
     </div>
   )
 }
+

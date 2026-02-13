@@ -26,6 +26,11 @@ import {
   Layers3,
   Compass,
   Fingerprint,
+  HelpCircle,
+  LifeBuoy,
+  FileText,
+  UserPlus,
+  ArrowUpRight,
 } from 'lucide-react'
 import { MusicPlayer } from '@/components/common/MusicPlayer'
 import { LEGION_MODELS } from './legionModels'
@@ -80,6 +85,59 @@ const RITUAL_FLOW = [
   },
 ]
 
+const NAV_ITEMS = [
+  { label: 'Features', href: '#features' },
+  { label: 'Models', href: '#models' },
+  { label: 'FAQ', href: '#faq' },
+  { label: 'Help', href: '#help' },
+]
+
+const FAQ_ITEMS = [
+  {
+    question: 'How does Prometheus decide when to execute a trade?',
+    answer: 'Each setup is filtered by multi-model consensus, risk rules, and broker context before execution is allowed.',
+  },
+  {
+    question: 'Can I use more than one broker account?',
+    answer: 'Yes. Workspace slots are license-driven, so you can run multiple broker panels in parallel from one command center.',
+  },
+  {
+    question: 'Do I need to keep the dashboard open for automation?',
+    answer: 'No. The backend executes autonomously; dashboard access is used for control, monitoring, and audit.',
+  },
+  {
+    question: 'How is risk controlled?',
+    answer: 'Position sizing, SL/TP logic, daily loss constraints, and trade filters are enforced before orders are sent.',
+  },
+]
+
+const HELP_LINKS = [
+  {
+    icon: HelpCircle,
+    title: 'FAQ Center',
+    description: 'Quick answers on setup, slots, and execution logic.',
+    href: '#faq',
+  },
+  {
+    icon: UserPlus,
+    title: 'Create Account',
+    description: 'Activate your license and onboard in minutes.',
+    href: '/register',
+  },
+  {
+    icon: FileText,
+    title: 'Policy & Terms',
+    description: 'Review platform rules, privacy and compliance.',
+    href: '/terms',
+  },
+  {
+    icon: LifeBuoy,
+    title: 'Access Support',
+    description: 'Use the login flow and resend verification if needed.',
+    href: '/login',
+  },
+]
+
 export default function LandingPage() {
   const visibleLegionModels = LEGION_MODELS.filter((model) => model.visible)
   const [showArrivalOverlay, setShowArrivalOverlay] = useState(false)
@@ -118,7 +176,7 @@ export default function LandingPage() {
               </p>
               <button
                 onClick={() => setShowArrivalOverlay(false)}
-                className="btn-primary px-8 py-3"
+                className="btn-primary btn-square px-8 py-3"
               >
                 Enter The Platform
               </button>
@@ -127,23 +185,43 @@ export default function LandingPage() {
         )}
       </AnimatePresence>
 
-      {/* Fixed header with music and login */}
-      <header className="fixed top-0 left-0 right-0 z-50 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          {/* Spacer for layout balance */}
-          <div className="w-16" />
-
-          {/* Right side - Music & Auth */}
-          <div className="flex items-center gap-4">
-            <MusicPlayer size="md" showLabel={false} />
-
-            <Link
-              href="/login"
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-dark-800/50 border border-primary-500/20 hover:bg-dark-800 hover:border-primary-500/40 transition-all duration-300 text-dark-200 hover:text-primary-300"
-            >
-              <LogIn size={18} />
-              <span className="hidden sm:inline font-medium">Login</span>
+      {/* Top navigation */}
+      <header className="fixed top-0 left-0 right-0 z-50 px-3 py-3 md:px-5 md:py-4">
+        <div className="max-w-[1720px] mx-auto">
+          <div className="prometheus-top-nav">
+            <Link href="/" className="prometheus-nav-brand">
+              <Image
+                src="/images/logo.png"
+                alt="Prometheus AI Trading"
+                width={140}
+                height={44}
+                className="h-10 w-auto mix-blend-screen"
+                priority
+              />
+              <span className="hidden xl:block text-xs uppercase tracking-[0.18em] text-dark-400">
+                Command Surface
+              </span>
             </Link>
+
+            <nav className="hidden lg:flex items-center gap-2">
+              {NAV_ITEMS.map((item) => (
+                <a key={item.label} href={item.href} className="prometheus-nav-link">
+                  {item.label}
+                </a>
+              ))}
+            </nav>
+
+            <div className="flex items-center gap-2 md:gap-3">
+              <MusicPlayer size="md" showLabel={false} />
+              <Link href="/login" className="btn-secondary btn-square px-4 py-2.5 inline-flex items-center gap-2">
+                <LogIn size={16} />
+                <span className="hidden sm:inline">Login</span>
+              </Link>
+              <Link href="/register" className="btn-primary btn-square px-4 py-2.5 inline-flex items-center gap-2">
+                <UserPlus size={16} />
+                <span className="hidden sm:inline">Registrati</span>
+              </Link>
+            </div>
           </div>
         </div>
       </header>
@@ -151,7 +229,7 @@ export default function LandingPage() {
       <EdgeFireRail side="left" />
       <EdgeFireRail side="right" />
       {/* Hero Section */}
-      <section className="relative min-h-screen flex flex-col items-center justify-center px-4 hero-gradient particles-bg">
+      <section id="home" className="relative min-h-screen flex flex-col items-center justify-center px-4 pt-28 md:pt-32 pb-16 hero-gradient particles-bg">
         {/* Animated background orbs */}
         <div className="absolute inset-0 -z-10 overflow-hidden">
           <motion.div
@@ -186,13 +264,52 @@ export default function LandingPage() {
           />
         </div>
 
+        <div className="pointer-events-none absolute inset-0 hidden 2xl:block">
+          <motion.div
+            initial={{ opacity: 0, x: -22 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.7, delay: 0.9 }}
+            className="absolute left-5 top-[22%] prometheus-side-module"
+          >
+            <p className="text-xs uppercase tracking-wider text-dark-500 mb-1">Neural Forge</p>
+            <p className="text-sm text-dark-200">Signal maps and macro pressure fused into one tactical read.</p>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, x: -26 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.7, delay: 1.05 }}
+            className="absolute left-8 bottom-[21%] prometheus-side-module-cyan"
+          >
+            <p className="text-xs uppercase tracking-wider text-dark-500 mb-1">Latency Gate</p>
+            <p className="text-sm text-dark-200">Execution rails and slippage checks synchronized in real time.</p>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, x: 22 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.7, delay: 0.95 }}
+            className="absolute right-5 top-[26%] prometheus-side-module"
+          >
+            <p className="text-xs uppercase tracking-wider text-dark-500 mb-1">Consensus Core</p>
+            <p className="text-sm text-dark-200">Only high-conviction model alignment unlocks order execution.</p>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, x: 28 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.7, delay: 1.1 }}
+            className="absolute right-8 bottom-[20%] prometheus-side-module-cyan"
+          >
+            <p className="text-xs uppercase tracking-wider text-dark-500 mb-1">Reliability Layer</p>
+            <p className="text-sm text-dark-200">Verification, licensing and safeguards enforce platform discipline.</p>
+          </motion.div>
+        </div>
+
         <motion.div
           initial={{ opacity: 0, x: -18 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.7, delay: 0.75 }}
           className="hidden xl:block absolute left-10 top-[34%] z-10"
         >
-          <div className="prometheus-panel-surface px-4 py-3 max-w-[210px]">
+          <div className="prometheus-panel-surface px-4 py-3 max-w-[220px]">
             <p className="text-xs uppercase tracking-wider text-dark-500 mb-1">Realtime Layer</p>
             <p className="text-sm text-dark-200">AI consensus + execution telemetry synchronized every cycle.</p>
           </div>
@@ -204,7 +321,7 @@ export default function LandingPage() {
           transition={{ duration: 0.7, delay: 0.85 }}
           className="hidden xl:block absolute right-10 top-[40%] z-10"
         >
-          <div className="prometheus-panel-surface px-4 py-3 max-w-[220px]">
+          <div className="prometheus-panel-surface px-4 py-3 max-w-[240px]">
             <p className="text-xs uppercase tracking-wider text-dark-500 mb-1">License System</p>
             <p className="text-sm text-dark-200">Slot-based access for multi-broker workspaces and scalable onboarding.</p>
           </div>
@@ -309,7 +426,7 @@ export default function LandingPage() {
           >
             <Link
               href="/dashboard"
-              className="btn-primary text-lg px-10 py-4 inline-flex items-center gap-3 group relative overflow-hidden"
+              className="btn-primary btn-square text-lg px-10 py-4 inline-flex items-center gap-3 group relative overflow-hidden"
             >
               <span className="relative z-10 flex items-center gap-2">
                 Enter Command Center
@@ -320,7 +437,7 @@ export default function LandingPage() {
 
             <Link
               href="/dashboard/settings"
-              className="btn-secondary text-lg px-8 py-4 inline-flex items-center gap-2"
+              className="btn-secondary btn-square text-lg px-8 py-4 inline-flex items-center gap-2"
             >
               <Flame className="w-5 h-5" />
               Ignite Trading
@@ -438,7 +555,7 @@ export default function LandingPage() {
       </section>
 
       {/* Features Section */}
-      <section className="py-32 px-4 relative">
+      <section id="features" className="py-32 px-4 relative">
         <div className="max-w-6xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -546,7 +663,7 @@ export default function LandingPage() {
       </section>
 
       {/* AI Models Section */}
-      <section className="py-32 px-4">
+      <section id="models" className="py-32 px-4">
         <div className="max-w-6xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -597,6 +714,107 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* FAQ Section */}
+      <section id="faq" className="py-28 px-4 bg-dark-950/55 relative">
+        <div className="max-w-6xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.55 }}
+            className="text-center mb-14"
+          >
+            <h2 className="font-imperial text-4xl md:text-5xl mb-5">
+              <span className="text-gradient-imperial">FAQ & Support Intel</span>
+            </h2>
+            <p className="text-dark-400 max-w-2xl mx-auto">
+              Everything needed to onboard fast, verify access, and run your command center with confidence.
+            </p>
+          </motion.div>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            {FAQ_ITEMS.map((item, index) => (
+              <motion.article
+                key={item.question}
+                initial={{ opacity: 0, y: 18 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.45, delay: index * 0.07 }}
+                className="prometheus-faq-card"
+              >
+                <h3 className="text-lg text-dark-100 mb-2">{item.question}</h3>
+                <p className="text-sm text-dark-400 leading-relaxed">{item.answer}</p>
+              </motion.article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Help Section */}
+      <section id="help" className="py-24 px-4">
+        <div className="max-w-6xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+            className="prometheus-help-shell p-6 md:p-10"
+          >
+            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-5 mb-8">
+              <div>
+                <p className="text-xs uppercase tracking-[0.16em] text-primary-300 mb-2">Help Center</p>
+                <h2 className="font-imperial text-3xl md:text-4xl text-gradient-falange mb-2">
+                  Need Assistance Before Ignition?
+                </h2>
+                <p className="text-dark-300 max-w-2xl">
+                  Use these quick paths for account setup, verification flow, and legal/security references.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
+              {HELP_LINKS.map((item, index) => {
+                const Icon = item.icon
+                const isAnchor = item.href.startsWith('#')
+                return (
+                  <motion.div
+                    key={item.title}
+                    initial={{ opacity: 0, y: 16 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.45, delay: index * 0.06 }}
+                  >
+                    {isAnchor ? (
+                      <a href={item.href} className="prometheus-help-link">
+                        <div className="w-10 h-10 rounded-lg bg-primary-500/15 border border-primary-500/30 flex items-center justify-center text-primary-300">
+                          <Icon size={18} />
+                        </div>
+                        <div>
+                          <p className="text-sm text-dark-100 font-semibold mb-1">{item.title}</p>
+                          <p className="text-xs text-dark-400">{item.description}</p>
+                        </div>
+                        <ArrowUpRight size={16} className="text-primary-300 ml-auto" />
+                      </a>
+                    ) : (
+                      <Link href={item.href} className="prometheus-help-link">
+                        <div className="w-10 h-10 rounded-lg bg-primary-500/15 border border-primary-500/30 flex items-center justify-center text-primary-300">
+                          <Icon size={18} />
+                        </div>
+                        <div>
+                          <p className="text-sm text-dark-100 font-semibold mb-1">{item.title}</p>
+                          <p className="text-xs text-dark-400">{item.description}</p>
+                        </div>
+                        <ArrowUpRight size={16} className="text-primary-300 ml-auto" />
+                      </Link>
+                    )}
+                  </motion.div>
+                )
+              })}
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
       {/* CTA Section */}
       <section className="py-32 px-4 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-primary-500/5 to-imperial-500/5" />
@@ -619,7 +837,7 @@ export default function LandingPage() {
 
           <Link
             href="/dashboard"
-            className="btn-primary text-xl px-12 py-5 inline-flex items-center gap-3 group animate-warrior-pulse titan-pulse"
+            className="btn-primary btn-square text-xl px-12 py-5 inline-flex items-center gap-3 group animate-warrior-pulse titan-pulse"
           >
             <Flame className="w-6 h-6 torch-glow" />
             <span>Enter Command Center</span>
@@ -767,3 +985,4 @@ function StepCard({
     </motion.div>
   )
 }
+
