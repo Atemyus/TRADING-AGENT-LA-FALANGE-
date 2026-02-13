@@ -15,6 +15,11 @@ from src.engines.trading.base_broker import BaseBroker
 from src.engines.trading.ig_broker import IGBroker
 from src.engines.trading.metatrader_broker import MetaTraderBroker
 from src.engines.trading.oanda_broker import OANDABroker
+from src.engines.trading.platform_rest_broker import (
+    CTraderBroker,
+    DXTradeBroker,
+    MatchTraderBroker,
+)
 
 
 class NoBrokerConfiguredError(Exception):
@@ -58,6 +63,12 @@ class BrokerFactory:
             api_key = os.environ.get("ALPACA_API_KEY", "")
             secret = os.environ.get("ALPACA_SECRET_KEY", "")
             return bool(api_key and secret)
+        elif broker_type in {"ctrader", "dxtrade", "matchtrader"}:
+            prefix = broker_type.upper()
+            account_id = os.environ.get(f"{prefix}_ACCOUNT_ID", "") or os.environ.get("BROKER_ACCOUNT_ID", "")
+            password = os.environ.get(f"{prefix}_PASSWORD", "") or os.environ.get("BROKER_PASSWORD", "")
+            server_name = os.environ.get(f"{prefix}_SERVER_NAME", "") or os.environ.get("BROKER_SERVER_NAME", "")
+            return bool(account_id and password and server_name)
         elif broker_type == "none":
             return False
         else:
@@ -145,9 +156,75 @@ class BrokerFactory:
             raise NotImplementedError("Interactive Brokers not yet implemented")
 
         elif broker_type in ("ctrader", "dxtrade", "matchtrader"):
-            raise NotImplementedError(
-                f"Broker type '{broker_type}' is available for credential validation only. "
-                "Auto-trading adapter is not implemented yet."
+            prefix = broker_type.upper()
+            account_id = (
+                kwargs.get("account_id")
+                or kwargs.get("account_number")
+                or kwargs.get("login")
+                or os.environ.get(f"{prefix}_ACCOUNT_ID", "")
+                or os.environ.get("BROKER_ACCOUNT_ID", "")
+            )
+            password = (
+                kwargs.get("password")
+                or kwargs.get("account_password")
+                or os.environ.get(f"{prefix}_PASSWORD", "")
+                or os.environ.get("BROKER_PASSWORD", "")
+            )
+            server_name = (
+                kwargs.get("server_name")
+                or kwargs.get("server")
+                or os.environ.get(f"{prefix}_SERVER_NAME", "")
+                or os.environ.get("BROKER_SERVER_NAME", "")
+            )
+            api_base_url = (
+                kwargs.get("api_base_url")
+                or kwargs.get("base_url")
+                or os.environ.get(f"{prefix}_API_BASE_URL", "")
+                or os.environ.get("BROKER_API_BASE_URL", "")
+            )
+
+            if not account_id or not password or not server_name:
+                raise NoBrokerConfiguredError(
+                    f"{broker_type} broker requires account id/login, password and server name. "
+                    "Configure in Settings."
+                )
+
+            adapter_kwargs = dict(kwargs)
+            for key in {
+                "account_id",
+                "account_number",
+                "login",
+                "password",
+                "account_password",
+                "server_name",
+                "server",
+                "api_base_url",
+                "base_url",
+            }:
+                adapter_kwargs.pop(key, None)
+
+            if broker_type == "ctrader":
+                return CTraderBroker(
+                    account_id=str(account_id),
+                    password=str(password),
+                    server_name=str(server_name),
+                    api_base_url=str(api_base_url) if api_base_url else None,
+                    **adapter_kwargs,
+                )
+            if broker_type == "dxtrade":
+                return DXTradeBroker(
+                    account_id=str(account_id),
+                    password=str(password),
+                    server_name=str(server_name),
+                    api_base_url=str(api_base_url) if api_base_url else None,
+                    **adapter_kwargs,
+                )
+            return MatchTraderBroker(
+                account_id=str(account_id),
+                password=str(password),
+                server_name=str(server_name),
+                api_base_url=str(api_base_url) if api_base_url else None,
+                **adapter_kwargs,
             )
 
         elif broker_type == "alpaca":

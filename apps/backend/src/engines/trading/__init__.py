@@ -19,6 +19,7 @@ from .broker_factory import BrokerFactory, get_broker
 from .ig_broker import IGBroker
 from .alpaca_broker import AlpacaBroker
 from .oanda_broker import OANDABroker
+from .platform_rest_broker import CTraderBroker, DXTradeBroker, MatchTraderBroker
 from .risk_manager import RiskManager, risk_manager
 
 __all__ = [
@@ -43,6 +44,9 @@ __all__ = [
     "OANDABroker",
     "IGBroker",
     "AlpacaBroker",
+    "CTraderBroker",
+    "DXTradeBroker",
+    "MatchTraderBroker",
     "BrokerFactory",
     "get_broker",
 ]

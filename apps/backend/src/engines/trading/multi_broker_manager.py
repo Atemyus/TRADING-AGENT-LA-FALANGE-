@@ -251,14 +251,6 @@ class MultiBrokerManager:
             return {"status": "error", "message": "Broker is disabled"}
 
         broker_type = (broker_account.broker_type or "metaapi").lower()
-        if broker_type in {"ctrader", "dxtrade", "matchtrader"}:
-            return {
-                "status": "error",
-                "message": (
-                    f"Auto-trading adapter for '{broker_type}' is not enabled yet. "
-                    "Use connection test in Settings to validate credentials."
-                ),
-            }
 
         runtime_credentials: dict[str, str] = {}
         try:
