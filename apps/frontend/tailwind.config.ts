@@ -89,10 +89,10 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ['Sora', 'Space Grotesk', 'system-ui', 'sans-serif'],
+        sans: ['Oxanium', 'system-ui', 'sans-serif'],
         mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
-        display: ['Cinzel', 'Bodoni Moda SC', 'serif'], // Imperial display font stack
-        accent: ['Space Grotesk', 'Sora', 'sans-serif'],
+        display: ['Marcellus SC', 'Cinzel', 'serif'], // Prometheus display stack
+        accent: ['Oxanium', 'system-ui', 'sans-serif'],
       },
       animation: {
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',

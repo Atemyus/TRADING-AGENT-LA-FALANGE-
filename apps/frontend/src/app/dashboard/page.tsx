@@ -571,6 +571,9 @@ export default function DashboardPage() {
   const totalSlots = user?.is_superuser
     ? (user?.license_broker_slots ? licenseSlots : Math.max(1, brokers.length))
     : licenseSlots
+  const workspaceGridCols = totalSlots <= 1
+    ? 'grid-cols-1'
+    : 'grid-cols-1 xl:grid-cols-2'
   const brokersBySlot = new Map<number, BrokerAccountData>()
   for (const broker of brokers) {
     if (broker.slot_index && broker.slot_index >= 1 && broker.slot_index <= totalSlots) {
@@ -735,7 +738,7 @@ export default function DashboardPage() {
             </Link>
           </div>
         </div>
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <div className={`grid ${workspaceGridCols} gap-4`}>
           {Array.from({ length: totalSlots }, (_, idx) => {
             const slot = idx + 1
             const broker = brokersBySlot.get(slot)
