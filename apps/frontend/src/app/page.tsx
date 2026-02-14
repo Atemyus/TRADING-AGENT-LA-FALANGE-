@@ -213,7 +213,7 @@ export default function LandingPage() {
       {/* Top navigation */}
       <header
         className={`prometheus-top-header-shell fixed top-0 left-0 right-0 z-50 px-2 md:px-3 transition-all duration-300 ${
-          isNavScrolled ? 'py-2.5 md:py-3' : 'py-4 md:py-5'
+          isNavScrolled ? 'py-3 md:py-4' : 'py-5 md:py-6'
         } ${isNavCompressed ? '-translate-y-[1px]' : 'translate-y-0'}`}
       >
         <div className="max-w-[1840px] mx-auto">
@@ -227,15 +227,15 @@ export default function LandingPage() {
                 className="h-10 w-auto mix-blend-screen"
                 priority
               />
-              <span className="hidden xl:block text-xs uppercase tracking-[0.18em] text-dark-400">
+              <span className="prometheus-nav-brand-caption hidden xl:block">
                 Command Surface
               </span>
             </Link>
 
             <nav className="hidden lg:flex items-center gap-2">
               {NAV_ITEMS.map((item) => (
-                <a key={item.label} href={item.href} className="prometheus-nav-link">
-                  {item.label}
+                <a key={item.label} href={item.href} className="prometheus-nav-link prometheus-nav-link-hero">
+                  <span className="prometheus-nav-link-hero-text">{item.label}</span>
                 </a>
               ))}
             </nav>
