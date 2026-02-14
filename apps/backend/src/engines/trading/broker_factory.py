@@ -61,7 +61,16 @@ class BrokerFactory:
                 password = os.environ.get("MT_BRIDGE_PASSWORD", "") or os.environ.get("BROKER_PASSWORD", "")
                 server_name = os.environ.get("MT_BRIDGE_SERVER_NAME", "") or os.environ.get("BROKER_SERVER_NAME", "")
                 bridge_base_url = os.environ.get("MT_BRIDGE_BASE_URL", "")
-                return bool(account_number and password and server_name and bridge_base_url)
+                platform = (
+                    os.environ.get("MT_BRIDGE_PLATFORM", "")
+                    or os.environ.get("BROKER_PLATFORM", "")
+                    or ("mt4" if broker_type == "mt4" else "mt5")
+                )
+                safe_platform = str(platform or "mt5").strip().lower()
+                if safe_platform not in {"mt4", "mt5"}:
+                    safe_platform = "mt4" if broker_type == "mt4" else "mt5"
+                needs_server = safe_platform == "mt4"
+                return bool(account_number and password and bridge_base_url and (server_name or not needs_server))
             token = os.environ.get("METAAPI_ACCESS_TOKEN", "")
             account = os.environ.get("METAAPI_ACCOUNT_ID", "")
             return bool(token and account)
@@ -141,6 +150,16 @@ class BrokerFactory:
             mode = str(mode).strip().lower()
 
             if mode == "bridge":
+                platform = (
+                    kwargs.get("platform")
+                    or os.environ.get("MT_BRIDGE_PLATFORM", "")
+                    or os.environ.get("BROKER_PLATFORM", "")
+                    or ("mt4" if broker_type == "mt4" else "mt5")
+                )
+                safe_platform = str(platform or "mt5").strip().lower()
+                if safe_platform not in {"mt4", "mt5"}:
+                    safe_platform = "mt4" if broker_type == "mt4" else "mt5"
+
                 account_number = (
                     kwargs.get("account_number")
                     or kwargs.get("login")
@@ -169,15 +188,21 @@ class BrokerFactory:
                     or kwargs.get("mt_bridge_api_key")
                     or os.environ.get("MT_BRIDGE_API_KEY", "")
                 )
-                platform = (
-                    kwargs.get("platform")
-                    or ("mt4" if broker_type == "mt4" else "mt5")
+                server_candidates = (
+                    kwargs.get("server_candidates")
+                    or kwargs.get("mt_server_candidates")
+                    or kwargs.get("mt5_server_candidates")
+                    or os.environ.get("MT_BRIDGE_SERVER_CANDIDATES", "")
+                    or os.environ.get("MT_BRIDGE_MT5_SERVER_CANDIDATES", "")
                 )
 
-                if not account_number or not password or not server_name:
+                if not account_number or not password:
                     raise NoBrokerConfiguredError(
-                        "MetaTrader bridge mode requires account number/login, password and server name. "
-                        "Configure in Settings."
+                        "MetaTrader bridge mode requires account number/login and password. Configure in Settings."
+                    )
+                if safe_platform == "mt4" and not server_name:
+                    raise NoBrokerConfiguredError(
+                        "MetaTrader MT4 bridge mode requires server name. Configure in Settings."
                     )
                 if not bridge_base_url:
                     raise NoBrokerConfiguredError(
@@ -199,6 +224,9 @@ class BrokerFactory:
                     "mt_bridge_base_url",
                     "bridge_api_key",
                     "mt_bridge_api_key",
+                    "server_candidates",
+                    "mt_server_candidates",
+                    "mt5_server_candidates",
                     "platform",
                 }:
                     bridge_kwargs.pop(key, None)
@@ -206,8 +234,9 @@ class BrokerFactory:
                 return MetaTraderBridgeBroker(
                     account_number=str(account_number),
                     password=str(password),
-                    server_name=str(server_name),
-                    platform=str(platform),
+                    server_name=str(server_name) if server_name else None,
+                    server_candidates=server_candidates,
+                    platform=safe_platform,
                     bridge_base_url=str(bridge_base_url),
                     bridge_api_key=str(bridge_api_key) if bridge_api_key else None,
                     **bridge_kwargs,

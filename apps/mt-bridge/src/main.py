@@ -27,6 +27,21 @@ def _first_non_empty(*values: str | None) -> str | None:
     return None
 
 
+def _normalize_server_candidates(values: list[str] | None) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values or []:
+        candidate = str(value or "").strip()
+        if not candidate:
+            continue
+        key = candidate.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(candidate)
+    return result
+
+
 settings: BridgeSettings = get_settings()
 session_manager = SessionManager(settings=settings)
 
@@ -57,6 +72,7 @@ async def health():
         "max_sessions": settings.MT_BRIDGE_MAX_SESSIONS,
         "terminal_auto_launch": settings.MT_BRIDGE_TERMINAL_AUTO_LAUNCH,
         "mt4_adapter_configured": bool((settings.MT_BRIDGE_MT4_ADAPTER_BASE_URL or "").strip()),
+        "mt5_auto_server_discovery": bool(settings.MT_BRIDGE_MT5_AUTO_SERVER_DISCOVERY),
     }
 
 
@@ -70,11 +86,15 @@ async def list_sessions():
 async def connect_session(data: ConnectSessionRequest):
     login = _first_non_empty(data.login, data.account_number)
     server = _first_non_empty(data.server, data.server_name)
+    server_candidates = _normalize_server_candidates(data.server_candidates)
     platform = (data.platform or settings.MT_BRIDGE_DEFAULT_PLATFORM or "mt5").strip().lower()
     if platform not in {"mt4", "mt5"}:
-        platform = settings.MT_BRIDGE_DEFAULT_PLATFORM
-    if not login or not server:
-        raise HTTPException(status_code=400, detail="login/account_number and server/server_name are required")
+        fallback = (settings.MT_BRIDGE_DEFAULT_PLATFORM or "mt5").strip().lower()
+        platform = fallback if fallback in {"mt4", "mt5"} else "mt5"
+    if not login:
+        raise HTTPException(status_code=400, detail="login/account_number is required")
+    if platform == "mt4" and not server:
+        raise HTTPException(status_code=400, detail="MT4 requires server/server_name")
 
     try:
         session = await session_manager.create_session(
@@ -85,6 +105,7 @@ async def connect_session(data: ConnectSessionRequest):
             terminal_path=data.terminal_path,
             data_path=data.data_path,
             workspace_id=data.workspace_id,
+            server_candidates=server_candidates,
         )
     except BridgeProviderError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

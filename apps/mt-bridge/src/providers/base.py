@@ -18,11 +18,12 @@ class BaseTerminalProvider(ABC):
         *,
         login: str,
         password: str,
-        server: str,
+        server: str | None,
         platform: str,
         terminal_path: str | None = None,
         data_path: str | None = None,
         workspace_id: str | None = None,
+        server_candidates: list[str] | None = None,
     ) -> None:
         raise NotImplementedError
 

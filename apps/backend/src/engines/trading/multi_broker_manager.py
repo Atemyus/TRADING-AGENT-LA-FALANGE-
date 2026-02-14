@@ -127,9 +127,10 @@ class MultiBrokerManager:
                     or ""
                 ).strip()
                 server_name = (credentials.get("server_name") or credentials.get("server") or "").strip()
-                platform = (account.platform_id or credentials.get("platform") or "mt5").strip().lower()
+                default_platform = "mt4" if broker_type == "mt4" else "mt5"
+                platform = (account.platform_id or credentials.get("platform") or default_platform).strip().lower()
                 if platform not in {"mt4", "mt5"}:
-                    platform = "mt5"
+                    platform = default_platform
                 if account_number:
                     runtime["account_number"] = account_number
                 if password:
@@ -142,6 +143,7 @@ class MultiBrokerManager:
                     "bridge_base_url": ("bridge_base_url", "mt_bridge_base_url", "mt_bridge_url"),
                     "bridge_api_key": ("bridge_api_key", "mt_bridge_api_key"),
                     "timeout_seconds": ("timeout_seconds", "mt_bridge_timeout_seconds"),
+                    "server_candidates": ("server_candidates", "mt_server_candidates", "mt5_server_candidates"),
                     "terminal_path": ("terminal_path", "mt_terminal_path"),
                     "data_path": ("data_path", "mt_data_path"),
                     "workspace_id": ("workspace_id", "mt_workspace_id"),
@@ -608,18 +610,25 @@ class MultiBrokerManager:
                     or runtime_credentials.get("login")
                 )
                 password = runtime_credentials.get("password")
-                server_name = runtime_credentials.get("server_name")
-                if not account_number or not password or not server_name:
+                platform = (
+                    runtime_credentials.get("platform")
+                    or ("mt4" if broker_type == "mt4" else "mt5")
+                )
+                safe_platform = str(platform or "mt5").strip().lower()
+                if safe_platform not in {"mt4", "mt5"}:
+                    safe_platform = "mt4" if broker_type == "mt4" else "mt5"
+                server_name = runtime_credentials.get("server_name") or runtime_credentials.get("server")
+                if not account_number or not password:
+                    return None
+                if safe_platform == "mt4" and not server_name:
                     return None
                 broker_kwargs = dict(runtime_credentials)
                 broker_kwargs["account_number"] = account_number
                 broker_kwargs["password"] = password
-                broker_kwargs["server_name"] = server_name
+                if server_name:
+                    broker_kwargs["server_name"] = server_name
                 broker_kwargs["connection_mode"] = "bridge"
-                broker_kwargs["platform"] = (
-                    runtime_credentials.get("platform")
-                    or ("mt4" if broker_type == "mt4" else "mt5")
-                )
+                broker_kwargs["platform"] = safe_platform
             else:
                 access_token = runtime_credentials.get("access_token")
                 account_id = runtime_credentials.get("account_id")

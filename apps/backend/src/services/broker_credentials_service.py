@@ -425,6 +425,8 @@ async def resolve_metaapi_runtime_credentials(
     broker: BrokerAccount,
 ) -> dict[str, str]:
     creds = normalize_credentials(broker.credentials)
+    broker_type = (broker.broker_type or "").strip().lower()
+    default_platform = "mt4" if broker_type == "mt4" else "mt5"
 
     token = _first_non_empty(
         broker.metaapi_token,
@@ -438,9 +440,9 @@ async def resolve_metaapi_runtime_credentials(
         os.environ.get("METAAPI_ACCOUNT_ID"),
         settings.METAAPI_ACCOUNT_ID,
     )
-    platform = (_first_non_empty(broker.platform_id, creds.get("platform")) or "mt5").lower()
+    platform = (_first_non_empty(broker.platform_id, creds.get("platform")) or default_platform).lower()
     if platform not in {"mt4", "mt5"}:
-        platform = "mt5"
+        platform = default_platform
 
     if account_id and token:
         return {"access_token": token, "account_id": account_id, "platform": platform}
@@ -496,6 +498,8 @@ async def resolve_metaapi_runtime_credentials(
 def resolve_mt_bridge_runtime_credentials(broker: BrokerAccount) -> dict[str, str]:
     creds = normalize_credentials(broker.credentials)
     mode = _resolve_mt_connection_mode(creds, broker=broker)
+    broker_type = (broker.broker_type or "").strip().lower()
+    default_platform = "mt4" if broker_type == "mt4" else "mt5"
 
     account_number = _first_non_empty(
         creds.get("account_number"),
@@ -512,9 +516,14 @@ def resolve_mt_bridge_runtime_credentials(broker: BrokerAccount) -> dict[str, st
         creds.get("server"),
         creds.get("broker_server"),
     )
-    platform = (_first_non_empty(broker.platform_id, creds.get("platform")) or "mt5").lower()
+    server_candidates = _first_non_empty(
+        creds.get("server_candidates"),
+        creds.get("mt_server_candidates"),
+        creds.get("mt5_server_candidates"),
+    )
+    platform = (_first_non_empty(broker.platform_id, creds.get("platform")) or default_platform).lower()
     if platform not in {"mt4", "mt5"}:
-        platform = "mt5"
+        platform = default_platform
 
     bridge_base_url = _first_non_empty(
         creds.get("mt_bridge_base_url"),
@@ -545,12 +554,17 @@ def resolve_mt_bridge_runtime_credentials(broker: BrokerAccount) -> dict[str, st
             ),
         )
 
-    if not account_number or not account_password or not server_name:
+    if not account_number or not account_password:
         raise HTTPException(
             status_code=400,
             detail=(
-                "Missing MT bridge credentials. Required: account number, password, server name."
+                "Missing MT bridge credentials. Required: account number and password."
             ),
+        )
+    if platform == "mt4" and not server_name:
+        raise HTTPException(
+            status_code=400,
+            detail="Missing MT4 bridge credentials. Required: server name.",
         )
     if not bridge_base_url:
         raise HTTPException(
@@ -565,11 +579,14 @@ def resolve_mt_bridge_runtime_credentials(broker: BrokerAccount) -> dict[str, st
         "connection_mode": "bridge",
         "account_number": account_number,
         "password": account_password,
-        "server_name": server_name,
         "platform": platform,
         "bridge_base_url": bridge_base_url,
         "timeout_seconds": str(timeout_seconds),
     }
+    if server_name:
+        runtime["server_name"] = server_name
+    if server_candidates:
+        runtime["server_candidates"] = server_candidates
     if bridge_api_key:
         runtime["bridge_api_key"] = bridge_api_key
 

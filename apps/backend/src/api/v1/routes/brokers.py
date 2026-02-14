@@ -487,7 +487,7 @@ async def test_broker_connection(
                     "message": "Connected to MetaTrader bridge successfully",
                     "connection_mode": "bridge",
                     "platform": runtime.get("platform", broker.platform_id or "mt5"),
-                    "server_name": runtime.get("server_name"),
+                    "server_name": runtime.get("server_name") or getattr(mt_bridge_broker, "server_name", None),
                     "bridge_base_url": runtime.get("bridge_base_url"),
                     "account_id": account_info.account_id,
                     "currency": account_info.currency,

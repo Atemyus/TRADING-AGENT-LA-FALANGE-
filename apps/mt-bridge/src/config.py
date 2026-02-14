@@ -24,6 +24,8 @@ class BridgeSettings(BaseSettings):
     MT_BRIDGE_MT4_ADAPTER_BASE_URL: str | None = None
     MT_BRIDGE_MT4_ADAPTER_API_KEY: str | None = None
     MT_BRIDGE_MT4_ADAPTER_TIMEOUT_SECONDS: float = 20.0
+    MT_BRIDGE_MT5_AUTO_SERVER_DISCOVERY: bool = True
+    MT_BRIDGE_MT5_SERVER_CANDIDATES: str | None = None
 
 
 @lru_cache

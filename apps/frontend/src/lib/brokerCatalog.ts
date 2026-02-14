@@ -105,7 +105,20 @@ export const PLATFORM_DIRECTORY: Record<string, BrokerPlatform> = {
     credentials: [
       credential('account_number', 'Account Number', 'MT5 login number', 'Account/login number shown by your broker.'),
       credential('account_password', 'Password', 'Trading or investor password', 'Use account password. For read-only setup you can use investor password.', { type: 'password' }),
-      credential('server_name', 'Server Name', 'Broker-Server (e.g. ICMarketsSC-Demo)', 'Exact MT5 server name from your platform.'),
+      credential(
+        'server_name',
+        'Server Name (optional)',
+        'Broker-Server (e.g. ICMarketsSC-Demo)',
+        'Optional. If empty, bridge tries auto-discovery from terminal/account history.',
+        { required: false },
+      ),
+      credential(
+        'mt_server_candidates',
+        'Server Candidates (optional)',
+        'ICMarketsSC-Demo, ICMarketsSC-Live',
+        'Optional comma-separated fallback list used for MT5 auto server detection.',
+        { required: false, fullWidth: true },
+      ),
       credential(
         'mt_connection_mode',
         'Connection Mode',

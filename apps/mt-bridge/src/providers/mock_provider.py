@@ -31,17 +31,18 @@ class MockTerminalProvider(BaseTerminalProvider):
         *,
         login: str,
         password: str,
-        server: str,
+        server: str | None,
         platform: str,
         terminal_path: str | None = None,
         data_path: str | None = None,
         workspace_id: str | None = None,
+        server_candidates: list[str] | None = None,
     ) -> None:
-        _ = password, terminal_path, data_path, workspace_id
+        _ = password, terminal_path, data_path, workspace_id, server_candidates
         self._login = login
-        self._server = server
+        self._server = str(server or "").strip()
         self._platform = platform
-        self._rng.seed(f"{login}:{server}:{platform}")
+        self._rng.seed(f"{login}:{self._server}:{platform}")
         self._connected = True
 
     async def disconnect(self) -> None:

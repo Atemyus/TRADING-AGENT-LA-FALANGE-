@@ -1,6 +1,9 @@
 import asyncio
+import re
 from datetime import UTC, datetime
 from typing import Any
+
+from src.config import BridgeSettings
 
 from .base import BaseTerminalProvider, BridgeProviderError
 
@@ -15,7 +18,8 @@ class MT5TerminalProvider(BaseTerminalProvider):
       or a process pool.
     """
 
-    def __init__(self):
+    def __init__(self, *, settings: BridgeSettings):
+        self._settings = settings
         self._connected = False
         self._login = ""
         self._server = ""
@@ -50,45 +54,139 @@ class MT5TerminalProvider(BaseTerminalProvider):
             return value
         return {}
 
+    def _normalize_server_candidates(self, server_candidates: list[str] | None) -> list[str]:
+        merged: list[str] = []
+        seen: set[str] = set()
+
+        def _push(raw: Any) -> None:
+            candidate = str(raw or "").strip()
+            if not candidate:
+                return
+            key = candidate.lower()
+            if key in seen:
+                return
+            seen.add(key)
+            merged.append(candidate)
+
+        for item in server_candidates or []:
+            _push(item)
+
+        raw_settings = str(self._settings.MT_BRIDGE_MT5_SERVER_CANDIDATES or "").strip()
+        if raw_settings:
+            for item in re.split(r"[,\n;|]+", raw_settings):
+                _push(item)
+
+        return merged
+
+    def _build_login_attempt_servers(
+        self,
+        *,
+        preferred_server: str,
+        allow_auto_discovery: bool,
+        server_candidates: list[str],
+    ) -> list[str | None]:
+        attempts: list[str | None] = []
+        seen: set[str] = set()
+
+        def _append(server_value: str | None) -> None:
+            normalized = str(server_value or "").strip()
+            key = normalized.lower() if normalized else "__auto__"
+            if key in seen:
+                return
+            seen.add(key)
+            attempts.append(normalized or None)
+
+        _append(preferred_server)
+        if allow_auto_discovery:
+            _append(None)
+            for candidate in server_candidates:
+                _append(candidate)
+
+        if not attempts:
+            _append(preferred_server)
+        return attempts
+
     async def connect(
         self,
         *,
         login: str,
         password: str,
-        server: str,
+        server: str | None,
         platform: str,
         terminal_path: str | None = None,
         data_path: str | None = None,
         workspace_id: str | None = None,
+        server_candidates: list[str] | None = None,
     ) -> None:
         _ = data_path, workspace_id
         self._require_mt5()
         mt5 = self._mt5
 
-        login_int = int(str(login).strip())
-        init_kwargs: dict[str, Any] = {
-            "login": login_int,
-            "password": password,
-            "server": server,
-        }
-        if terminal_path:
-            init_kwargs["path"] = terminal_path
+        try:
+            login_int = int(str(login).strip())
+        except Exception as exc:
+            raise BridgeProviderError("Invalid MT5 login/account number") from exc
+        preferred_server = str(server or "").strip()
+        allow_auto_discovery = bool(self._settings.MT_BRIDGE_MT5_AUTO_SERVER_DISCOVERY)
+        if not preferred_server and not allow_auto_discovery:
+            raise BridgeProviderError(
+                "MT5 server/server_name is required when MT_BRIDGE_MT5_AUTO_SERVER_DISCOVERY=false"
+            )
 
-        connected = await asyncio.to_thread(mt5.initialize, **init_kwargs)
-        if not connected:
-            code, message = mt5.last_error()
-            raise BridgeProviderError(f"MT5 initialize/login failed: {code} {message}")
+        normalized_candidates = self._normalize_server_candidates(server_candidates)
+        attempt_servers = self._build_login_attempt_servers(
+            preferred_server=preferred_server,
+            allow_auto_discovery=allow_auto_discovery,
+            server_candidates=normalized_candidates,
+        )
 
-        info = await asyncio.to_thread(mt5.account_info)
-        if info is None:
-            code, message = mt5.last_error()
-            await asyncio.to_thread(mt5.shutdown)
-            raise BridgeProviderError(f"MT5 account_info unavailable after login: {code} {message}")
+        attempt_errors: list[str] = []
+        for attempt_server in attempt_servers:
+            init_kwargs: dict[str, Any] = {
+                "login": login_int,
+                "password": password,
+            }
+            if attempt_server:
+                init_kwargs["server"] = attempt_server
+            if terminal_path:
+                init_kwargs["path"] = terminal_path
 
-        self._login = str(login_int)
-        self._server = server
-        self._platform = platform
-        self._connected = True
+            connected = await asyncio.to_thread(mt5.initialize, **init_kwargs)
+            if not connected:
+                code, message = mt5.last_error()
+                attempt_errors.append(f"{attempt_server or '<auto>'}: {code} {message}")
+                try:
+                    await asyncio.to_thread(mt5.shutdown)
+                except Exception:
+                    pass
+                continue
+
+            info = await asyncio.to_thread(mt5.account_info)
+            if info is None:
+                code, message = mt5.last_error()
+                attempt_errors.append(f"{attempt_server or '<auto>'}: {code} {message}")
+                await asyncio.to_thread(mt5.shutdown)
+                continue
+
+            payload = self._asdict(info)
+            resolved_login = str(payload.get("login") or login_int)
+            resolved_server = str(
+                payload.get("server")
+                or payload.get("server_name")
+                or attempt_server
+                or preferred_server
+                or ""
+            ).strip()
+            self._login = resolved_login
+            self._server = resolved_server
+            self._platform = platform
+            self._connected = True
+            return
+
+        if attempt_errors:
+            details = " | ".join(attempt_errors[:6])
+            raise BridgeProviderError(f"MT5 initialize/login failed. Attempts: {details}")
+        raise BridgeProviderError("MT5 initialize/login failed: unknown error")
 
     async def disconnect(self) -> None:
         if self._mt5 and self._connected:
@@ -102,6 +200,9 @@ class MT5TerminalProvider(BaseTerminalProvider):
         payload = self._asdict(info)
         if not payload:
             raise BridgeProviderError("MT5 account_info returned empty payload")
+        resolved_server = str(payload.get("server") or payload.get("server_name") or self._server).strip()
+        if resolved_server:
+            self._server = resolved_server
         balance = float(payload.get("balance", 0.0) or 0.0)
         equity = float(payload.get("equity", balance) or balance)
         margin = float(payload.get("margin", 0.0) or 0.0)

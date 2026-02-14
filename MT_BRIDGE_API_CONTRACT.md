@@ -18,6 +18,7 @@ Questo documento descrive il contratto minimo che il nodo bridge MT4/MT5 deve es
   "password": "secret",
   "server": "Broker-Server",
   "server_name": "Broker-Server",
+  "server_candidates": ["Broker-Live", "Broker-Demo"],
   "terminal_path": "C:\\MT5\\terminal64.exe",
   "data_path": "C:\\MT5\\Profiles\\node-1",
   "workspace_id": "workspace-42"
@@ -26,7 +27,10 @@ Questo documento descrive il contratto minimo che il nodo bridge MT4/MT5 deve es
 - Response:
 ```json
 {
-  "session_id": "sess_abc123"
+  "session_id": "sess_abc123",
+  "platform": "mt5",
+  "login": "12345678",
+  "server": "Broker-Live"
 }
 ```
 
@@ -163,5 +167,7 @@ Questo documento descrive il contratto minimo che il nodo bridge MT4/MT5 deve es
 ```
 
 ## Note
+- MT4: `server/server_name` obbligatorio.
+- MT5: `server/server_name` opzionale, con auto-discovery lato bridge.
 - Il backend supporta override endpoint tramite credentials (`mt_bridge_*_endpoint`).
 - Il bridge deve restituire HTTP >=400 in caso di errore, con messaggio breve in body.

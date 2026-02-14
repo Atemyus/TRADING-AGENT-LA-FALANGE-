@@ -11,6 +11,7 @@ class ConnectSessionRequest(BaseModel):
     password: str
     server: str | None = None
     server_name: str | None = None
+    server_candidates: list[str] | None = None
     terminal_path: str | None = None
     data_path: str | None = None
     workspace_id: str | None = None

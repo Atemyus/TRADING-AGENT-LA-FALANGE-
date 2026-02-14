@@ -45,6 +45,19 @@ Variabili utili:
 - `MT_BRIDGE_MT4_ADAPTER_API_KEY=...` (opzionale)
 - `MT_BRIDGE_MT4_ADAPTER_TIMEOUT_SECONDS=20`
 
+## MT5 auto server discovery
+
+Per MT5 il `server` puo essere opzionale nel payload di connect.
+
+- `MT_BRIDGE_MT5_AUTO_SERVER_DISCOVERY=true`:
+  - tenta login con server esplicito (se fornito)
+  - poi tenta login senza server (account/server gia noti nel terminale)
+  - poi prova eventuali candidati
+- `MT_BRIDGE_MT5_SERVER_CANDIDATES=Broker-Live,Broker-Demo` (opzionale, fallback globale)
+
+Nel payload `POST /api/v1/sessions/connect` puoi anche passare:
+- `server_candidates: ["Broker-Live", "Broker-Demo"]`
+
 ## Auto launch terminale (opzionale)
 
 Se vuoi che il bridge avvii automaticamente il terminale quando arriva una `connect`:

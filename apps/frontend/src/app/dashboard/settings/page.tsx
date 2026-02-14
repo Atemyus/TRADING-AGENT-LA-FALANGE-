@@ -885,9 +885,12 @@ function BrokerAccountsSettings() {
     )
 
     const isMetaTraderPlatform = selectedPlatform.id === 'mt4' || selectedPlatform.id === 'mt5'
-    const mtCredentialKeys = ['account_number', 'account_password', 'server_name']
-    const hasAnyMtCredential = mtCredentialKeys.some((key) => Boolean(normalizedCredentials[key]))
-    const hasAllMtCredentials = mtCredentialKeys.every((key) => Boolean(normalizedCredentials[key]))
+    const mtCoreCredentialKeys = selectedPlatform.id === 'mt4'
+      ? ['account_number', 'account_password', 'server_name']
+      : ['account_number', 'account_password']
+    const mtAnyCredentialKeys = ['account_number', 'account_password', 'server_name']
+    const hasAnyMtCredential = mtAnyCredentialKeys.some((key) => Boolean(normalizedCredentials[key]))
+    const hasAllRequiredMtCredentials = mtCoreCredentialKeys.every((key) => Boolean(normalizedCredentials[key]))
     const hasLegacyMetaApiId = Boolean((editingAccount?.metaapi_account_id || '').trim())
 
     const missingFields = selectedPlatform.credentials.filter((field) => {
@@ -897,8 +900,11 @@ function BrokerAccountsSettings() {
       return true
     })
 
-    if (isMetaTraderPlatform && hasAnyMtCredential && !hasAllMtCredentials) {
-      setError('For MT4/MT5 complete all fields: Account Number, Password, Server Name.')
+    if (isMetaTraderPlatform && hasAnyMtCredential && !hasAllRequiredMtCredentials) {
+      const mtMessage = selectedPlatform.id === 'mt4'
+        ? 'For MT4 complete all fields: Account Number, Password, Server Name.'
+        : 'For MT5 complete at least Account Number and Password. Server Name is optional with auto-detection.'
+      setError(mtMessage)
       return null
     }
 

@@ -113,20 +113,24 @@ class MT4TerminalProvider(BaseTerminalProvider):
         *,
         login: str,
         password: str,
-        server: str,
+        server: str | None,
         platform: str,
         terminal_path: str | None = None,
         data_path: str | None = None,
         workspace_id: str | None = None,
+        server_candidates: list[str] | None = None,
     ) -> None:
-        _ = platform
+        _ = platform, server_candidates
+        resolved_server = str(server or "").strip()
+        if not resolved_server:
+            raise BridgeProviderError("MT4 adapter requires server/server_name in connect payload")
         payload: dict[str, Any] = {
             "platform": "mt4",
             "login": login,
             "account_number": login,
             "password": password,
-            "server": server,
-            "server_name": server,
+            "server": resolved_server,
+            "server_name": resolved_server,
         }
         if terminal_path:
             payload["terminal_path"] = terminal_path

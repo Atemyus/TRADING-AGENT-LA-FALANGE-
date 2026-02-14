@@ -47,10 +47,11 @@ class SessionManager:
         platform: str,
         login: str,
         password: str,
-        server: str,
+        server: str | None,
         terminal_path: str | None = None,
         data_path: str | None = None,
         workspace_id: str | None = None,
+        server_candidates: list[str] | None = None,
     ) -> BridgeSession:
         async with self._lock:
             if len(self._sessions) >= int(self.settings.MT_BRIDGE_MAX_SESSIONS):
@@ -76,7 +77,7 @@ class SessionManager:
                     terminal_path=terminal_path,
                     platform=safe_platform,
                     login=login,
-                    server=server,
+                    server=str(server or "").strip(),
                     data_path=data_path,
                     workspace_id=workspace_id,
                 )
@@ -90,6 +91,7 @@ class SessionManager:
                     terminal_path=terminal_path,
                     data_path=data_path,
                     workspace_id=workspace_id,
+                    server_candidates=server_candidates,
                 )
             except Exception:
                 if managed_terminal:
@@ -98,13 +100,29 @@ class SessionManager:
                     except Exception:
                         pass
                 raise
+            resolved_login = str(login or "").strip()
+            resolved_server = str(server or "").strip()
+            try:
+                account_info = await provider.get_account_info()
+                resolved_login = str(
+                    account_info.get("login")
+                    or account_info.get("accountId")
+                    or resolved_login
+                ).strip()
+                resolved_server = str(
+                    account_info.get("server")
+                    or account_info.get("server_name")
+                    or resolved_server
+                ).strip()
+            except Exception:
+                pass
             now = datetime.now(UTC)
             session_id = f"sess_{uuid.uuid4().hex}"
             session = BridgeSession(
                 session_id=session_id,
                 platform=safe_platform,
-                login=login,
-                server=server,
+                login=resolved_login or login,
+                server=resolved_server,
                 connected_at=now,
                 last_seen_at=now,
                 provider=provider,

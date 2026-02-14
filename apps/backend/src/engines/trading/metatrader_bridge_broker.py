@@ -83,6 +83,30 @@ def _pick(payload: Any, keys: list[str], default: Any = None) -> Any:
     return default
 
 
+def _normalize_server_candidates(raw: Any) -> list[str]:
+    if raw is None:
+        return []
+
+    values: list[str] = []
+    if isinstance(raw, (list, tuple, set)):
+        values = [str(item or "").strip() for item in raw]
+    else:
+        text = str(raw or "").replace(";", ",").replace("\n", ",").replace("|", ",")
+        values = [part.strip() for part in text.split(",")]
+
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if not value:
+            continue
+        key = value.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(value)
+    return result
+
+
 class MetaTraderBridgeBroker(BaseBroker):
     """
     MT4/MT5 broker implementation through a bridge gateway.
@@ -99,9 +123,10 @@ class MetaTraderBridgeBroker(BaseBroker):
         *,
         account_number: str,
         password: str,
-        server_name: str,
-        platform: str = "mt5",
         bridge_base_url: str,
+        server_name: str | None = None,
+        server_candidates: list[str] | str | None = None,
+        platform: str = "mt5",
         bridge_api_key: str | None = None,
         terminal_path: str | None = None,
         data_path: str | None = None,
@@ -126,11 +151,14 @@ class MetaTraderBridgeBroker(BaseBroker):
         self.account_number = str(account_number or "").strip()
         self.password = str(password or "").strip()
         self.server_name = str(server_name or "").strip()
+        self.server_candidates = _normalize_server_candidates(server_candidates)
         self.platform = str(platform or "mt5").strip().lower()
         if self.platform not in {"mt4", "mt5"}:
             self.platform = "mt5"
-        if not self.account_number or not self.password or not self.server_name:
-            raise ValueError("account_number, password and server_name are required for MT bridge")
+        if not self.account_number or not self.password:
+            raise ValueError("account_number and password are required for MT bridge")
+        if self.platform == "mt4" and not self.server_name:
+            raise ValueError("server_name is required for MT4 bridge mode")
 
         raw_url = str(bridge_base_url or "").strip()
         if not raw_url:
@@ -247,9 +275,12 @@ class MetaTraderBridgeBroker(BaseBroker):
             "login": self.account_number,
             "account_number": self.account_number,
             "password": self.password,
-            "server": self.server_name,
-            "server_name": self.server_name,
         }
+        if self.server_name:
+            payload["server"] = self.server_name
+            payload["server_name"] = self.server_name
+        if self.server_candidates:
+            payload["server_candidates"] = list(self.server_candidates)
         if self.terminal_path:
             payload["terminal_path"] = self.terminal_path
         if self.data_path:
@@ -275,6 +306,23 @@ class MetaTraderBridgeBroker(BaseBroker):
         ).strip()
         if not session_id:
             raise ConnectionError("MT bridge connect response missing session_id")
+        resolved_server = str(
+            _pick(
+                response,
+                [
+                    "server",
+                    "server_name",
+                    "data.server",
+                    "data.server_name",
+                    "result.server",
+                    "result.server_name",
+                ],
+                "",
+            )
+            or ""
+        ).strip()
+        if resolved_server:
+            self.server_name = resolved_server
         self._session_id = session_id
         self._connected = True
 
