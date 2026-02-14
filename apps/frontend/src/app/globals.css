@@ -1864,26 +1864,37 @@
 .prometheus-top-header-shell::after {
   content: '';
   position: absolute;
-  top: calc(100% - 0.85rem);
+  top: calc(100% - 1.25rem);
   left: clamp(0.5rem, 1.2vw, 1rem);
   right: clamp(0.5rem, 1.2vw, 1rem);
-  height: clamp(78px, 11vw, 156px);
-  border-radius: 0 0 1.8rem 1.8rem;
+  height: clamp(118px, 15vw, 214px);
+  border-radius: 0 0 2.4rem 2.4rem;
   pointer-events: none;
   z-index: -1;
-  opacity: 0.84;
-  filter: blur(24px);
+  opacity: 0.92;
+  filter: blur(22px);
   transform-origin: top center;
   background:
     linear-gradient(
       180deg,
-      rgba(255, 140, 0, 0.3) 0%,
-      rgba(0, 245, 255, 0.2) 42%,
+      rgba(255, 140, 0, 0.38) 0%,
+      rgba(0, 245, 255, 0.24) 38%,
       rgba(8, 11, 17, 0) 100%
+    ),
+    repeating-linear-gradient(
+      180deg,
+      rgba(255, 221, 128, 0.16) 0px,
+      rgba(255, 221, 128, 0.16) 8px,
+      rgba(0, 245, 255, 0.12) 8px,
+      rgba(0, 245, 255, 0.12) 18px,
+      rgba(8, 11, 17, 0) 18px,
+      rgba(8, 11, 17, 0) 32px
     ),
     radial-gradient(circle at 20% 0%, rgba(255, 215, 0, 0.26) 0%, transparent 72%),
     radial-gradient(circle at 80% 0%, rgba(0, 245, 255, 0.24) 0%, transparent 72%);
-  animation: headerGlowBreath 7.2s ease-in-out infinite;
+  animation:
+    headerGlowBreath 7.2s ease-in-out infinite,
+    navCascadeShift 14s ease-in-out infinite;
 }
 
 .prometheus-top-header-shell-auth::before {
@@ -1925,6 +1936,7 @@
     0 16px 34px rgba(0, 0, 0, 0.44),
     0 22px 58px -36px rgba(255, 140, 0, 0.62),
     0 24px 62px -38px rgba(0, 245, 255, 0.52),
+    0 26px 58px -44px rgba(255, 215, 0, 0.54),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
   animation: navChromaShift 12s ease-in-out infinite;
 }
@@ -1952,7 +1964,7 @@
 
 .prometheus-top-nav-double::after {
   bottom: 0.56rem;
-  opacity: 0.8;
+  opacity: 0.88;
   background: linear-gradient(to right, transparent 0%, rgba(0, 245, 255, 0.34) 34%, rgba(255, 140, 0, 0.42) 70%, transparent 100%);
 }
 
@@ -1969,6 +1981,7 @@
     0 16px 38px rgba(0, 0, 0, 0.52),
     0 22px 54px -34px rgba(255, 140, 0, 0.64),
     0 26px 64px -42px rgba(0, 245, 255, 0.5),
+    0 28px 62px -46px rgba(255, 215, 0, 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
   animation-duration: 8.6s;
 }
@@ -2099,9 +2112,9 @@
 
 @media (max-width: 1024px) {
   .prometheus-top-header-shell::after {
-    top: calc(100% - 0.72rem);
-    height: clamp(62px, 15vw, 122px);
-    opacity: 0.72;
+    top: calc(100% - 0.92rem);
+    height: clamp(92px, 18vw, 156px);
+    opacity: 0.84;
     filter: blur(20px);
   }
 
@@ -2227,6 +2240,16 @@
   50% {
     opacity: 0.92;
     transform: translateY(1px) scaleY(1.04);
+  }
+}
+
+@keyframes navCascadeShift {
+  0%,
+  100% {
+    background-position: 0% 0%, 50% 0%, 20% 0%, 80% 0%;
+  }
+  50% {
+    background-position: 100% 0%, 50% 18px, 14% 0%, 86% 0%;
   }
 }
 
