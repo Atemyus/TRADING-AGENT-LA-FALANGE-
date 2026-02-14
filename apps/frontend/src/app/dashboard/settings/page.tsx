@@ -30,7 +30,7 @@ import {
   getBrokerTypeByPlatform,
   inferBrokerFromAccountName,
   inferPlatformFromAccountName,
-  getClearbitLogoUrl,
+  getLogoCandidates,
 } from '@/lib/brokerCatalog'
 import { useAuth } from '@/contexts/AuthContext'
 
@@ -78,10 +78,15 @@ function BrokerLogo({
   logoUrl?: string
   className?: string
 }) {
-  const [failed, setFailed] = useState(false)
-  const logoSrc = logoUrl || (domain ? getClearbitLogoUrl(domain) : '')
+  const logoCandidates = useMemo(() => getLogoCandidates(domain, logoUrl), [domain, logoUrl])
+  const [logoIndex, setLogoIndex] = useState(0)
+  const logoSrc = logoCandidates[logoIndex] || ''
 
-  if (!logoSrc || failed) {
+  useEffect(() => {
+    setLogoIndex(0)
+  }, [domain, logoUrl])
+
+  if (!logoSrc) {
     return (
       <div className={`${className} rounded-lg bg-dark-700 border border-dark-600 flex items-center justify-center text-xs font-semibold text-dark-200`}>
         {name.split(' ').map((chunk) => chunk[0]).join('').slice(0, 2).toUpperCase()}
@@ -93,8 +98,8 @@ function BrokerLogo({
     <img
       src={logoSrc}
       alt={`${name} logo`}
-      className={`${className} rounded-lg object-cover border border-dark-600 bg-white/90 p-1`}
-      onError={() => setFailed(true)}
+      className={`${className} rounded-lg object-contain border border-dark-600 bg-white/90 p-1`}
+      onError={() => setLogoIndex((prev) => prev + 1)}
       loading="lazy"
     />
   )

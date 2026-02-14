@@ -32,6 +32,8 @@ class SessionSnapshot(BaseModel):
     connected_at: datetime
     last_seen_at: datetime
     provider: str
+    terminal_pid: int | None = None
+    terminal_managed: bool = False
 
 
 class PlaceOrderRequest(BaseModel):

@@ -201,6 +201,7 @@ MT_BRIDGE_API_KEY=your-bridge-api-key
 ```
 - L'utente inserisce solo login/password/server nel workspace broker
 - Il backend usa il bridge per aprire la sessione terminale MT4/MT5
+- Per MT4 serve un adapter locale sul nodo bridge (`MT_BRIDGE_MT4_ADAPTER_BASE_URL`)
 
 #### 2. AI Provider (almeno uno)
 

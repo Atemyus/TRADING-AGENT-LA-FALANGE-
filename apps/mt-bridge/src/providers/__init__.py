@@ -14,7 +14,7 @@ def create_provider(*, platform: str, settings: BridgeSettings) -> BaseTerminalP
         return MockTerminalProvider()
     if mode == "mt5":
         if safe_platform == "mt4":
-            return MT4TerminalProvider()
+            return MT4TerminalProvider(settings=settings)
         return MT5TerminalProvider()
     raise BridgeProviderError(
         f"Unsupported provider mode '{mode}'. Allowed: mock|mt5"

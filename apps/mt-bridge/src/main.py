@@ -55,6 +55,8 @@ async def health():
         "provider_mode": settings.MT_BRIDGE_PROVIDER_MODE,
         "sessions": len(sessions),
         "max_sessions": settings.MT_BRIDGE_MAX_SESSIONS,
+        "terminal_auto_launch": settings.MT_BRIDGE_TERMINAL_AUTO_LAUNCH,
+        "mt4_adapter_configured": bool((settings.MT_BRIDGE_MT4_ADAPTER_BASE_URL or "").strip()),
     }
 
 

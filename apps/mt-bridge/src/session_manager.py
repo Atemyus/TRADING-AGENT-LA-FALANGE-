@@ -6,6 +6,7 @@ from typing import Any
 
 from src.config import BridgeSettings
 from src.providers import BaseTerminalProvider, BridgeProviderError, create_provider
+from src.terminal_manager import ManagedTerminal, TerminalManager
 
 
 @dataclass
@@ -17,6 +18,7 @@ class BridgeSession:
     connected_at: datetime
     last_seen_at: datetime
     provider: BaseTerminalProvider
+    managed_terminal: ManagedTerminal | None = None
 
     def snapshot(self) -> dict[str, Any]:
         return {
@@ -27,6 +29,8 @@ class BridgeSession:
             "connected_at": self.connected_at,
             "last_seen_at": self.last_seen_at,
             "provider": self.provider.name,
+            "terminal_pid": self.managed_terminal.pid if self.managed_terminal else None,
+            "terminal_managed": bool(self.managed_terminal),
         }
 
 
@@ -35,6 +39,7 @@ class SessionManager:
         self.settings = settings
         self._sessions: dict[str, BridgeSession] = {}
         self._lock = asyncio.Lock()
+        self._terminal_manager = TerminalManager(settings=settings)
 
     async def create_session(
         self,
@@ -55,6 +60,7 @@ class SessionManager:
 
             provider = create_provider(platform=platform, settings=self.settings)
             safe_platform = (platform or self.settings.MT_BRIDGE_DEFAULT_PLATFORM or "mt5").strip().lower()
+            managed_terminal: ManagedTerminal | None = None
 
             # MT5 package binding is process-global; keep one active MT5 session per bridge process.
             if provider.name == "mt5":
@@ -65,15 +71,33 @@ class SessionManager:
                         "Scale with multiple bridge nodes/processes."
                     )
 
-            await provider.connect(
-                login=login,
-                password=password,
-                server=server,
-                platform=safe_platform,
-                terminal_path=terminal_path,
-                data_path=data_path,
-                workspace_id=workspace_id,
-            )
+            if self.settings.MT_BRIDGE_TERMINAL_AUTO_LAUNCH and terminal_path:
+                managed_terminal = await self._terminal_manager.launch_terminal(
+                    terminal_path=terminal_path,
+                    platform=safe_platform,
+                    login=login,
+                    server=server,
+                    data_path=data_path,
+                    workspace_id=workspace_id,
+                )
+
+            try:
+                await provider.connect(
+                    login=login,
+                    password=password,
+                    server=server,
+                    platform=safe_platform,
+                    terminal_path=terminal_path,
+                    data_path=data_path,
+                    workspace_id=workspace_id,
+                )
+            except Exception:
+                if managed_terminal:
+                    try:
+                        await self._terminal_manager.stop_terminal(managed_terminal)
+                    except Exception:
+                        pass
+                raise
             now = datetime.now(UTC)
             session_id = f"sess_{uuid.uuid4().hex}"
             session = BridgeSession(
@@ -84,20 +108,23 @@ class SessionManager:
                 connected_at=now,
                 last_seen_at=now,
                 provider=provider,
+                managed_terminal=managed_terminal,
             )
             self._sessions[session_id] = session
             return session
 
     async def disconnect_session(self, session_id: str) -> bool:
         async with self._lock:
-            session = self._sessions.get(session_id)
-            if not session:
-                return False
-            try:
-                await session.provider.disconnect()
-            finally:
-                self._sessions.pop(session_id, None)
-            return True
+            session = self._sessions.pop(session_id, None)
+        if not session:
+            return False
+
+        try:
+            await session.provider.disconnect()
+        finally:
+            if session.managed_terminal and self.settings.MT_BRIDGE_TERMINAL_SHUTDOWN_ON_DISCONNECT:
+                await self._terminal_manager.stop_terminal(session.managed_terminal)
+        return True
 
     async def shutdown_all(self) -> None:
         async with self._lock:
@@ -107,7 +134,13 @@ class SessionManager:
             try:
                 await session.provider.disconnect()
             except Exception:
-                continue
+                pass
+            finally:
+                if session.managed_terminal and self.settings.MT_BRIDGE_TERMINAL_SHUTDOWN_ON_DISCONNECT:
+                    try:
+                        await self._terminal_manager.stop_terminal(session.managed_terminal)
+                    except Exception:
+                        continue
 
     async def list_sessions(self) -> list[dict[str, Any]]:
         return [session.snapshot() for session in self._sessions.values()]

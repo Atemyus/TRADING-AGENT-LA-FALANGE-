@@ -441,7 +441,33 @@ export const BROKER_DIRECTORY: BrokerDirectoryEntry[] = [
   { id: 'surge_trader', name: 'SurgeTrader', kind: 'prop', logoDomain: 'surgetrader.com', platforms: platformsFor('mt4', 'mt5') },
 ]
 
-export const getClearbitLogoUrl = (domain: string) => `https://logo.clearbit.com/${domain}`
+const normalizeLogoDomain = (domain: string | undefined): string => {
+  const value = (domain || '').trim().toLowerCase()
+  if (!value) return ''
+  return value
+    .replace(/^https?:\/\//, '')
+    .replace(/\/+$/, '')
+}
+
+export const getLogoCandidates = (domain?: string, logoUrl?: string): string[] => {
+  const sources: string[] = []
+  const normalizedDomain = normalizeLogoDomain(domain)
+
+  if (logoUrl && logoUrl.trim()) {
+    sources.push(logoUrl.trim())
+  }
+
+  if (normalizedDomain) {
+    sources.push(`https://${normalizedDomain}/favicon.ico`)
+    sources.push(`https://www.google.com/s2/favicons?domain=${encodeURIComponent(normalizedDomain)}&sz=256`)
+    sources.push(`https://icons.duckduckgo.com/ip3/${encodeURIComponent(normalizedDomain)}.ico`)
+  }
+
+  return Array.from(new Set(sources))
+}
+
+// Backward-compatible alias retained for existing imports.
+export const getClearbitLogoUrl = (domain: string) => getLogoCandidates(domain)[0] || ''
 
 export const getBrokerTypeByPlatform = (platformId: string): string => {
   if (platformId === 'oanda_api') return 'oanda'

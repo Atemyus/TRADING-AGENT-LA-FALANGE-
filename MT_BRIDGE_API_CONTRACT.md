@@ -33,6 +33,23 @@ Questo documento descrive il contratto minimo che il nodo bridge MT4/MT5 deve es
 ## 2) Disconnect Session
 - `POST /api/v1/sessions/{session_id}/disconnect`
 
+## 2b) List Sessions
+- `GET /api/v1/sessions`
+- Response example:
+```json
+[
+  {
+    "session_id": "sess_abc123",
+    "platform": "mt5",
+    "login": "12345678",
+    "server": "Broker-Server",
+    "provider": "mt5",
+    "terminal_pid": 18432,
+    "terminal_managed": true
+  }
+]
+```
+
 ## 3) Account Info
 - `GET /api/v1/sessions/{session_id}/account`
 - Response example:
@@ -129,6 +146,7 @@ Questo documento descrive il contratto minimo che il nodo bridge MT4/MT5 deve es
 
 ## 12) Candles
 - `GET /api/v1/sessions/{session_id}/candles/{symbol}?timeframe=M5&count=100`
+- Parametri tempo supportati: `from`/`to` (ISO) e alias `from_time`/`to_time`
 - Response: array
 ```json
 [
