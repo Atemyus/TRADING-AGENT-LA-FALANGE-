@@ -1864,37 +1864,26 @@
 .prometheus-top-header-shell::after {
   content: '';
   position: absolute;
-  top: calc(100% - 1.08rem);
-  left: clamp(0.45rem, 1vw, 0.95rem);
-  right: clamp(0.45rem, 1vw, 0.95rem);
-  height: clamp(150px, 19vw, 282px);
-  border-radius: 0 0 2.65rem 2.65rem;
+  top: calc(100% - 1.06rem);
+  left: clamp(0.48rem, 1.1vw, 0.98rem);
+  right: clamp(0.48rem, 1.1vw, 0.98rem);
+  height: clamp(128px, 16vw, 232px);
+  border-radius: 0 0 2.5rem 2.5rem;
   pointer-events: none;
   z-index: -1;
-  opacity: 0.96;
-  filter: blur(24px);
+  opacity: 0.88;
+  filter: blur(18px);
   transform-origin: top center;
   background:
     linear-gradient(
       180deg,
-      rgba(255, 140, 0, 0.42) 0%,
-      rgba(0, 245, 255, 0.26) 34%,
+      rgba(255, 140, 0, 0.34) 0%,
+      rgba(0, 245, 255, 0.2) 36%,
       rgba(8, 11, 17, 0) 100%
     ),
-    repeating-linear-gradient(
-      180deg,
-      rgba(255, 221, 128, 0.17) 0px,
-      rgba(255, 221, 128, 0.17) 9px,
-      rgba(0, 245, 255, 0.13) 9px,
-      rgba(0, 245, 255, 0.13) 20px,
-      rgba(8, 11, 17, 0) 20px,
-      rgba(8, 11, 17, 0) 34px
-    ),
-    radial-gradient(circle at 18% 0%, rgba(255, 215, 0, 0.3) 0%, transparent 70%),
-    radial-gradient(circle at 82% 0%, rgba(0, 245, 255, 0.28) 0%, transparent 72%);
-  animation:
-    headerGlowBreath 6.8s ease-in-out infinite,
-    navCascadeShift 13s ease-in-out infinite;
+    radial-gradient(circle at 20% 0%, rgba(255, 215, 0, 0.23) 0%, transparent 66%),
+    radial-gradient(circle at 80% 0%, rgba(0, 245, 255, 0.22) 0%, transparent 68%);
+  animation: headerGlowBreath 8.4s ease-in-out infinite;
 }
 
 .prometheus-top-header-shell-auth::before {
@@ -1915,18 +1904,17 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1.08rem;
-  min-height: 6.32rem;
+  gap: 1rem;
+  min-height: 6.08rem;
   border-radius: 1.2rem;
-  border: 1px solid rgba(96, 111, 132, 0.66);
+  border: 1px solid rgba(95, 109, 128, 0.62);
   background:
-    linear-gradient(132deg, rgba(17, 24, 35, 0.95) 0%, rgba(8, 12, 20, 0.96) 40%, rgba(14, 22, 34, 0.95) 100%),
-    radial-gradient(circle at 8% 6%, rgba(255, 140, 0, 0.26) 0%, transparent 45%),
-    radial-gradient(circle at 92% 8%, rgba(0, 245, 255, 0.24) 0%, transparent 47%),
-    linear-gradient(106deg, rgba(255, 140, 0, 0.15) 0%, rgba(0, 245, 255, 0.14) 52%, rgba(255, 215, 0, 0.11) 100%);
-  background-size: 145% 145%, 100% 100%, 100% 100%, 185% 185%;
-  background-position: 0% 50%, center, center, 0% 50%;
-  padding: 1.02rem 1.18rem 1.38rem;
+    linear-gradient(132deg, rgba(17, 24, 35, 0.95) 0%, rgba(8, 12, 20, 0.96) 42%, rgba(14, 22, 34, 0.95) 100%),
+    radial-gradient(circle at 10% 8%, rgba(255, 140, 0, 0.2) 0%, transparent 44%),
+    linear-gradient(106deg, rgba(255, 140, 0, 0.13) 0%, rgba(0, 245, 255, 0.11) 100%);
+  background-size: 100% 100%, 100% 100%, 100% 100%;
+  background-position: center, center, center;
+  padding: 1rem 1.16rem 1.28rem;
   transition:
     border-color 240ms ease,
     box-shadow 280ms ease,
@@ -1934,12 +1922,10 @@
     padding 220ms ease,
     min-height 220ms ease;
   box-shadow:
-    0 20px 40px rgba(0, 0, 0, 0.48),
-    0 28px 68px -34px rgba(255, 140, 0, 0.66),
-    0 30px 72px -36px rgba(0, 245, 255, 0.56),
-    0 34px 74px -42px rgba(255, 215, 0, 0.58),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  animation: navChromaShift 12s ease-in-out infinite;
+    0 16px 34px rgba(0, 0, 0, 0.42),
+    0 22px 52px -34px rgba(255, 140, 0, 0.52),
+    0 24px 56px -36px rgba(0, 245, 255, 0.44),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .prometheus-top-nav-double {
@@ -1970,21 +1956,18 @@
 }
 
 .prometheus-top-nav-scrolled {
-  border-color: rgba(255, 140, 0, 0.62);
-  min-height: 5.48rem;
+  border-color: rgba(255, 140, 0, 0.58);
+  min-height: 5.28rem;
   background:
-    linear-gradient(132deg, rgba(20, 29, 43, 0.97) 0%, rgba(8, 12, 20, 0.98) 44%, rgba(14, 21, 33, 0.98) 100%),
-    radial-gradient(circle at 8% 8%, rgba(255, 140, 0, 0.3) 0%, transparent 44%),
-    radial-gradient(circle at 92% 8%, rgba(0, 245, 255, 0.24) 0%, transparent 46%),
-    linear-gradient(104deg, rgba(255, 140, 0, 0.19) 0%, rgba(0, 245, 255, 0.13) 100%);
-  background-size: 145% 145%, 100% 100%, 100% 100%, 190% 190%;
+    linear-gradient(132deg, rgba(20, 29, 43, 0.97) 0%, rgba(8, 12, 20, 0.98) 45%, rgba(14, 21, 33, 0.98) 100%),
+    radial-gradient(circle at 8% 10%, rgba(255, 140, 0, 0.24) 0%, transparent 44%),
+    linear-gradient(104deg, rgba(255, 140, 0, 0.15) 0%, rgba(0, 245, 255, 0.11) 100%);
+  background-size: 100% 100%, 100% 100%, 100% 100%;
   box-shadow:
-    0 20px 44px rgba(0, 0, 0, 0.54),
-    0 26px 62px -34px rgba(255, 140, 0, 0.68),
-    0 30px 70px -40px rgba(0, 245, 255, 0.54),
-    0 32px 68px -44px rgba(255, 215, 0, 0.54),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  animation-duration: 8.6s;
+    0 18px 36px rgba(0, 0, 0, 0.5),
+    0 24px 52px -34px rgba(255, 140, 0, 0.54),
+    0 26px 56px -36px rgba(0, 245, 255, 0.44),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09);
 }
 
 .prometheus-top-nav-compressed {
@@ -2006,9 +1989,8 @@
   color: rgba(213, 222, 233, 0.9);
   text-shadow: 0 0 14px rgba(0, 245, 255, 0.18);
   background: linear-gradient(98deg, rgba(255, 223, 146, 0.94) 0%, rgba(225, 234, 246, 0.9) 48%, rgba(125, 251, 255, 0.92) 100%);
-  background-size: 170% 170%;
-  background-position: 0% 50%;
-  animation: navBrandShift 9s ease-in-out infinite;
+  background-size: 100% 100%;
+  background-position: center;
 }
 
 @supports ((-webkit-background-clip: text) or (background-clip: text)) {
@@ -2116,9 +2098,8 @@
   color: rgba(234, 240, 247, 0.97);
   text-shadow: 0 0 14px rgba(0, 245, 255, 0.15);
   background: linear-gradient(110deg, rgba(255, 232, 173, 0.95) 0%, rgba(228, 236, 246, 0.95) 46%, rgba(158, 245, 255, 0.9) 100%);
-  background-size: 170% 170%;
-  background-position: 0% 50%;
-  animation: navHeroTextShift 6.8s ease-in-out infinite;
+  background-size: 100% 100%;
+  background-position: center;
 }
 
 @supports ((-webkit-background-clip: text) or (background-clip: text)) {
@@ -2138,7 +2119,7 @@
     0 0 20px rgba(0, 245, 255, 0.2),
     0 0 24px rgba(255, 140, 0, 0.16),
     inset 0 1px 0 rgba(255, 255, 255, 0.14);
-  transform: translateY(-1px) scale(1.02);
+  transform: translateY(-1px) scale(1.01);
 }
 
 .prometheus-nav-link-hero:hover .prometheus-nav-link-hero-text {
@@ -2212,8 +2193,8 @@
   }
 
   .prometheus-top-nav {
-    min-height: 5.42rem;
-    padding: 0.88rem 0.94rem 1.14rem;
+    min-height: 5.24rem;
+    padding: 0.86rem 0.92rem 1.04rem;
   }
 
   .prometheus-auth-header {
@@ -2316,24 +2297,6 @@
   }
   50% {
     background-position: 100% 50%, center, center, 100% 50%;
-  }
-}
-
-@keyframes navBrandShift {
-  0%, 100% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-}
-
-@keyframes navHeroTextShift {
-  0%, 100% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
   }
 }
 
