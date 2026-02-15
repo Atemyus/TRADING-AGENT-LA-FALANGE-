@@ -437,6 +437,10 @@ export const BROKER_DIRECTORY: BrokerDirectoryEntry[] = [
   { id: 'acap', name: 'AUS Capital', kind: 'broker', logoDomain: 'ausglobal.com', platforms: platformsFor('mt4', 'mt5') },
   { id: 'gkfx', name: 'GKFX', kind: 'broker', logoDomain: 'gkfx.com', platforms: platformsFor('mt4', 'mt5') },
   { id: 'moneta_markets', name: 'Moneta Markets', kind: 'broker', logoDomain: 'monetamarkets.com', platforms: platformsFor('mt4', 'mt5') },
+  { id: 'ultimamarkets', name: 'Ultima Markets', kind: 'broker', logoDomain: 'ultimamarkets.com', platforms: platformsFor('mt4', 'mt5') },
+  { id: 'justmarkets', name: 'JustMarkets', kind: 'broker', logoDomain: 'justmarkets.com', platforms: platformsFor('mt4', 'mt5') },
+  { id: 'fbs', name: 'FBS', kind: 'broker', logoDomain: 'fbs.com', platforms: platformsFor('mt4', 'mt5') },
+  { id: 'puprime', name: 'PU Prime', kind: 'broker', logoDomain: 'puprime.com', platforms: platformsFor('mt4', 'mt5') },
   { id: 'funderpro', name: 'FunderPro', kind: 'prop', logoDomain: 'funderpro.com', platforms: platformsFor('mt5', 'matchtrader', 'tradelocker') },
   { id: 'ftmo', name: 'FTMO', kind: 'prop', logoDomain: 'ftmo.com', platforms: platformsFor('mt4', 'mt5', 'dxtrade') },
   { id: 'fundednext', name: 'FundedNext', kind: 'prop', logoDomain: 'fundednext.com', platforms: platformsFor('mt4', 'mt5', 'ctrader') },
@@ -457,6 +461,11 @@ export const BROKER_DIRECTORY: BrokerDirectoryEntry[] = [
   { id: 'lux_trading_firm', name: 'Lux Trading Firm', kind: 'prop', logoDomain: 'luxtradingfirm.com', platforms: platformsFor('mt5') },
   { id: 'the_trading_pit', name: 'The Trading Pit', kind: 'prop', logoDomain: 'thetradingpit.com', platforms: platformsFor('ctrader', 'tradingview') },
   { id: 'surge_trader', name: 'SurgeTrader', kind: 'prop', logoDomain: 'surgetrader.com', platforms: platformsFor('mt4', 'mt5') },
+  { id: 'the_funded_trader', name: 'The Funded Trader', kind: 'prop', logoDomain: 'thefundedtraderprogram.com', platforms: platformsFor('mt5', 'dxtrade', 'matchtrader') },
+  { id: 'fxify', name: 'FXIFY', kind: 'prop', logoDomain: 'fxify.com', platforms: platformsFor('mt5', 'dxtrade') },
+  { id: 'maven_trading', name: 'Maven Trading', kind: 'prop', logoDomain: 'maventrading.com', platforms: platformsFor('mt5') },
+  { id: 'goat_funded_trader', name: 'Goat Funded Trader', kind: 'prop', logoDomain: 'goatfundedtrader.com', platforms: platformsFor('mt5', 'tradelocker') },
+  { id: 'smart_prop_trader', name: 'Smart Prop Trader', kind: 'prop', logoDomain: 'smartproptrader.com', platforms: platformsFor('mt5', 'matchtrader') },
 ]
 
 const mtPreset = (value: string, label?: string): MetaTraderServerPreset => ({
@@ -561,6 +570,22 @@ const MT_SERVER_PRESETS: Record<
   fxpro: {
     mt4: [mtPreset('FxPro-MT4-Demo'), mtPreset('FxPro-MT4-Live')],
     mt5: [mtPreset('FxPro-MT5-Demo'), mtPreset('FxPro-MT5-Live')],
+  },
+  ultimamarkets: {
+    mt4: [mtPreset('UltimaMarkets-Demo'), mtPreset('UltimaMarkets-Live')],
+    mt5: [mtPreset('UltimaMarkets-Demo'), mtPreset('UltimaMarkets-Live')],
+  },
+  justmarkets: {
+    mt4: [mtPreset('JustMarkets-Demo'), mtPreset('JustMarkets-Live')],
+    mt5: [mtPreset('JustMarkets-Demo'), mtPreset('JustMarkets-Live')],
+  },
+  fbs: {
+    mt4: [mtPreset('FBS-Demo'), mtPreset('FBS-Real')],
+    mt5: [mtPreset('FBS-Demo'), mtPreset('FBS-Real')],
+  },
+  puprime: {
+    mt4: [mtPreset('PUPrime-Demo'), mtPreset('PUPrime-Live')],
+    mt5: [mtPreset('PUPrime-Demo'), mtPreset('PUPrime-Live')],
   },
   ftmo: {
     mt4: [mtPreset('FTMO-Demo'), mtPreset('FTMO-Server1')],
