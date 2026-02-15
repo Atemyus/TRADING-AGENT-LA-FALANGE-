@@ -34,6 +34,11 @@ export type BrokerDirectoryEntry = {
   platforms: BrokerPlatform[]
 }
 
+export type MetaTraderServerPreset = {
+  label: string
+  value: string
+}
+
 const credential = (
   key: string,
   label: string,
@@ -453,6 +458,152 @@ export const BROKER_DIRECTORY: BrokerDirectoryEntry[] = [
   { id: 'the_trading_pit', name: 'The Trading Pit', kind: 'prop', logoDomain: 'thetradingpit.com', platforms: platformsFor('ctrader', 'tradingview') },
   { id: 'surge_trader', name: 'SurgeTrader', kind: 'prop', logoDomain: 'surgetrader.com', platforms: platformsFor('mt4', 'mt5') },
 ]
+
+const mtPreset = (value: string, label?: string): MetaTraderServerPreset => ({
+  value,
+  label: label || value,
+})
+
+const MT_SERVER_PRESETS: Record<
+  string,
+  Partial<Record<'mt4' | 'mt5', MetaTraderServerPreset[]>>
+> = {
+  ic_markets: {
+    mt4: [mtPreset('ICMarketsSC-Demo'), mtPreset('ICMarketsSC-Live01'), mtPreset('ICMarketsSC-Live02')],
+    mt5: [mtPreset('ICMarketsSC-Demo'), mtPreset('ICMarketsSC-Live01'), mtPreset('ICMarketsSC-Live02')],
+  },
+  pepperstone: {
+    mt4: [mtPreset('Pepperstone-Demo'), mtPreset('Pepperstone-Edge01'), mtPreset('Pepperstone-Edge02')],
+    mt5: [mtPreset('Pepperstone-Demo'), mtPreset('Pepperstone-Edge01'), mtPreset('Pepperstone-Edge02')],
+  },
+  roboforex: {
+    mt4: [mtPreset('RoboForex-Demo'), mtPreset('RoboForex-Pro'), mtPreset('RoboForex-ECN')],
+    mt5: [mtPreset('RoboForex-Demo'), mtPreset('RoboForex-Pro'), mtPreset('RoboForex-ECN')],
+  },
+  xm: {
+    mt4: [mtPreset('XMGlobal-MT4'), mtPreset('XMGlobal-Demo'), mtPreset('XMGlobal-Real')],
+    mt5: [mtPreset('XMGlobal-MT5'), mtPreset('XMGlobal-Demo'), mtPreset('XMGlobal-Real')],
+  },
+  exness: {
+    mt4: [mtPreset('Exness-MT4Real'), mtPreset('Exness-MT4Trial')],
+    mt5: [mtPreset('Exness-MT5Real'), mtPreset('Exness-MT5Trial')],
+  },
+  vantage: {
+    mt4: [mtPreset('VantageInternational-Demo'), mtPreset('VantageInternational-Live')],
+    mt5: [mtPreset('VantageInternational-Demo'), mtPreset('VantageInternational-Live')],
+  },
+  tickmill: {
+    mt4: [mtPreset('Tickmill-Demo'), mtPreset('Tickmill-Live')],
+    mt5: [mtPreset('Tickmill-Demo'), mtPreset('Tickmill-Live')],
+  },
+  fp_markets: {
+    mt4: [mtPreset('FPMarkets-Demo'), mtPreset('FPMarkets-Live')],
+    mt5: [mtPreset('FPMarkets-Demo'), mtPreset('FPMarkets-Live')],
+  },
+  eightcap: {
+    mt4: [mtPreset('Eightcap-Demo'), mtPreset('Eightcap-Live')],
+    mt5: [mtPreset('Eightcap-Demo'), mtPreset('Eightcap-Live')],
+  },
+  blackbull: {
+    mt4: [mtPreset('BlackBullMarkets-Demo'), mtPreset('BlackBullMarkets-Live')],
+    mt5: [mtPreset('BlackBullMarkets-Demo'), mtPreset('BlackBullMarkets-Live')],
+  },
+  thinkmarkets: {
+    mt4: [mtPreset('ThinkMarkets-Demo'), mtPreset('ThinkMarkets-Live')],
+    mt5: [mtPreset('ThinkMarkets-Demo'), mtPreset('ThinkMarkets-Live')],
+  },
+  admirals: {
+    mt4: [mtPreset('AdmiralMarkets-Demo'), mtPreset('AdmiralMarkets-Live')],
+    mt5: [mtPreset('AdmiralMarkets-Demo'), mtPreset('AdmiralMarkets-Live')],
+  },
+  xtb: {
+    mt5: [mtPreset('XTB-Demo'), mtPreset('XTB-Real')],
+  },
+  forex_com: {
+    mt5: [mtPreset('Forex.com-Demo'), mtPreset('Forex.com-Live')],
+  },
+  swissquote: {
+    mt4: [mtPreset('Swissquote-Demo'), mtPreset('Swissquote-Live')],
+    mt5: [mtPreset('Swissquote-Demo'), mtPreset('Swissquote-Live')],
+  },
+  darwinex: {
+    mt4: [mtPreset('Darwinex-Demo'), mtPreset('Darwinex-Live')],
+    mt5: [mtPreset('Darwinex-Demo'), mtPreset('Darwinex-Live')],
+  },
+  avatrade: {
+    mt4: [mtPreset('AvaTrade-Demo'), mtPreset('AvaTrade-Live')],
+    mt5: [mtPreset('AvaTrade-Demo'), mtPreset('AvaTrade-Live')],
+  },
+  fxtm: {
+    mt4: [mtPreset('FXTM-Demo'), mtPreset('FXTM-Live')],
+    mt5: [mtPreset('FXTM-Demo'), mtPreset('FXTM-Live')],
+  },
+  hf_markets: {
+    mt4: [mtPreset('HFMarkets-Demo'), mtPreset('HFMarkets-Live')],
+    mt5: [mtPreset('HFMarkets-Demo'), mtPreset('HFMarkets-Live')],
+  },
+  activtrades: {
+    mt4: [mtPreset('ActivTrades-Demo'), mtPreset('ActivTrades-Live')],
+    mt5: [mtPreset('ActivTrades-Demo'), mtPreset('ActivTrades-Live')],
+  },
+  fusion_markets: {
+    mt4: [mtPreset('FusionMarkets-Demo'), mtPreset('FusionMarkets-Live')],
+    mt5: [mtPreset('FusionMarkets-Demo'), mtPreset('FusionMarkets-Live')],
+  },
+  blueberry_markets: {
+    mt4: [mtPreset('BlueberryMarkets-Demo'), mtPreset('BlueberryMarkets-Live')],
+    mt5: [mtPreset('BlueberryMarkets-Demo'), mtPreset('BlueberryMarkets-Live')],
+  },
+  axi: {
+    mt4: [mtPreset('Axi-Demo'), mtPreset('Axi-Live')],
+    mt5: [mtPreset('Axi-Demo'), mtPreset('Axi-Live')],
+  },
+  fxpro: {
+    mt4: [mtPreset('FxPro-MT4-Demo'), mtPreset('FxPro-MT4-Live')],
+    mt5: [mtPreset('FxPro-MT5-Demo'), mtPreset('FxPro-MT5-Live')],
+  },
+  ftmo: {
+    mt4: [mtPreset('FTMO-Demo'), mtPreset('FTMO-Server1')],
+    mt5: [mtPreset('FTMO-Demo'), mtPreset('FTMO-Server1')],
+  },
+  fundednext: {
+    mt4: [mtPreset('FundedNext-Demo'), mtPreset('FundedNext-Live')],
+    mt5: [mtPreset('FundedNext-Demo'), mtPreset('FundedNext-Live')],
+  },
+  funded_trading_plus: {
+    mt4: [mtPreset('FundedTradingPlus-Demo'), mtPreset('FundedTradingPlus-Live')],
+    mt5: [mtPreset('FundedTradingPlus-Demo'), mtPreset('FundedTradingPlus-Live')],
+  },
+  true_forex_funds: {
+    mt4: [mtPreset('TrueForexFunds-Demo'), mtPreset('TrueForexFunds-Live')],
+    mt5: [mtPreset('TrueForexFunds-Demo'), mtPreset('TrueForexFunds-Live')],
+  },
+  surge_trader: {
+    mt4: [mtPreset('SurgeTrader-Demo'), mtPreset('SurgeTrader-Live')],
+    mt5: [mtPreset('SurgeTrader-Demo'), mtPreset('SurgeTrader-Live')],
+  },
+}
+
+export const getMetaTraderServerPresets = (
+  brokerId: string | undefined,
+  platformId: string | undefined,
+): MetaTraderServerPreset[] => {
+  const safeBrokerId = (brokerId || '').trim().toLowerCase()
+  const safePlatformId = (platformId || '').trim().toLowerCase()
+  if (!safeBrokerId || (safePlatformId !== 'mt4' && safePlatformId !== 'mt5')) {
+    return []
+  }
+  const platformPresets = MT_SERVER_PRESETS[safeBrokerId]?.[safePlatformId]
+  if (!platformPresets) return []
+
+  const seen = new Set<string>()
+  return platformPresets.filter((preset) => {
+    const value = (preset.value || '').trim().toLowerCase()
+    if (!value || seen.has(value)) return false
+    seen.add(value)
+    return true
+  })
+}
 
 const normalizeLogoDomain = (domain: string | undefined): string => {
   const value = (domain || '').trim().toLowerCase()
