@@ -649,23 +649,31 @@ class MultiBrokerManager:
 
         try:
             account_info = await broker.get_account_info()
-            open_positions = await broker.get_positions()
-            return {
-                "broker_id": broker_id,
-                "balance": float(account_info.balance),
-                "equity": float(account_info.equity),
-                "margin_used": float(account_info.margin_used),
-                "margin_available": float(account_info.margin_available),
-                "unrealized_pnl": float(account_info.unrealized_pnl),
-                "realized_pnl_today": float(getattr(account_info, "realized_pnl_today", 0) or 0),
-                "open_positions": len(open_positions or []),
-                "currency": account_info.currency,
-            }
         except Exception as e:
             return {
                 "broker_id": broker_id,
                 "error": str(e)
             }
+
+        # Open positions should not block account balance/equity visibility.
+        open_positions_count = 0
+        try:
+            open_positions = await broker.get_positions()
+            open_positions_count = len(open_positions or [])
+        except Exception:
+            open_positions_count = 0
+
+        return {
+            "broker_id": broker_id,
+            "balance": float(account_info.balance),
+            "equity": float(account_info.equity),
+            "margin_used": float(account_info.margin_used),
+            "margin_available": float(account_info.margin_available),
+            "unrealized_pnl": float(account_info.unrealized_pnl),
+            "realized_pnl_today": float(getattr(account_info, "realized_pnl_today", 0) or 0),
+            "open_positions": open_positions_count,
+            "currency": account_info.currency,
+        }
 
     async def get_broker_positions(
         self,
