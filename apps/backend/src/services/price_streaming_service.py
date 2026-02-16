@@ -13,7 +13,7 @@ from decimal import Decimal
 from typing import Any
 
 from src.engines.trading.base_broker import BaseBroker, Tick
-from src.engines.trading.broker_factory import get_broker
+from src.engines.trading.broker_factory import NoBrokerConfiguredError, get_broker
 
 
 class PriceStreamingService:
@@ -161,6 +161,9 @@ class PriceStreamingService:
             else:
                 print("⚠️ Price streaming: No broker instance, using simulated data")
 
+        except NoBrokerConfiguredError as e:
+            print(f"⚠️ Price streaming: No default broker configured ({e}), using simulated data")
+            self._broker = None
         except Exception as e:
             print(f"⚠️ Price streaming: Could not get broker ({e}), using simulated data")
             import traceback

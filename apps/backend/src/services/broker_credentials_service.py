@@ -104,6 +104,16 @@ def _to_bool(value: Any, default: bool) -> bool:
     return default
 
 
+def _to_timeout_seconds(value: Any, default: float = 90.0, minimum: float = 30.0) -> float:
+    try:
+        parsed = float(_clean(value))
+    except Exception:
+        return default
+    if parsed < minimum:
+        return default
+    return parsed
+
+
 def _resolve_mt_connection_mode(creds: dict[str, str], broker: BrokerAccount | None = None) -> str:
     _ = broker  # Reserved for future per-broker overrides.
     raw_mode = (
@@ -538,12 +548,13 @@ def resolve_mt_bridge_runtime_credentials(broker: BrokerAccount) -> dict[str, st
         os.environ.get("MT_BRIDGE_API_KEY"),
         settings.MT_BRIDGE_API_KEY,
     )
-    timeout_seconds = _first_non_empty(
+    timeout_seconds_raw = _first_non_empty(
         creds.get("mt_bridge_timeout_seconds"),
         creds.get("bridge_timeout_seconds"),
         os.environ.get("MT_BRIDGE_TIMEOUT_SECONDS"),
         settings.MT_BRIDGE_TIMEOUT_SECONDS,
     ) or "90"
+    timeout_seconds = _to_timeout_seconds(timeout_seconds_raw, default=90.0, minimum=30.0)
 
     if mode != "bridge":
         raise HTTPException(
@@ -581,7 +592,7 @@ def resolve_mt_bridge_runtime_credentials(broker: BrokerAccount) -> dict[str, st
         "password": account_password,
         "platform": platform,
         "bridge_base_url": bridge_base_url,
-        "timeout_seconds": str(timeout_seconds),
+        "timeout_seconds": str(int(timeout_seconds) if timeout_seconds.is_integer() else timeout_seconds),
     }
     if server_name:
         runtime["server_name"] = server_name

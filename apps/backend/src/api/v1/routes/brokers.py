@@ -506,6 +506,16 @@ async def test_broker_connection(
                 raw = str(e).strip()
                 detail = raw or f"{e.__class__.__name__} (no message)"
                 lowered = detail.lower()
+                if "readtimeout" in lowered or "timed out" in lowered or "timeout" in lowered:
+                    timeout_hint = runtime.get("timeout_seconds", "90")
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "Bridge connection failed: request timed out while waiting for MT bridge "
+                            f"(timeout={timeout_hint}s). Verify mt_bridge_base_url is current, "
+                            "set correct MT5 server_name, and increase mt_bridge_timeout_seconds if needed."
+                        ),
+                    )
                 likely_runtime_failure_markers = (
                     "mt bridge error",
                     "connecterror",
