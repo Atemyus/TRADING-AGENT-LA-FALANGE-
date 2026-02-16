@@ -546,8 +546,7 @@ export default function DashboardPage() {
   const selectedSlotDisabled = Boolean(
     selectedBrokerId &&
     (
-      selectedSnapshot?.status === 'disabled' ||
-      (selectedBroker ? !selectedBroker.is_enabled : false)
+      selectedBroker ? !selectedBroker.is_enabled : selectedSnapshot?.status === 'disabled'
     ),
   )
 
@@ -571,13 +570,13 @@ export default function DashboardPage() {
       'selected_broker_snapshot',
       JSON.stringify({
         brokerId: selectedBrokerId,
-        isDisabled: snapshot.status === 'disabled',
+        isDisabled: selectedBroker ? !selectedBroker.is_enabled : snapshot.status === 'disabled',
         balance: snapshot.balance ?? null,
         todayPnl: snapshot.dailyPnl ?? snapshot.unrealizedPnl ?? null,
       }),
     )
     window.dispatchEvent(new Event('selected-broker-snapshot-changed'))
-  }, [selectedBrokerId, workspaceSnapshots])
+  }, [selectedBrokerId, workspaceSnapshots, selectedBroker])
 
   const licenseSlots = Math.max(1, user?.license_broker_slots || 1)
   const totalSlots = user?.is_superuser
@@ -837,7 +836,7 @@ export default function DashboardPage() {
 
             const snapshot = workspaceSnapshots[broker.id]
             const isSelected = selectedBrokerId === broker.id
-            const isWorkspaceDisabled = (snapshot?.status === 'disabled') || !broker.is_enabled
+            const isWorkspaceDisabled = !broker.is_enabled
             return (
               <div
                 key={broker.id}
