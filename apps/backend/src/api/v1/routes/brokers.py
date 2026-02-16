@@ -477,7 +477,11 @@ async def test_broker_connection(
                     await mt_bridge_broker.connect()
                     account_info = await mt_bridge_broker.get_account_info()
                 finally:
-                    await mt_bridge_broker.disconnect()
+                    try:
+                        await mt_bridge_broker.disconnect()
+                    except Exception:
+                        # Cleanup should not mask a successful connection test.
+                        pass
 
                 broker.is_connected = True
                 broker.last_connected_at = datetime.now(UTC)
@@ -499,7 +503,8 @@ async def test_broker_connection(
             except HTTPException:
                 raise
             except Exception as e:
-                detail = str(e).strip() or "Unknown bridge error"
+                raw = str(e).strip()
+                detail = raw or f"{e.__class__.__name__} (no message)"
                 lowered = detail.lower()
                 likely_runtime_failure_markers = (
                     "mt bridge error",
