@@ -42,6 +42,13 @@ def _normalize_server_candidates(values: list[str] | None) -> list[str]:
     return result
 
 
+def _mask_login(value: str) -> str:
+    raw = (value or "").strip()
+    if len(raw) <= 4:
+        return "***"
+    return f"{raw[:2]}***{raw[-2:]}"
+
+
 settings: BridgeSettings = get_settings()
 session_manager = SessionManager(settings=settings)
 
@@ -108,8 +115,18 @@ async def connect_session(data: ConnectSessionRequest):
             server_candidates=server_candidates,
         )
     except BridgeProviderError as exc:
+        print(
+            "[MT-BRIDGE] connect failed "
+            f"platform={platform} login={_mask_login(login)} server={server or '<auto>'} "
+            f"detail={exc}"
+        )
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
+        print(
+            "[MT-BRIDGE] connect exception "
+            f"platform={platform} login={_mask_login(login)} server={server or '<auto>'} "
+            f"detail={exc}"
+        )
         raise HTTPException(status_code=500, detail=f"Session connect failed: {exc}")
 
     return ConnectSessionResponse(
