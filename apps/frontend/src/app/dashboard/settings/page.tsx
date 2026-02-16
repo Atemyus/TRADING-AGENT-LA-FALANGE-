@@ -896,23 +896,32 @@ function BrokerAccountsSettings() {
 
     const isMetaTraderPlatform = selectedPlatform.id === 'mt4' || selectedPlatform.id === 'mt5'
     const hasLegacyMetaApiId = Boolean((editingAccount?.metaapi_account_id || '').trim())
-    const mtCoreCredentialKeys = ['account_number', 'account_password', 'server_name']
-    const mtAnyCredentialKeys = ['account_number', 'account_password', 'server_name']
-    const hasAnyMtCredential = mtAnyCredentialKeys.some((key) => Boolean(normalizedCredentials[key]))
-    const hasAllRequiredMtCredentials = mtCoreCredentialKeys.every((key) => Boolean(normalizedCredentials[key]))
+    const hasProvidedMetaApiId = Boolean((normalizedCredentials.metaapi_account_id || '').trim())
+    const hasAnyMetaApiId = hasLegacyMetaApiId || hasProvidedMetaApiId
+    const mtLoginCredentialKeys = ['account_number', 'account_password', 'server_name']
+    const hasAnyMtLoginCredential = mtLoginCredentialKeys.some((key) => Boolean(normalizedCredentials[key]))
+    const hasAllRequiredMtCredentials = mtLoginCredentialKeys.every((key) => Boolean(normalizedCredentials[key]))
 
     const missingFields = selectedPlatform.credentials.filter((field) => {
       if (field.required === false) return false
       if (normalizedCredentials[field.key]) return false
-      if (isMetaTraderPlatform && hasLegacyMetaApiId && !hasAnyMtCredential) return false
+      if (
+        isMetaTraderPlatform &&
+        hasAnyMetaApiId &&
+        mtLoginCredentialKeys.includes(field.key)
+      ) {
+        return false
+      }
       return true
     })
 
-    if (isMetaTraderPlatform && hasAnyMtCredential && !hasAllRequiredMtCredentials) {
+    if (isMetaTraderPlatform && hasAnyMtLoginCredential && !hasAllRequiredMtCredentials) {
       setError(
-        selectedPlatform.id === 'mt4'
-          ? 'For MT4 complete all fields: Account Number, Password, Server Name.'
-          : 'For MT5 complete all fields: Account Number, Password, Server Name.',
+        hasAnyMetaApiId
+          ? 'Complete all MT login fields (Account Number, Password, Server Name) or clear them and use only MetaApi Account ID.'
+          : selectedPlatform.id === 'mt4'
+            ? 'For MT4 complete all fields: Account Number, Password, Server Name.'
+            : 'For MT5 complete all fields: Account Number, Password, Server Name.',
       )
       return null
     }

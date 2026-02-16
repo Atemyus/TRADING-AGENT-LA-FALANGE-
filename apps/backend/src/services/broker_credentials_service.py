@@ -397,6 +397,17 @@ async def _provision_metaapi_account(
 
         if response.status_code not in {200, 201, 202}:
             detail = response.text.strip() or f"status {response.status_code}"
+            lowered = detail.lower()
+            if "forbiddenerror" in lowered and "createaccount" in lowered:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Automatic MT account provisioning failed: your MetaApi token does not have "
+                        "account-creation permission (createAccount). Create the account manually in "
+                        "app.metaapi.cloud and provide its MetaApi account id in workspace credentials, "
+                        "or use a token with trading-account-management create permission."
+                    ),
+                )
             raise HTTPException(
                 status_code=400,
                 detail=f"Automatic MT account provisioning failed: {detail}",
