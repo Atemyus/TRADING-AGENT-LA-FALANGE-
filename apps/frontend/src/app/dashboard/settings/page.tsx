@@ -893,10 +893,14 @@ function BrokerAccountsSettings() {
         .map(([key, value]) => [key, (value || '').trim()])
         .filter(([, value]) => value.length > 0),
     )
+    const explicitMetaApiAccountId = (normalizedCredentials.metaapi_account_id || '').trim() || undefined
+    if (explicitMetaApiAccountId) {
+      delete normalizedCredentials.metaapi_account_id
+    }
 
     const isMetaTraderPlatform = selectedPlatform.id === 'mt4' || selectedPlatform.id === 'mt5'
     const hasLegacyMetaApiId = Boolean((editingAccount?.metaapi_account_id || '').trim())
-    const hasProvidedMetaApiId = Boolean((normalizedCredentials.metaapi_account_id || '').trim())
+    const hasProvidedMetaApiId = Boolean(explicitMetaApiAccountId)
     const hasAnyMetaApiId = hasLegacyMetaApiId || hasProvidedMetaApiId
     const mtLoginCredentialKeys = ['account_number', 'account_password', 'server_name']
     const hasAnyMtLoginCredential = mtLoginCredentialKeys.some((key) => Boolean(normalizedCredentials[key]))
@@ -939,7 +943,7 @@ function BrokerAccountsSettings() {
       broker_catalog_id: selectedCatalogBroker.id,
       platform_id: selectedPlatform.id,
       name: (formData.name || '').trim() || generatedName,
-      metaapi_account_id: undefined,
+      metaapi_account_id: explicitMetaApiAccountId,
       metaapi_token: undefined,
       credentials: normalizedCredentials,
     } as BrokerAccountCreate
@@ -1131,7 +1135,10 @@ function BrokerAccountsSettings() {
       trading_end_hour: account.trading_end_hour,
       trade_on_weekends: account.trade_on_weekends,
     })
-    setPlatformCredentials(account.credentials || {})
+    setPlatformCredentials({
+      ...(account.credentials || {}),
+      ...(account.metaapi_account_id ? { metaapi_account_id: account.metaapi_account_id } : {}),
+    })
     setSecretVisibility({})
     setSelectedCatalogBrokerId(resolvedBrokerId)
     setSelectedPlatformId(resolvedPlatformId)

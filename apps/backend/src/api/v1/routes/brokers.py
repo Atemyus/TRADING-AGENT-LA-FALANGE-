@@ -461,6 +461,11 @@ async def update_broker(
     """Update a broker account."""
     broker = await _get_user_broker_or_404(db, broker_id, current_user)
     owner_user_id = _owner_user_id(current_user)
+    normalized_metaapi_account_id = (
+        _normalize_metaapi_account_id(data.metaapi_account_id)
+        if data.metaapi_account_id is not None
+        else None
+    )
 
     # Update fields if provided
     if data.name is not None:
@@ -474,22 +479,24 @@ async def update_broker(
     if data.slot_index is not None:
         broker.slot_index = await _validate_update_slot_index(db, current_user, broker, data.slot_index)
     if data.metaapi_account_id is not None:
-        broker.metaapi_account_id = _normalize_metaapi_account_id(data.metaapi_account_id)
+        broker.metaapi_account_id = normalized_metaapi_account_id
     if data.metaapi_token is not None:
         broker.metaapi_token = preserve_if_masked(data.metaapi_token, broker.metaapi_token)
     if data.credentials is not None:
         existing_credentials = normalize_credentials(broker.credentials)
         incoming_credentials = normalize_credentials(data.credentials)
-        broker.credentials = merge_credentials_preserving_masked(existing_credentials, incoming_credentials)
+        merged_credentials = merge_credentials_preserving_masked(existing_credentials, incoming_credentials)
+        broker.credentials = merged_credentials
         mt_login_keys = {"account_number", "account_password", "server_name"}
         if any(
-            incoming_credentials.get(key)
-            and incoming_credentials.get(key) != existing_credentials.get(key)
+            merged_credentials.get(key)
+            and merged_credentials.get(key) != existing_credentials.get(key)
             for key in mt_login_keys
         ):
             # Force re-resolution/re-provision if MT login params changed.
-            broker.metaapi_account_id = None
-            cleaned_credentials = normalize_credentials(broker.credentials)
+            if not normalized_metaapi_account_id:
+                broker.metaapi_account_id = None
+            cleaned_credentials = normalize_credentials(merged_credentials)
             if "metaapi_account_id" in cleaned_credentials:
                 cleaned_credentials.pop("metaapi_account_id", None)
                 broker.credentials = cleaned_credentials
