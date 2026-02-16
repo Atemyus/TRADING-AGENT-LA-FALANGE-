@@ -396,7 +396,7 @@ async def _provision_metaapi_account(
         "login": account_number,
         "password": account_password,
         "server": server_name,
-        "magic": 1000,
+        "magic": 0,
         "manualTrades": True,
     }
 
