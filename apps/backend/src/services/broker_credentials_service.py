@@ -91,6 +91,18 @@ def _first_non_empty(*values: Any) -> str | None:
     return None
 
 
+def _unique_non_empty(*values: Any) -> list[str]:
+    unique: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        cleaned = _clean(value)
+        if not cleaned or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        unique.append(cleaned)
+    return unique
+
+
 def _to_bool(value: Any, default: bool) -> bool:
     if value is None:
         return default
@@ -440,12 +452,13 @@ async def resolve_metaapi_runtime_credentials(
     broker_type = (broker.broker_type or "").strip().lower()
     default_platform = "mt4" if broker_type == "mt4" else "mt5"
 
-    token = _first_non_empty(
+    token_candidates = _unique_non_empty(
         broker.metaapi_token,
         creds.get("metaapi_token"),
         os.environ.get("METAAPI_ACCESS_TOKEN"),
         settings.METAAPI_ACCESS_TOKEN,
     )
+    token = token_candidates[0] if token_candidates else None
     account_id = _first_non_empty(
         broker.metaapi_account_id,
         creds.get("metaapi_account_id"),
@@ -479,7 +492,7 @@ async def resolve_metaapi_runtime_credentials(
         creds.get("broker_server"),
     )
 
-    if not token:
+    if not token_candidates:
         raise HTTPException(
             status_code=400,
             detail=(
@@ -497,15 +510,37 @@ async def resolve_metaapi_runtime_credentials(
                     "(or an existing MetaApi account id)."
                 ),
             )
-        account_id = await _provision_metaapi_account(
-            token=token,
-            workspace_name=broker.name,
-            platform=platform,
-            account_number=account_number,
-            account_password=account_password,
-            server_name=server_name,
-        )
+        last_permission_error: HTTPException | None = None
+        for candidate_token in token_candidates:
+            try:
+                account_id = await _provision_metaapi_account(
+                    token=candidate_token,
+                    workspace_name=broker.name,
+                    platform=platform,
+                    account_number=account_number,
+                    account_password=account_password,
+                    server_name=server_name,
+                )
+                token = candidate_token
+                break
+            except HTTPException as exc:
+                detail = str(exc.detail or "")
+                lowered = detail.lower()
+                if "createaccount" in lowered or "account-creation permission" in lowered:
+                    last_permission_error = exc
+                    continue
+                raise
+
+        if not account_id:
+            if last_permission_error:
+                raise last_permission_error
+            raise HTTPException(
+                status_code=400,
+                detail="Automatic MT account provisioning failed for all configured MetaApi tokens.",
+            )
         broker.metaapi_account_id = account_id
+    elif not token:
+        token = token_candidates[0]
 
     return {
         "access_token": token,
