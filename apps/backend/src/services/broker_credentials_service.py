@@ -445,6 +445,36 @@ async def _provision_metaapi_account(
         return account_id
 
 
+async def _select_accessible_metaapi_token(
+    *,
+    token_candidates: list[str],
+    account_id: str,
+) -> str | None:
+    """Pick the first token that can access a specific MetaApi account id."""
+    if not token_candidates:
+        return None
+    if len(token_candidates) == 1:
+        return token_candidates[0]
+
+    account = _clean(account_id)
+    if not account:
+        return token_candidates[0]
+
+    async with httpx.AsyncClient(verify=False, timeout=15.0) as client:
+        for candidate_token in token_candidates:
+            try:
+                response = await client.get(
+                    f"{METAAPI_PROVISIONING_URL}/users/current/accounts/{account}",
+                    headers={"auth-token": candidate_token},
+                )
+            except Exception:
+                continue
+            if response.status_code == 200:
+                return candidate_token
+
+    return None
+
+
 async def resolve_metaapi_runtime_credentials(
     broker: BrokerAccount,
 ) -> dict[str, str]:
@@ -482,7 +512,35 @@ async def resolve_metaapi_runtime_credentials(
     if platform not in {"mt4", "mt5"}:
         platform = default_platform
 
-    if account_id and token:
+    if account_id:
+        if not token_candidates:
+            sources = ", ".join(token_source_names) if token_source_names else "none"
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "MetaApi gateway token not configured on server. "
+                    f"Detected token sources: {sources}. "
+                    "Set METAAPI_ACCESS_TOKEN in backend environment."
+                ),
+            )
+
+        selected_token = await _select_accessible_metaapi_token(
+            token_candidates=token_candidates,
+            account_id=account_id,
+        )
+        if selected_token:
+            token = selected_token
+        else:
+            sources = ", ".join(token_source_names) if token_source_names else "none"
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "MetaApi token cannot access the configured MetaApi account id. "
+                    f"Token sources checked: {sources}. "
+                    "Update/remove stale workspace token, or provide a token that has access to this account."
+                ),
+            )
+
         return {
             "access_token": token,
             "account_id": account_id,
