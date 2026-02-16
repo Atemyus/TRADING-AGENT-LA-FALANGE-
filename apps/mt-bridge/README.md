@@ -13,6 +13,20 @@ copy .env.example .env
 uvicorn src.main:app --host 0.0.0.0 --port 9000
 ```
 
+### Windows helper scripts
+
+Apri due terminali in `apps/mt-bridge`:
+
+```powershell
+.\start-bridge.cmd
+```
+
+```powershell
+.\start-tunnel.cmd
+```
+
+`start-tunnel.cmd` stampa l'URL `https://...trycloudflare.com` da usare come `MT_BRIDGE_BASE_URL`.
+
 ## Provider mode
 
 - `MT_BRIDGE_PROVIDER_MODE=mock`:

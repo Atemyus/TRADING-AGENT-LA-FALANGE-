@@ -543,7 +543,7 @@ def resolve_mt_bridge_runtime_credentials(broker: BrokerAccount) -> dict[str, st
         creds.get("bridge_timeout_seconds"),
         os.environ.get("MT_BRIDGE_TIMEOUT_SECONDS"),
         settings.MT_BRIDGE_TIMEOUT_SECONDS,
-    ) or "20"
+    ) or "90"
 
     if mode != "bridge":
         raise HTTPException(

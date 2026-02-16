@@ -160,7 +160,7 @@ class Settings(BaseSettings):
     METATRADER_CONNECTION_MODE: str = Field(default="metaapi", description="metaapi|bridge")
     MT_BRIDGE_BASE_URL: str | None = None
     MT_BRIDGE_API_KEY: str | None = None
-    MT_BRIDGE_TIMEOUT_SECONDS: float = 20.0
+    MT_BRIDGE_TIMEOUT_SECONDS: float = 90.0
 
     # IG Markets
     IG_API_KEY: str | None = None

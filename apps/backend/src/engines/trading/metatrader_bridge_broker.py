@@ -116,7 +116,7 @@ class MetaTraderBridgeBroker(BaseBroker):
     - REST endpoints scoped by {session_id}
     """
 
-    DEFAULT_TIMEOUT_SECONDS = 20.0
+    DEFAULT_TIMEOUT_SECONDS = 90.0
 
     def __init__(
         self,

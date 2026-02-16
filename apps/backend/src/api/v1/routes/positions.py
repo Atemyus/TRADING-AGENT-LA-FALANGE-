@@ -7,6 +7,7 @@ from decimal import Decimal
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
+from src.engines.trading.broker_factory import NoBrokerConfiguredError
 from src.services.trading_service import get_trading_service
 
 router = APIRouter()
@@ -42,10 +43,20 @@ class PositionsListResponse(BaseModel):
     total_margin_used: str
 
 
+async def _get_service_or_503():
+    try:
+        return await get_trading_service()
+    except NoBrokerConfiguredError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e),
+        )
+
+
 @router.get("", response_model=PositionsListResponse)
 async def get_positions():
     """Get all open positions with current prices."""
-    service = await get_trading_service()
+    service = await _get_service_or_503()
     positions = await service.get_positions_with_prices()
 
     total_pnl = sum(Decimal(p["unrealized_pnl"]) for p in positions)
@@ -61,7 +72,7 @@ async def get_positions():
 @router.get("/{symbol}", response_model=PositionResponse)
 async def get_position(symbol: str):
     """Get position for specific symbol."""
-    service = await get_trading_service()
+    service = await _get_service_or_503()
     positions = await service.get_positions_with_prices()
 
     # Find position for symbol
@@ -81,7 +92,7 @@ async def modify_position(symbol: str, modification: PositionModify):
     """
     Modify stop loss / take profit for a position.
     """
-    service = await get_trading_service()
+    service = await _get_service_or_503()
 
     success = await service.modify_position(
         symbol=symbol,
@@ -111,7 +122,7 @@ async def close_position(symbol: str, size: Decimal | None = None):
         symbol: Symbol to close
         size: Size to close (None = close all)
     """
-    service = await get_trading_service()
+    service = await _get_service_or_503()
     result = await service.close_position(symbol, size)
 
     if not result.success:
