@@ -136,6 +136,8 @@ def apply_settings_to_env(settings: AllSettings) -> None:
 
     # Broker settings
     os.environ["BROKER_TYPE"] = broker.broker_type
+    # In multi-broker mode METAAPI_ACCOUNT_ID must remain workspace-specific.
+    os.environ.pop("METAAPI_ACCOUNT_ID", None)
 
     if broker.broker_type == "oanda":
         if broker.oanda_api_key:
@@ -147,8 +149,6 @@ def apply_settings_to_env(settings: AllSettings) -> None:
     elif broker.broker_type == "metatrader":
         if broker.metaapi_token:
             os.environ["METAAPI_ACCESS_TOKEN"] = broker.metaapi_token
-        if broker.metaapi_account_id:
-            os.environ["METAAPI_ACCOUNT_ID"] = broker.metaapi_account_id
 
     elif broker.broker_type == "ig":
         if broker.ig_api_key:

@@ -438,8 +438,6 @@ async def resolve_metaapi_runtime_credentials(
     account_id = _first_non_empty(
         broker.metaapi_account_id,
         creds.get("metaapi_account_id"),
-        os.environ.get("METAAPI_ACCOUNT_ID"),
-        settings.METAAPI_ACCOUNT_ID,
     )
     platform = (_first_non_empty(broker.platform_id, creds.get("platform")) or default_platform).lower()
     if platform not in {"mt4", "mt5"}:
