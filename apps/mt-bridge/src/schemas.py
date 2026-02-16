@@ -23,6 +23,7 @@ class ConnectSessionResponse(BaseModel):
     login: str
     server: str
     connected_at: datetime
+    reused_existing: bool = False
 
 
 class SessionSnapshot(BaseModel):

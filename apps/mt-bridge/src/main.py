@@ -104,7 +104,7 @@ async def connect_session(data: ConnectSessionRequest):
         raise HTTPException(status_code=400, detail="MT4 requires server/server_name")
 
     try:
-        session = await session_manager.create_session(
+        session, reused_existing = await session_manager.create_session(
             platform=platform,
             login=login,
             password=data.password,
@@ -135,6 +135,7 @@ async def connect_session(data: ConnectSessionRequest):
         login=session.login,
         server=session.server,
         connected_at=session.connected_at,
+        reused_existing=reused_existing,
     )
 
 

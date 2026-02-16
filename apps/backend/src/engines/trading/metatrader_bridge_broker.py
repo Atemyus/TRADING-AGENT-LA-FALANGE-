@@ -49,6 +49,19 @@ def _to_int(value: Any, fallback: int = 1) -> int:
         return fallback
 
 
+def _to_bool(value: Any, fallback: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return fallback
+    text = str(value).strip().lower()
+    if text in {"true", "1", "yes", "y", "on"}:
+        return True
+    if text in {"false", "0", "no", "n", "off"}:
+        return False
+    return fallback
+
+
 def _parse_timestamp(value: Any) -> datetime:
     text = str(value or "").strip()
     if not text:
@@ -188,6 +201,7 @@ class MetaTraderBridgeBroker(BaseBroker):
 
         self._session_id: str | None = None
         self._client: httpx.AsyncClient | None = None
+        self._owns_session: bool = True
 
     @property
     def name(self) -> str:
@@ -323,11 +337,27 @@ class MetaTraderBridgeBroker(BaseBroker):
         ).strip()
         if resolved_server:
             self.server_name = resolved_server
+        reused_existing = _to_bool(
+            _pick(
+                response,
+                [
+                    "reused_existing",
+                    "reused",
+                    "data.reused_existing",
+                    "data.reused",
+                    "result.reused_existing",
+                    "result.reused",
+                ],
+                False,
+            ),
+            fallback=False,
+        )
+        self._owns_session = not reused_existing
         self._session_id = session_id
         self._connected = True
 
     async def disconnect(self) -> None:
-        if self._client and self._session_id:
+        if self._client and self._session_id and self._owns_session:
             try:
                 endpoint = self._fmt_endpoint(self.disconnect_endpoint, session_id=self._session_id)
                 await self._request("POST", endpoint, data={"session_id": self._session_id})
@@ -337,6 +367,7 @@ class MetaTraderBridgeBroker(BaseBroker):
             await self._client.aclose()
             self._client = None
         self._session_id = None
+        self._owns_session = True
         self._connected = False
 
     async def get_account_info(self) -> AccountInfo:

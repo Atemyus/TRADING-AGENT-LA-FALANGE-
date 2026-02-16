@@ -52,7 +52,7 @@ class SessionManager:
         data_path: str | None = None,
         workspace_id: str | None = None,
         server_candidates: list[str] | None = None,
-    ) -> BridgeSession:
+    ) -> tuple[BridgeSession, bool]:
         async with self._lock:
             if len(self._sessions) >= int(self.settings.MT_BRIDGE_MAX_SESSIONS):
                 raise BridgeProviderError(
@@ -67,9 +67,29 @@ class SessionManager:
             if provider.name == "mt5":
                 existing_mt5 = [s for s in self._sessions.values() if s.provider.name == "mt5"]
                 if existing_mt5:
+                    existing = existing_mt5[0]
+                    requested_login = str(login or "").strip()
+                    requested_server = str(server or "").strip().lower()
+                    active_login = str(existing.login or "").strip()
+                    active_server = str(existing.server or "").strip()
+                    active_server_lower = active_server.lower()
+
+                    same_login = bool(requested_login and active_login == requested_login)
+                    same_server = (
+                        not requested_server
+                        or not active_server_lower
+                        or active_server_lower == requested_server
+                    )
+
+                    if same_login and same_server:
+                        existing.last_seen_at = datetime.now(UTC)
+                        return existing, True
+
                     raise BridgeProviderError(
                         "MT5 provider mode currently supports one active session per bridge process. "
-                        "Scale with multiple bridge nodes/processes."
+                        f"Active session login={active_login or '<unknown>'}, "
+                        f"server={active_server or '<unknown>'}. "
+                        "Disconnect current session first or use a dedicated bridge node/process."
                     )
 
             if self.settings.MT_BRIDGE_TERMINAL_AUTO_LAUNCH and terminal_path:
@@ -129,7 +149,7 @@ class SessionManager:
                 managed_terminal=managed_terminal,
             )
             self._sessions[session_id] = session
-            return session
+            return session, False
 
     async def disconnect_session(self, session_id: str) -> bool:
         async with self._lock:
