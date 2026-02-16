@@ -31,6 +31,7 @@ from src.services.broker_credentials_service import (
 )
 
 router = APIRouter(prefix="/brokers", tags=["Broker Accounts"])
+MT_BROKER_TYPES = {"metaapi", "metatrader", "mt4", "mt5"}
 
 
 # ============ Pydantic Models ============
@@ -198,6 +199,77 @@ def _sorted_brokers_query(current_user: User):
     return query.order_by(BrokerAccount.slot_index.is_(None), BrokerAccount.slot_index, BrokerAccount.id)
 
 
+def _owner_user_id(current_user: User) -> int | None:
+    return None if current_user.is_superuser else current_user.id
+
+
+def _normalize_metaapi_account_id(value: str | None) -> str | None:
+    cleaned = (value or "").strip()
+    return cleaned or None
+
+
+def _extract_metaapi_account_id(
+    explicit_metaapi_account_id: str | None,
+    credentials: dict[str, str] | None,
+) -> str | None:
+    explicit = _normalize_metaapi_account_id(explicit_metaapi_account_id)
+    if explicit:
+        return explicit
+    if not credentials:
+        return None
+    return _normalize_metaapi_account_id(credentials.get("metaapi_account_id"))
+
+
+async def _assert_metaapi_account_not_linked_to_other_user(
+    db: AsyncSession,
+    *,
+    owner_user_id: int | None,
+    metaapi_account_id: str,
+    exclude_broker_id: int | None = None,
+) -> None:
+    account_id = _normalize_metaapi_account_id(metaapi_account_id)
+    if not account_id:
+        return
+
+    query = select(BrokerAccount).where(BrokerAccount.metaapi_account_id == account_id)
+    if exclude_broker_id is not None:
+        query = query.where(BrokerAccount.id != exclude_broker_id)
+
+    result = await db.execute(query)
+    conflicts = result.scalars().all()
+    for conflict in conflicts:
+        if conflict.user_id != owner_user_id:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "This MetaApi account is already linked to another user workspace. "
+                    "Use a different account or keep the existing owner."
+                ),
+            )
+
+
+async def _resolve_validate_and_persist_metaapi_runtime(
+    db: AsyncSession,
+    *,
+    broker: BrokerAccount,
+    current_user: User,
+) -> dict[str, str]:
+    runtime = await resolve_metaapi_runtime_credentials(broker)
+    account_id = runtime.get("account_id")
+    if account_id:
+        await _assert_metaapi_account_not_linked_to_other_user(
+            db,
+            owner_user_id=_owner_user_id(current_user),
+            metaapi_account_id=account_id,
+            exclude_broker_id=broker.id,
+        )
+        normalized = _normalize_metaapi_account_id(account_id)
+        if normalized and broker.metaapi_account_id != normalized:
+            broker.metaapi_account_id = normalized
+            await db.flush()
+    return runtime
+
+
 async def _get_user_broker_or_404(
     db: AsyncSession,
     broker_id: int,
@@ -330,15 +402,25 @@ async def create_broker(
 ):
     """Create a new broker account."""
     slot_index = await _resolve_create_slot_index(db, current_user, data.slot_index)
+    owner_user_id = _owner_user_id(current_user)
+    normalized_credentials = normalize_credentials(data.credentials) if data.credentials is not None else None
+    normalized_metaapi_account_id = _extract_metaapi_account_id(data.metaapi_account_id, normalized_credentials)
+
+    if (data.broker_type or "").strip().lower() in MT_BROKER_TYPES and normalized_metaapi_account_id:
+        await _assert_metaapi_account_not_linked_to_other_user(
+            db,
+            owner_user_id=owner_user_id,
+            metaapi_account_id=normalized_metaapi_account_id,
+        )
 
     broker = BrokerAccount(
-        user_id=None if current_user.is_superuser else current_user.id,
+        user_id=owner_user_id,
         slot_index=slot_index,
         name=data.name,
         broker_type=data.broker_type,
         broker_catalog_id=data.broker_catalog_id,
         platform_id=data.platform_id,
-        metaapi_account_id=data.metaapi_account_id,
+        metaapi_account_id=normalized_metaapi_account_id,
         metaapi_token=data.metaapi_token,
         is_enabled=data.is_enabled,
         risk_per_trade_percent=data.risk_per_trade_percent,
@@ -359,8 +441,8 @@ async def create_broker(
         broker.symbols = data.symbols
     if data.enabled_models:
         broker.enabled_models = data.enabled_models
-    if data.credentials is not None:
-        broker.credentials = normalize_credentials(data.credentials)
+    if normalized_credentials is not None:
+        broker.credentials = normalized_credentials
 
     db.add(broker)
     await db.flush()
@@ -378,6 +460,7 @@ async def update_broker(
 ):
     """Update a broker account."""
     broker = await _get_user_broker_or_404(db, broker_id, current_user)
+    owner_user_id = _owner_user_id(current_user)
 
     # Update fields if provided
     if data.name is not None:
@@ -391,7 +474,7 @@ async def update_broker(
     if data.slot_index is not None:
         broker.slot_index = await _validate_update_slot_index(db, current_user, broker, data.slot_index)
     if data.metaapi_account_id is not None:
-        broker.metaapi_account_id = data.metaapi_account_id
+        broker.metaapi_account_id = _normalize_metaapi_account_id(data.metaapi_account_id)
     if data.metaapi_token is not None:
         broker.metaapi_token = preserve_if_masked(data.metaapi_token, broker.metaapi_token)
     if data.credentials is not None:
@@ -406,6 +489,10 @@ async def update_broker(
         ):
             # Force re-resolution/re-provision if MT login params changed.
             broker.metaapi_account_id = None
+            cleaned_credentials = normalize_credentials(broker.credentials)
+            if "metaapi_account_id" in cleaned_credentials:
+                cleaned_credentials.pop("metaapi_account_id", None)
+                broker.credentials = cleaned_credentials
     if data.is_enabled is not None:
         broker.is_enabled = data.is_enabled
     if data.symbols is not None:
@@ -434,6 +521,20 @@ async def update_broker(
         broker.trading_end_hour = data.trading_end_hour
     if data.trade_on_weekends is not None:
         broker.trade_on_weekends = data.trade_on_weekends
+
+    if (broker.broker_type or "").strip().lower() in MT_BROKER_TYPES:
+        effective_metaapi_account_id = _extract_metaapi_account_id(
+            broker.metaapi_account_id,
+            normalize_credentials(broker.credentials),
+        )
+        if effective_metaapi_account_id:
+            await _assert_metaapi_account_not_linked_to_other_user(
+                db,
+                owner_user_id=owner_user_id,
+                metaapi_account_id=effective_metaapi_account_id,
+                exclude_broker_id=broker.id,
+            )
+            broker.metaapi_account_id = effective_metaapi_account_id
 
     await db.flush()
     await db.refresh(broker)
@@ -464,7 +565,7 @@ async def test_broker_connection(
     broker = await _get_user_broker_or_404(db, broker_id, current_user)
     broker_type = (broker.broker_type or "metaapi").lower()
 
-    if broker_type in {"metaapi", "metatrader", "mt4", "mt5"}:
+    if broker_type in MT_BROKER_TYPES:
         credentials = normalize_credentials(broker.credentials)
         if should_use_mt_bridge(broker):
             runtime = resolve_mt_bridge_runtime_credentials(broker)
@@ -533,7 +634,11 @@ async def test_broker_connection(
                     raise HTTPException(status_code=400, detail=f"Bridge connection failed: {detail}")
                 raise HTTPException(status_code=500, detail=f"Bridge connection test failed: {detail}")
 
-        runtime = await resolve_metaapi_runtime_credentials(broker)
+        runtime = await _resolve_validate_and_persist_metaapi_runtime(
+            db,
+            broker=broker,
+            current_user=current_user,
+        )
         effective_metaapi_token = runtime["access_token"]
         effective_metaapi_account_id = runtime["account_id"]
         using_global_token = bool(
@@ -840,7 +945,14 @@ async def start_broker_bot(
     """Start the auto trading bot for a specific broker."""
     from src.engines.trading.multi_broker_manager import get_multi_broker_manager
 
-    await _get_user_broker_or_404(db, broker_id, current_user)
+    broker = await _get_user_broker_or_404(db, broker_id, current_user)
+    if (broker.broker_type or "metaapi").lower() in MT_BROKER_TYPES:
+        await _resolve_validate_and_persist_metaapi_runtime(
+            db,
+            broker=broker,
+            current_user=current_user,
+        )
+
     manager = get_multi_broker_manager()
     result = await manager.start_broker(broker_id, db)
     if result.get("status") == "error":
@@ -1002,6 +1114,13 @@ async def get_broker_account_info(
     from src.engines.trading.multi_broker_manager import get_multi_broker_manager
 
     broker = await _get_user_broker_or_404(db, broker_id, current_user)
+    if (broker.broker_type or "metaapi").lower() in MT_BROKER_TYPES:
+        await _resolve_validate_and_persist_metaapi_runtime(
+            db,
+            broker=broker,
+            current_user=current_user,
+        )
+
     manager = get_multi_broker_manager()
     account_info = await manager.get_broker_account_info(broker_id, broker_account=broker)
 
@@ -1027,6 +1146,13 @@ async def get_broker_positions(
     from src.engines.trading.multi_broker_manager import get_multi_broker_manager
 
     broker = await _get_user_broker_or_404(db, broker_id, current_user)
+    if (broker.broker_type or "metaapi").lower() in MT_BROKER_TYPES:
+        await _resolve_validate_and_persist_metaapi_runtime(
+            db,
+            broker=broker,
+            current_user=current_user,
+        )
+
     manager = get_multi_broker_manager()
     positions = await manager.get_broker_positions(broker_id, broker_account=broker)
 
@@ -1062,6 +1188,23 @@ async def start_all_brokers(
     results = []
     for broker in brokers:
         if broker.is_enabled:
+            if (broker.broker_type or "metaapi").lower() in MT_BROKER_TYPES:
+                try:
+                    await _resolve_validate_and_persist_metaapi_runtime(
+                        db,
+                        broker=broker,
+                        current_user=current_user,
+                    )
+                except HTTPException as exc:
+                    results.append(
+                        {
+                            "broker_id": broker.id,
+                            "name": broker.name,
+                            "status": "error",
+                            "message": str(exc.detail),
+                        }
+                    )
+                    continue
             broker_result = await manager.start_broker(broker.id, db)
             results.append(
                 {
@@ -1125,6 +1268,12 @@ async def get_all_broker_positions(
     manager = get_multi_broker_manager()
     all_positions = []
     for broker in brokers:
+        if (broker.broker_type or "metaapi").lower() in MT_BROKER_TYPES:
+            await _resolve_validate_and_persist_metaapi_runtime(
+                db,
+                broker=broker,
+                current_user=current_user,
+            )
         positions = await manager.get_broker_positions(broker.id, broker_account=broker)
         if positions:
             all_positions.extend(positions)
@@ -1157,6 +1306,12 @@ async def get_aggregated_account_summary(
     broker_details = []
 
     for broker in brokers:
+        if (broker.broker_type or "metaapi").lower() in MT_BROKER_TYPES:
+            await _resolve_validate_and_persist_metaapi_runtime(
+                db,
+                broker=broker,
+                current_user=current_user,
+            )
         account_info = await manager.get_broker_account_info(broker.id, broker_account=broker)
         if account_info and "balance" in account_info and account_info["balance"] is not None:
             total_balance += account_info["balance"]
@@ -1177,6 +1332,12 @@ async def get_aggregated_account_summary(
 
     total_positions = 0
     for broker in brokers:
+        if (broker.broker_type or "metaapi").lower() in MT_BROKER_TYPES:
+            await _resolve_validate_and_persist_metaapi_runtime(
+                db,
+                broker=broker,
+                current_user=current_user,
+            )
         positions = await manager.get_broker_positions(broker.id, broker_account=broker)
         if positions is not None:
             total_positions += len(positions)
@@ -1208,6 +1369,12 @@ async def get_all_broker_statuses(
     statuses = []
 
     for broker in brokers:
+        if (broker.broker_type or "metaapi").lower() in MT_BROKER_TYPES:
+            await _resolve_validate_and_persist_metaapi_runtime(
+                db,
+                broker=broker,
+                current_user=current_user,
+            )
         bot_status = manager.get_broker_status(broker.id)
         account_info = await manager.get_broker_account_info(broker.id, broker_account=broker)
         positions = await manager.get_broker_positions(broker.id, broker_account=broker)
