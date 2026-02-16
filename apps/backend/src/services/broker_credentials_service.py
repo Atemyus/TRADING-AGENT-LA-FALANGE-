@@ -115,23 +115,14 @@ def _to_timeout_seconds(value: Any, default: float = 90.0, minimum: float = 30.0
 
 
 def _resolve_mt_connection_mode(creds: dict[str, str], broker: BrokerAccount | None = None) -> str:
-    _ = broker  # Reserved for future per-broker overrides.
-    raw_mode = (
-        _first_non_empty(
-            creds.get("mt_connection_mode"),
-            creds.get("connection_mode"),
-            os.environ.get("METATRADER_CONNECTION_MODE"),
-            settings.METATRADER_CONNECTION_MODE,
-        )
-        or "metaapi"
-    )
-    mode = raw_mode.lower().strip()
-    return "bridge" if mode == "bridge" else "metaapi"
+    _ = (creds, broker)
+    # Bridge mode is intentionally disabled for MT4/MT5 workspaces in this deployment.
+    return "metaapi"
 
 
 def should_use_mt_bridge(broker: BrokerAccount) -> bool:
-    creds = normalize_credentials(broker.credentials)
-    return _resolve_mt_connection_mode(creds, broker=broker) == "bridge"
+    _ = broker
+    return False
 
 
 def resolve_oanda_runtime_credentials(broker: BrokerAccount) -> dict[str, str]:
@@ -455,7 +446,12 @@ async def resolve_metaapi_runtime_credentials(
         platform = default_platform
 
     if account_id and token:
-        return {"access_token": token, "account_id": account_id, "platform": platform}
+        return {
+            "access_token": token,
+            "account_id": account_id,
+            "platform": platform,
+            "connection_mode": "metaapi",
+        }
 
     account_number = _first_non_empty(
         creds.get("account_number"),
@@ -502,7 +498,12 @@ async def resolve_metaapi_runtime_credentials(
         )
         broker.metaapi_account_id = account_id
 
-    return {"access_token": token, "account_id": account_id, "platform": platform}
+    return {
+        "access_token": token,
+        "account_id": account_id,
+        "platform": platform,
+        "connection_mode": "metaapi",
+    }
 
 
 def resolve_mt_bridge_runtime_credentials(broker: BrokerAccount) -> dict[str, str]:

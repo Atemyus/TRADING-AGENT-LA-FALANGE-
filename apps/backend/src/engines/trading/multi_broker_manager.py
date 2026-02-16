@@ -112,66 +112,6 @@ class MultiBrokerManager:
         credentials = normalize_credentials(account.credentials)
 
         if broker_type in {"metaapi", "metatrader", "mt4", "mt5"}:
-            mode = (credentials.get("mt_connection_mode") or credentials.get("connection_mode") or "").strip().lower()
-            if mode == "bridge":
-                runtime: dict[str, str] = {"connection_mode": "bridge"}
-                account_number = (
-                    credentials.get("account_number")
-                    or credentials.get("login")
-                    or credentials.get("account_id")
-                    or ""
-                ).strip()
-                password = (
-                    credentials.get("account_password")
-                    or credentials.get("password")
-                    or ""
-                ).strip()
-                server_name = (credentials.get("server_name") or credentials.get("server") or "").strip()
-                default_platform = "mt4" if broker_type == "mt4" else "mt5"
-                platform = (account.platform_id or credentials.get("platform") or default_platform).strip().lower()
-                if platform not in {"mt4", "mt5"}:
-                    platform = default_platform
-                if account_number:
-                    runtime["account_number"] = account_number
-                if password:
-                    runtime["password"] = password
-                if server_name:
-                    runtime["server_name"] = server_name
-                runtime["platform"] = platform
-
-                bridge_keys = {
-                    "bridge_base_url": ("bridge_base_url", "mt_bridge_base_url", "mt_bridge_url"),
-                    "bridge_api_key": ("bridge_api_key", "mt_bridge_api_key"),
-                    "timeout_seconds": ("timeout_seconds", "mt_bridge_timeout_seconds"),
-                    "server_candidates": ("server_candidates", "mt_server_candidates", "mt5_server_candidates"),
-                    "terminal_path": ("terminal_path", "mt_terminal_path"),
-                    "data_path": ("data_path", "mt_data_path"),
-                    "workspace_id": ("workspace_id", "mt_workspace_id"),
-                    "connect_endpoint": ("connect_endpoint", "mt_bridge_connect_endpoint"),
-                    "disconnect_endpoint": ("disconnect_endpoint", "mt_bridge_disconnect_endpoint"),
-                    "account_endpoint": ("account_endpoint", "mt_bridge_account_endpoint"),
-                    "positions_endpoint": ("positions_endpoint", "mt_bridge_positions_endpoint"),
-                    "price_endpoint": ("price_endpoint", "mt_bridge_price_endpoint"),
-                    "prices_endpoint": ("prices_endpoint", "mt_bridge_prices_endpoint"),
-                    "candles_endpoint": ("candles_endpoint", "mt_bridge_candles_endpoint"),
-                    "place_order_endpoint": ("place_order_endpoint", "mt_bridge_place_order_endpoint"),
-                    "open_orders_endpoint": ("open_orders_endpoint", "mt_bridge_open_orders_endpoint"),
-                    "order_endpoint": ("order_endpoint", "mt_bridge_order_endpoint"),
-                    "cancel_order_endpoint": ("cancel_order_endpoint", "mt_bridge_cancel_order_endpoint"),
-                    "close_position_endpoint": ("close_position_endpoint", "mt_bridge_close_position_endpoint"),
-                    "modify_position_endpoint": ("modify_position_endpoint", "mt_bridge_modify_position_endpoint"),
-                }
-                for runtime_key, aliases in bridge_keys.items():
-                    value = ""
-                    for alias in aliases:
-                        candidate = (credentials.get(alias) or "").strip()
-                        if candidate:
-                            value = candidate
-                            break
-                    if value:
-                        runtime[runtime_key] = value
-                return runtime
-
             runtime: dict[str, str] = {}
             metaapi_token = (account.metaapi_token or credentials.get("metaapi_token") or "").strip()
             metaapi_account_id = (account.metaapi_account_id or credentials.get("metaapi_account_id") or "").strip()
@@ -179,8 +119,12 @@ class MultiBrokerManager:
                 runtime["access_token"] = metaapi_token
             if metaapi_account_id:
                 runtime["account_id"] = metaapi_account_id
-            if account.platform_id:
-                runtime["platform"] = account.platform_id
+            default_platform = "mt4" if broker_type == "mt4" else "mt5"
+            platform = (account.platform_id or credentials.get("platform") or default_platform).strip().lower()
+            if platform not in {"mt4", "mt5"}:
+                platform = default_platform
+            runtime["platform"] = platform
+            runtime["connection_mode"] = "metaapi"
             return runtime
 
         if broker_type == "oanda":

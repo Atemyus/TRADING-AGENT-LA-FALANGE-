@@ -846,17 +846,6 @@ function BrokerAccountsSettings() {
     })
   }, [selectedPlatform])
 
-  useEffect(() => {
-    if (!isMetaTraderPlatformSelected || editingAccount) return
-    setPlatformCredentials((previous) => {
-      if ((previous.mt_connection_mode || '').trim()) return previous
-      return {
-        ...previous,
-        mt_connection_mode: 'bridge',
-      }
-    })
-  }, [isMetaTraderPlatformSelected, editingAccount])
-
   const maxSlots = user?.is_superuser ? Math.max(10, accounts.length) : Math.max(1, user?.license_broker_slots || 1)
   const takenSlots = new Set(accounts.map((a) => a.slot_index).filter((s): s is number => typeof s === 'number' && s > 0))
   const usedSlots = takenSlots.size
@@ -892,10 +881,6 @@ function BrokerAccountsSettings() {
     return null
   }
 
-  const resolveMtConnectionMode = (rawMode: string | undefined): 'bridge' | 'metaapi' => {
-    return (rawMode || '').trim().toLowerCase() === 'metaapi' ? 'metaapi' : 'bridge'
-  }
-
   const buildAccountPayload = () => {
     setError(null)
     if (!selectedCatalogBroker || !selectedPlatform) {
@@ -911,31 +896,7 @@ function BrokerAccountsSettings() {
 
     const isMetaTraderPlatform = selectedPlatform.id === 'mt4' || selectedPlatform.id === 'mt5'
     const hasLegacyMetaApiId = Boolean((editingAccount?.metaapi_account_id || '').trim())
-    const mtConnectionMode = isMetaTraderPlatform
-      ? resolveMtConnectionMode(normalizedCredentials.mt_connection_mode)
-      : null
-
-    if (isMetaTraderPlatform && mtConnectionMode) {
-      normalizedCredentials.mt_connection_mode = mtConnectionMode
-    }
-
-    const serverPresetValues = mtServerPresets.map((preset) => preset.value)
-    if (
-      isMetaTraderPlatform &&
-      selectedPlatform.id === 'mt5' &&
-      mtConnectionMode === 'bridge' &&
-      !normalizedCredentials.server_name &&
-      !normalizedCredentials.mt_server_candidates &&
-      serverPresetValues.length > 0
-    ) {
-      normalizedCredentials.mt_server_candidates = serverPresetValues.join(', ')
-    }
-
-    const mtCoreCredentialKeys = selectedPlatform.id === 'mt4'
-      ? ['account_number', 'account_password', 'server_name']
-      : mtConnectionMode === 'metaapi' && !hasLegacyMetaApiId
-        ? ['account_number', 'account_password', 'server_name']
-        : ['account_number', 'account_password']
+    const mtCoreCredentialKeys = ['account_number', 'account_password', 'server_name']
     const mtAnyCredentialKeys = ['account_number', 'account_password', 'server_name']
     const hasAnyMtCredential = mtAnyCredentialKeys.some((key) => Boolean(normalizedCredentials[key]))
     const hasAllRequiredMtCredentials = mtCoreCredentialKeys.every((key) => Boolean(normalizedCredentials[key]))
@@ -948,12 +909,11 @@ function BrokerAccountsSettings() {
     })
 
     if (isMetaTraderPlatform && hasAnyMtCredential && !hasAllRequiredMtCredentials) {
-      const mtMessage = selectedPlatform.id === 'mt4'
-        ? 'For MT4 complete all fields: Account Number, Password, Server Name.'
-        : mtConnectionMode === 'metaapi' && !hasLegacyMetaApiId
-          ? 'For MT5 in MetaApi mode complete all fields: Account Number, Password, Server Name.'
-          : 'For MT5 in Bridge mode complete at least Account Number and Password. Server Name can be auto-detected.'
-      setError(mtMessage)
+      setError(
+        selectedPlatform.id === 'mt4'
+          ? 'For MT4 complete all fields: Account Number, Password, Server Name.'
+          : 'For MT5 complete all fields: Account Number, Password, Server Name.',
+      )
       return null
     }
 
@@ -1558,17 +1518,9 @@ function BrokerAccountsSettings() {
                 const isNumber = field.type === 'number'
                 const isSelect = field.type === 'select'
                 const isVisible = secretVisibility[field.key] || false
-                const mtConnectionMode = isMetaTraderPlatformSelected
-                  ? resolveMtConnectionMode(platformCredentials.mt_connection_mode)
-                  : null
                 const isMtServerField = isMetaTraderPlatformSelected && field.key === 'server_name'
-                const supportsAutoServer = isMtServerField && selectedPlatform?.id === 'mt5' && mtConnectionMode === 'bridge'
                 const serverSelectValue = isMtServerField
-                  ? (!fieldValue && supportsAutoServer
-                    ? '__auto__'
-                    : mtServerPresetValues.has(fieldValue.toLowerCase())
-                      ? fieldValue
-                      : '__manual__')
+                  ? (mtServerPresetValues.has(fieldValue.toLowerCase()) ? fieldValue : '__manual__')
                   : ''
 
                 return (
@@ -1580,35 +1532,22 @@ function BrokerAccountsSettings() {
 
                     {isMtServerField ? (
                       <div className="space-y-2">
-                        {(mtServerPresets.length > 0 || supportsAutoServer) && (
+                        {mtServerPresets.length > 0 && (
                           <select
                             value={serverSelectValue}
                             onChange={(e) =>
                               setPlatformCredentials((previous) => {
                                 const next = { ...previous }
                                 const value = e.target.value
-                                if (value === '__auto__') {
-                                  next[field.key] = ''
-                                  if (!next.mt_server_candidates && mtServerPresets.length > 0) {
-                                    next.mt_server_candidates = mtServerPresets.map((preset) => preset.value).join(', ')
-                                  }
-                                  return next
-                                }
                                 if (value === '__manual__') {
                                   return next
                                 }
                                 next[field.key] = value
-                                if (selectedPlatform?.id === 'mt5' && mtConnectionMode === 'bridge' && !next.mt_server_candidates && mtServerPresets.length > 0) {
-                                  next.mt_server_candidates = mtServerPresets.map((preset) => preset.value).join(', ')
-                                }
                                 return next
                               })
                             }
                             className="input"
                           >
-                            {supportsAutoServer && (
-                              <option value="__auto__">Auto-detect on bridge (recommended)</option>
-                            )}
                             {mtServerPresets.map((preset) => (
                               <option key={preset.value} value={preset.value}>
                                 {preset.label}
