@@ -452,11 +452,26 @@ async def resolve_metaapi_runtime_credentials(
     broker_type = (broker.broker_type or "").strip().lower()
     default_platform = "mt4" if broker_type == "mt4" else "mt5"
 
+    broker_token = _clean(broker.metaapi_token)
+    credentials_token = _clean(creds.get("metaapi_token"))
+    env_token = _clean(os.environ.get("METAAPI_ACCESS_TOKEN"))
+    settings_token = _clean(settings.METAAPI_ACCESS_TOKEN)
+    token_source_names = [
+        name
+        for name, value in (
+            ("workspace.metaapi_token", broker_token),
+            ("credentials.metaapi_token", credentials_token),
+            ("env.METAAPI_ACCESS_TOKEN", env_token),
+            ("settings.METAAPI_ACCESS_TOKEN", settings_token),
+        )
+        if value
+    ]
+
     token_candidates = _unique_non_empty(
-        broker.metaapi_token,
-        creds.get("metaapi_token"),
-        os.environ.get("METAAPI_ACCESS_TOKEN"),
-        settings.METAAPI_ACCESS_TOKEN,
+        broker_token,
+        credentials_token,
+        env_token,
+        settings_token,
     )
     token = token_candidates[0] if token_candidates else None
     account_id = _first_non_empty(
@@ -493,10 +508,12 @@ async def resolve_metaapi_runtime_credentials(
     )
 
     if not token_candidates:
+        sources = ", ".join(token_source_names) if token_source_names else "none"
         raise HTTPException(
             status_code=400,
             detail=(
                 "MetaApi gateway token not configured on server. "
+                f"Detected token sources: {sources}. "
                 "Set METAAPI_ACCESS_TOKEN in backend environment."
             ),
         )
@@ -533,7 +550,17 @@ async def resolve_metaapi_runtime_credentials(
 
         if not account_id:
             if last_permission_error:
-                raise last_permission_error
+                sources = ", ".join(token_source_names) if token_source_names else "none"
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Automatic MT account provisioning failed: no configured token accepted "
+                        "createAccount permission. "
+                        f"Token sources checked: {sources}. "
+                        "Use a MetaApi management token with createAccount permission or set "
+                        "MetaApi Account ID manually for this workspace."
+                    ),
+                )
             raise HTTPException(
                 status_code=400,
                 detail="Automatic MT account provisioning failed for all configured MetaApi tokens.",
