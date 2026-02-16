@@ -262,6 +262,7 @@ async function fetchApi<T>(
   if (!response.ok) {
     // Handle HTTP errors
     let errorMessage = `Server error: ${response.status}`
+    const errorPayload = await parseJsonResponse<Record<string, unknown>>(response)
 
     if (response.status === 503) {
       errorMessage = 'Server is temporarily unavailable. Please try again later.'
@@ -269,10 +270,8 @@ async function fetchApi<T>(
       errorMessage = 'Server is starting up. Please wait a moment and try again.'
     } else if (response.status === 500) {
       errorMessage = 'Internal server error. Please check the backend logs.'
-    } else {
-      const errorPayload = await parseJsonResponse<Record<string, unknown>>(response)
-      errorMessage = getErrorMessageFromPayload(errorPayload, errorMessage)
     }
+    errorMessage = getErrorMessageFromPayload(errorPayload, errorMessage)
 
     throw new Error(errorMessage)
   }

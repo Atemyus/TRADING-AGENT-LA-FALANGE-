@@ -499,7 +499,24 @@ async def test_broker_connection(
             except HTTPException:
                 raise
             except Exception as e:
-                raise HTTPException(status_code=500, detail=f"Bridge connection test failed: {e}")
+                detail = str(e).strip() or "Unknown bridge error"
+                lowered = detail.lower()
+                likely_runtime_failure_markers = (
+                    "mt bridge error",
+                    "connecterror",
+                    "connection",
+                    "timed out",
+                    "timeout",
+                    "failed to resolve",
+                    "name or service",
+                    "all connection attempts failed",
+                    "session connect failed",
+                    "session not established",
+                    "bridge base url",
+                )
+                if any(marker in lowered for marker in likely_runtime_failure_markers):
+                    raise HTTPException(status_code=400, detail=f"Bridge connection failed: {detail}")
+                raise HTTPException(status_code=500, detail=f"Bridge connection test failed: {detail}")
 
         runtime = await resolve_metaapi_runtime_credentials(broker)
         effective_metaapi_token = runtime["access_token"]

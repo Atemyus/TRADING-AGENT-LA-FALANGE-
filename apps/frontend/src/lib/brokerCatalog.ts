@@ -296,7 +296,6 @@ export const PLATFORM_DIRECTORY: Record<string, BrokerPlatform> = {
     id: 'oanda_api',
     label: 'OANDA API',
     logoDomain: 'oanda.com',
-    logoUrl: 'https://cdn.simpleicons.org/oanda',
     credentials: [
       credential('oanda_account_id', 'OANDA Account ID', '101-XXX-XXXXXXXX-XXX', 'Your OANDA account identifier.'),
       credential('oanda_api_key', 'OANDA API Key', 'Paste API key', 'Generate API key from OANDA dashboard.', { type: 'password' }),
@@ -320,7 +319,6 @@ export const PLATFORM_DIRECTORY: Record<string, BrokerPlatform> = {
     id: 'ig_api',
     label: 'IG API',
     logoDomain: 'ig.com',
-    logoUrl: 'https://cdn.simpleicons.org/ig',
     credentials: [
       credential('ig_username', 'Username', 'IG username', 'Username for IG account.'),
       credential('ig_password', 'Password', 'IG password', 'Password for IG account.', { type: 'password' }),
@@ -347,7 +345,6 @@ export const PLATFORM_DIRECTORY: Record<string, BrokerPlatform> = {
     id: 'alpaca_api',
     label: 'Alpaca API',
     logoDomain: 'alpaca.markets',
-    logoUrl: 'https://cdn.simpleicons.org/alpinedata',
     credentials: [
       credential('alpaca_api_key', 'API Key', 'Alpaca API key', 'API key from Alpaca dashboard.', { type: 'password' }),
       credential('alpaca_secret_key', 'Secret Key', 'Alpaca secret key', 'Secret key from Alpaca dashboard.', { type: 'password' }),
@@ -371,7 +368,6 @@ export const PLATFORM_DIRECTORY: Record<string, BrokerPlatform> = {
     id: 'ib_api',
     label: 'Interactive Brokers API',
     logoDomain: 'interactivebrokers.com',
-    logoUrl: 'https://cdn.simpleicons.org/interactivebrokers',
     credentials: [
       credential('ib_account_id', 'Account ID', 'IB account id', 'Interactive Brokers account id.'),
       credential('ib_host', 'Gateway Host', '127.0.0.1', 'Host where IB Gateway/TWS API is available.', { required: false }),
@@ -400,9 +396,9 @@ export const BROKER_DIRECTORY: BrokerDirectoryEntry[] = [
   { id: 'blackbull', name: 'BlackBull Markets', kind: 'broker', logoDomain: 'blackbull.com', platforms: platformsFor('mt4', 'mt5', 'ctrader') },
   { id: 'thinkmarkets', name: 'ThinkMarkets', kind: 'broker', logoDomain: 'thinkmarkets.com', platforms: platformsFor('mt4', 'mt5', 'thinktrader') },
   { id: 'admirals', name: 'Admirals', kind: 'broker', logoDomain: 'admiralmarkets.com', platforms: platformsFor('mt4', 'mt5') },
-  { id: 'oanda', name: 'OANDA', kind: 'broker', logoDomain: 'oanda.com', logoUrl: 'https://cdn.simpleicons.org/oanda', platforms: platformsFor('oanda_api', 'mt5') },
-  { id: 'ig', name: 'IG', kind: 'broker', logoDomain: 'ig.com', logoUrl: 'https://cdn.simpleicons.org/ig', platforms: platformsFor('ig_api', 'mt4') },
-  { id: 'interactive_brokers', name: 'Interactive Brokers', kind: 'broker', logoDomain: 'interactivebrokers.com', logoUrl: 'https://cdn.simpleicons.org/interactivebrokers', platforms: platformsFor('ib_api') },
+  { id: 'oanda', name: 'OANDA', kind: 'broker', logoDomain: 'oanda.com', platforms: platformsFor('oanda_api', 'mt5') },
+  { id: 'ig', name: 'IG', kind: 'broker', logoDomain: 'ig.com', platforms: platformsFor('ig_api', 'mt4') },
+  { id: 'interactive_brokers', name: 'Interactive Brokers', kind: 'broker', logoDomain: 'interactivebrokers.com', platforms: platformsFor('ib_api') },
   { id: 'alpaca', name: 'Alpaca', kind: 'broker', logoDomain: 'alpaca.markets', platforms: platformsFor('alpaca_api') },
   { id: 'xtb', name: 'XTB', kind: 'broker', logoDomain: 'xtb.com', platforms: platformsFor('mt5') },
   { id: 'forex_com', name: 'Forex.com', kind: 'broker', logoDomain: 'forex.com', platforms: platformsFor('mt5', 'tradingview') },
@@ -647,9 +643,9 @@ export const getLogoCandidates = (domain?: string, logoUrl?: string): string[] =
   }
 
   if (normalizedDomain) {
-    sources.push(`https://${normalizedDomain}/favicon.ico`)
     sources.push(`https://www.google.com/s2/favicons?domain=${encodeURIComponent(normalizedDomain)}&sz=256`)
     sources.push(`https://icons.duckduckgo.com/ip3/${encodeURIComponent(normalizedDomain)}.ico`)
+    sources.push(`https://${normalizedDomain}/favicon.ico`)
   }
 
   return Array.from(new Set(sources))
