@@ -15,6 +15,7 @@ import asyncio
 import base64
 import json
 import os
+import re
 import statistics
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -955,6 +956,168 @@ class TradingViewAIAgent:
             ]
         return [{"type": "text", "text": prompt}]
 
+    def _coerce_float(self, value: Any) -> float | None:
+        if value is None or isinstance(value, bool):
+            return None
+        if isinstance(value, (int, float)):
+            return float(value)
+        raw = str(value).strip().replace(",", ".")
+        if not raw:
+            return None
+        match = re.search(r"-?\d+(?:\.\d+)?", raw)
+        if not match:
+            return None
+        try:
+            return float(match.group(0))
+        except ValueError:
+            return None
+
+    def _normalize_response_text(self, content: Any) -> str:
+        if content is None:
+            return ""
+        if isinstance(content, str):
+            return content.strip()
+        if isinstance(content, list):
+            chunks: list[str] = []
+            for item in content:
+                if isinstance(item, str):
+                    chunks.append(item)
+                elif isinstance(item, dict):
+                    for key in ("text", "content", "value"):
+                        value = item.get(key)
+                        if isinstance(value, str) and value.strip():
+                            chunks.append(value)
+                            break
+                else:
+                    chunks.append(str(item))
+            return "\n".join(chunk.strip() for chunk in chunks if str(chunk).strip()).strip()
+        if isinstance(content, dict):
+            for key in ("text", "content", "message"):
+                value = content.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+            try:
+                return json.dumps(content, ensure_ascii=False)
+            except Exception:
+                return str(content)
+        return str(content).strip()
+
+    def _extract_json_object(self, text: str) -> dict[str, Any] | None:
+        source = (text or "").strip()
+        if not source:
+            return None
+
+        candidates: list[str] = []
+        if source.startswith("{") and source.endswith("}"):
+            candidates.append(source)
+
+        for block in re.findall(r"```(?:json)?\s*([\s\S]*?)```", source, flags=re.IGNORECASE):
+            block = block.strip()
+            if "{" in block and "}" in block:
+                candidates.append(block)
+
+        depth = 0
+        start = -1
+        in_string = False
+        escape = False
+        for idx, char in enumerate(source):
+            if in_string:
+                if escape:
+                    escape = False
+                elif char == "\\":
+                    escape = True
+                elif char == '"':
+                    in_string = False
+                continue
+
+            if char == '"':
+                in_string = True
+                continue
+
+            if char == "{":
+                if depth == 0:
+                    start = idx
+                depth += 1
+            elif char == "}" and depth > 0:
+                depth -= 1
+                if depth == 0 and start >= 0:
+                    candidates.append(source[start: idx + 1])
+                    start = -1
+
+        seen: set[str] = set()
+        for candidate in sorted(candidates, key=len, reverse=True):
+            payload = candidate.strip()
+            if not payload or payload in seen:
+                continue
+            seen.add(payload)
+            sanitized = re.sub(r",\s*([}\]])", r"\1", payload)
+            try:
+                parsed = json.loads(sanitized)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, dict):
+                return parsed
+
+        return None
+
+    def _extract_analysis_from_plain_text(self, text: str) -> dict[str, Any] | None:
+        raw = (text or "").strip()
+        if not raw:
+            return None
+
+        upper = raw.upper()
+        direction_patterns = {
+            "LONG": [r"\bLONG\b", r"\bBUY\b", r"\bBULLISH\b", r"\bRIALZISTA\b"],
+            "SHORT": [r"\bSHORT\b", r"\bSELL\b", r"\bBEARISH\b", r"\bRIBASSISTA\b"],
+            "HOLD": [r"\bHOLD\b", r"\bNO\s+TRADE\b", r"\bNESSUN\s+TRADE\b", r"\bNEUTRAL\b", r"\bLATERALE\b"],
+        }
+
+        direction_positions: list[tuple[str, int]] = []
+        for direction, patterns in direction_patterns.items():
+            for pattern in patterns:
+                match = re.search(pattern, upper)
+                if match:
+                    direction_positions.append((direction, match.start()))
+                    break
+
+        direction = min(direction_positions, key=lambda item: item[1])[0] if direction_positions else "HOLD"
+
+        confidence_values = [
+            float(match)
+            for match in re.findall(r"(?<!\d)(100(?:\.0+)?|[1-9]?\d(?:\.\d+)?)\s*%", raw)
+        ]
+        confidence = max(confidence_values) if confidence_values else (70.0 if direction in {"LONG", "SHORT"} else 50.0)
+
+        def _find_price(pattern: str) -> float | None:
+            match = re.search(pattern, raw, flags=re.IGNORECASE)
+            if not match:
+                return None
+            return self._coerce_float(match.group(1))
+
+        entry_price = _find_price(r"(?:entry|ingresso|entrata)\D{0,20}(-?\d+(?:[.,]\d+)?)")
+        stop_loss = _find_price(r"(?:stop\s*loss|stoploss|\bsl\b)\D{0,20}(-?\d+(?:[.,]\d+)?)")
+        break_even_trigger = _find_price(r"(?:break[\s_-]?even|breakeven)\D{0,20}(-?\d+(?:[.,]\d+)?)")
+        trailing_stop_pips = _find_price(r"(?:trailing\s*stop)\D{0,20}(-?\d+(?:[.,]\d+)?)\s*pips?")
+
+        tp_matches = re.findall(
+            r"(?:tp\d*|take[\s_-]?profit)\D{0,20}(-?\d+(?:[.,]\d+)?)",
+            raw,
+            flags=re.IGNORECASE,
+        )
+        take_profit = [tp for tp in (self._coerce_float(value) for value in tp_matches) if tp is not None][:3]
+
+        return {
+            "direction": direction,
+            "confidence": confidence,
+            "entry_price": entry_price,
+            "stop_loss": stop_loss,
+            "take_profit": take_profit,
+            "break_even_trigger": break_even_trigger,
+            "trailing_stop_pips": trailing_stop_pips,
+            "key_observations": [],
+            "reasoning": raw,
+        }
+
     async def initialize(self, headless: bool = True):
         """Initialize the browser for TradingView interaction."""
         self.browser = TradingViewBrowser()
@@ -1363,13 +1526,16 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
                 )
                 response.raise_for_status()
                 data = response.json()
-                text = data["choices"][0]["message"]["content"]
+                raw_content = data["choices"][0]["message"]["content"]
+                text = self._normalize_response_text(raw_content)
 
-                # Parse JSON
-                import re
-                match = re.search(r'\{.*\}', text, re.DOTALL)
-                if match:
-                    return json.loads(match.group())
+                parsed = self._extract_json_object(text)
+                if parsed:
+                    return parsed
+
+                fallback = self._extract_analysis_from_plain_text(text)
+                if fallback:
+                    return fallback
                 return {"direction": "HOLD", "confidence": 0, "reasoning": text}
 
         except Exception as e:
@@ -1494,64 +1660,80 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
                 )
                 response.raise_for_status()
                 data = response.json()
-                text = data["choices"][0]["message"]["content"]
-                if text is None:
+                raw_content = data["choices"][0]["message"]["content"]
+                text = self._normalize_response_text(raw_content)
+                if not text:
                     # Some models (e.g. Kimi thinking mode) may return content=null
-                    text = ""
                     print(f"[{display_name}] Response content was null, skipping")
                 else:
                     print(f"[{display_name}] Raw response length: {len(text)} chars")
 
-                # Parse JSON with improved error handling
-                import re
-                # Try to find JSON object in the response
-                match = re.search(r'\{[\s\S]*\}', text)
-                if match:
-                    try:
-                        json_str = match.group()
-                        # Clean up common JSON issues
-                        json_str = re.sub(r',\s*}', '}', json_str)  # Remove trailing commas
-                        json_str = re.sub(r',\s*]', ']', json_str)  # Remove trailing commas in arrays
-                        analysis = json.loads(json_str)
+                analysis = self._extract_json_object(text)
+                used_fallback = False
+                if analysis is None:
+                    analysis = self._extract_analysis_from_plain_text(text)
+                    used_fallback = analysis is not None
 
-                        # Validate and extract fields with defaults
-                        direction = analysis.get("direction", "HOLD").upper()
-                        if direction not in ["LONG", "SHORT", "HOLD"]:
-                            direction = "HOLD"
-                        result.direction = direction
+                if analysis:
+                    direction = str(analysis.get("direction", "HOLD")).strip().upper()
+                    if direction not in {"LONG", "SHORT", "HOLD"}:
+                        direction = "HOLD"
+                    result.direction = direction
 
-                        confidence = analysis.get("confidence", 0)
-                        if isinstance(confidence, str):
-                            confidence = float(confidence.replace('%', ''))
-                        result.confidence = min(max(float(confidence), 0), 100)  # Clamp 0-100
+                    confidence = self._coerce_float(analysis.get("confidence"))
+                    if confidence is None:
+                        confidence = 50.0 if used_fallback else 0.0
+                    result.confidence = min(max(float(confidence), 0.0), 100.0)
 
-                        result.entry_price = analysis.get("entry_price")
-                        result.stop_loss = analysis.get("stop_loss")
-                        result.take_profit = analysis.get("take_profit", [])
-                        result.break_even_trigger = analysis.get("break_even_trigger")
-                        result.trailing_stop_pips = analysis.get("trailing_stop_pips")
-                        result.key_observations = analysis.get("key_observations", [])
-                        result.reasoning = analysis.get("reasoning", "")
+                    result.entry_price = self._coerce_float(analysis.get("entry_price"))
+                    result.stop_loss = self._coerce_float(analysis.get("stop_loss"))
 
-                        # Mark indicators used based on model preferences
-                        result.indicators_used = preferences.get("indicators", ["EMA", "RSI"])
+                    take_profit_raw = analysis.get("take_profit", [])
+                    if isinstance(take_profit_raw, list):
+                        result.take_profit = [
+                            value for value in (self._coerce_float(tp) for tp in take_profit_raw) if value is not None
+                        ]
+                    else:
+                        single_tp = self._coerce_float(take_profit_raw)
+                        result.take_profit = [single_tp] if single_tp is not None else []
 
+                    result.break_even_trigger = self._coerce_float(analysis.get("break_even_trigger"))
+                    result.trailing_stop_pips = self._coerce_float(analysis.get("trailing_stop_pips"))
+
+                    observations = analysis.get("key_observations", [])
+                    if isinstance(observations, list):
+                        result.key_observations = [str(obs).strip() for obs in observations if str(obs).strip()]
+                    elif isinstance(observations, str) and observations.strip():
+                        result.key_observations = [
+                            chunk.strip("-• \t")
+                            for chunk in re.split(r"[\n;]+", observations)
+                            if chunk.strip()
+                        ]
+                    else:
+                        result.key_observations = []
+
+                    reasoning = analysis.get("reasoning", "")
+                    if not isinstance(reasoning, str) or not reasoning.strip():
+                        reasoning = text
+                    result.reasoning = reasoning.strip()
+                    result.error = None
+
+                    # Mark indicators used based on model preferences
+                    result.indicators_used = preferences.get("indicators", ["EMA", "RSI"])
+
+                    if used_fallback:
+                        print(
+                            f"[{display_name}] Parsed fallback from non-JSON response: "
+                            f"{result.direction} @ {result.confidence}% confidence"
+                        )
+                    else:
                         print(f"[{display_name}] Parsed: {result.direction} @ {result.confidence}% confidence")
-
-                    except json.JSONDecodeError as json_err:
-                        print(f"[{display_name}] JSON parse error: {json_err}")
-                        print(f"[{display_name}] Problematic JSON: {json_str[:500]}...")
-                        # Fallback: try to extract key values from text
-                        result.direction = "HOLD"
-                        result.confidence = 50
-                        result.reasoning = f"Analysis completed but JSON parsing failed. Raw response: {text[:1000]}"
-                        result.error = f"JSON parse error: {str(json_err)}"
                 else:
-                    print(f"[{display_name}] No JSON found in response")
+                    print(f"[{display_name}] No parseable analysis found in response")
                     result.direction = "HOLD"
                     result.confidence = 50
                     result.reasoning = f"No structured analysis returned. Raw: {text[:500]}"
-                    result.error = "No JSON in response"
+                    result.error = "No parseable analysis in response"
 
         except httpx.HTTPStatusError as e:
             error_detail = ""
