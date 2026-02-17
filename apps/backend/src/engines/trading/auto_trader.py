@@ -1268,7 +1268,13 @@ class AutoTrader:
             return False
 
         # Model agreement check
-        if consensus.get("models_agree", 0) < self.config.min_models_agree:
+        total_models = int(consensus.get("total_models", 0) or 0)
+        effective_min_models_agree = (
+            min(self.config.min_models_agree, total_models)
+            if total_models > 0
+            else self.config.min_models_agree
+        )
+        if consensus.get("models_agree", 0) < effective_min_models_agree:
             return False
 
         # Must be a strong signal

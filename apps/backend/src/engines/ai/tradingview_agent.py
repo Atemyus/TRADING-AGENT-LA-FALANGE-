@@ -17,6 +17,7 @@ import json
 import os
 import re
 import statistics
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -1939,7 +1940,8 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
         # Multi-timeframe alignment score
         tf_directions = [tc["direction"] for tc in tf_consensus.values() if tc["direction"] != "HOLD"]
         if tf_directions:
-            alignment = tf_directions.count(tf_directions[0]) / len(tf_directions) * 100
+            majority_count = Counter(tf_directions).most_common(1)[0][1]
+            alignment = majority_count / len(tf_directions) * 100
             overall_consensus["timeframe_alignment"] = round(alignment, 1)
             overall_consensus["is_aligned"] = alignment >= 80  # 80%+ agreement across TFs
         else:
@@ -2032,6 +2034,8 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
 
         models_agree = len(agreeing)
         avg_confidence = sum(r.confidence for r in agreeing) / models_agree
+        # Strong signal should scale with how many analyses were actually produced.
+        strong_signal_min_agree = max(1, (total + 1) // 2)  # simple majority of valid analyses
 
         # Collect trade parameters
         entries = [r.entry_price for r in agreeing if r.entry_price]
@@ -2073,7 +2077,8 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
             "confidence": round(avg_confidence, 1),
             "models_agree": models_agree,
             "total_models": total,
-            "is_strong_signal": models_agree >= 4 and avg_confidence >= 70,
+            "strong_signal_min_agree": strong_signal_min_agree,
+            "is_strong_signal": models_agree >= strong_signal_min_agree and avg_confidence >= 70,
 
             # Trade parameters - USE MEDIAN instead of MEAN (more robust to outliers)
             "entry_price": round(_median(entries), 5) if entries else None,
