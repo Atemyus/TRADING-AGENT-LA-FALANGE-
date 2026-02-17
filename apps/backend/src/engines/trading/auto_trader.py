@@ -808,7 +808,12 @@ class AutoTrader:
                     self._log_analysis(symbol, "trade", f"TRADE: {consensus.get('direction')} {symbol} @ confidence {consensus.get('confidence', 0):.1f}%")
                     await self._execute_tradingview_trade(symbol, consensus, results)
                 else:
-                    self._log_analysis(symbol, "skip", f"Condizioni non soddisfatte (min confidence: {self.config.min_confidence}%)")
+                    rejection_reason = self._get_tradingview_rejection_reason(consensus)
+                    self._log_analysis(
+                        symbol,
+                        "skip",
+                        f"Condizioni non soddisfatte: {rejection_reason} (min confidence: {self.config.min_confidence}%)",
+                    )
 
             except Exception as e:
                 self._log_analysis(symbol, "error", f"Errore: {str(e)}")
@@ -861,6 +866,44 @@ class AutoTrader:
                 return False
 
         return True
+
+    def _get_tradingview_rejection_reason(self, consensus: dict[str, Any]) -> str:
+        """Return a human-readable reason when a TradingView trade is rejected."""
+        reasons: list[str] = []
+
+        direction = str(consensus.get("direction", "HOLD")).upper()
+        if direction == "HOLD":
+            reasons.append("direzione HOLD")
+
+        confidence = float(consensus.get("confidence", 0) or 0)
+        if confidence < self.config.min_confidence:
+            reasons.append(f"confidence {confidence:.1f}% < {self.config.min_confidence:.1f}%")
+
+        total_models = int(consensus.get("total_models", 0) or 0)
+        effective_min_models_agree = (
+            min(self.config.min_models_agree, total_models)
+            if total_models > 0
+            else self.config.min_models_agree
+        )
+        models_agree = int(consensus.get("models_agree", 0) or 0)
+        if models_agree < effective_min_models_agree:
+            reasons.append(
+                f"modelli concordi {models_agree}/{total_models} < minimo {effective_min_models_agree}"
+            )
+
+        if not consensus.get("stop_loss") or not consensus.get("take_profit"):
+            reasons.append("SL/TP mancanti")
+
+        timeframes = consensus.get("timeframes_analyzed", [])
+        if len(timeframes) > 1 and not consensus.get("is_aligned", False):
+            reasons.append(
+                f"allineamento timeframe basso ({consensus.get('timeframe_alignment', 0)}%)"
+            )
+
+        if not reasons:
+            reasons.append("criteri interni non soddisfatti")
+
+        return "; ".join(reasons)
 
     async def _execute_tradingview_trade(
         self,
@@ -1275,10 +1318,6 @@ class AutoTrader:
             else self.config.min_models_agree
         )
         if consensus.get("models_agree", 0) < effective_min_models_agree:
-            return False
-
-        # Must be a strong signal
-        if not consensus.get("is_strong_signal", False):
             return False
 
         # Must have stop loss and take profit
