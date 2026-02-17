@@ -235,6 +235,7 @@ class MetaTraderBroker(BaseBroker):
         self._connected = False
         self._symbol_map: dict[str, str] = {}  # Maps our symbols to broker symbols
         self._broker_symbols: list[str] = []  # List of available broker symbols
+        self._broker_symbol_meta: dict[str, dict[str, Any]] = {}  # Raw symbol metadata from MetaApi
         self._client_api_url: str | None = None  # Set during connect based on region
 
         # Cache for API responses to avoid rate limiting
@@ -449,100 +450,242 @@ class MetaTraderBroker(BaseBroker):
 
         return response.json()
 
+    def _symbol_lookup_key(self, symbol: str) -> str:
+        return (symbol or "").replace("/", "_").strip().upper()
+
+    def _normalize_symbol_token(self, symbol: str) -> str:
+        return "".join(ch for ch in (symbol or "").upper() if ch.isalnum())
+
+    def _candidate_bases(self, symbol: str) -> list[str]:
+        lookup = self._symbol_lookup_key(symbol)
+        raw_candidates = [lookup.replace("_", ""), *self.SYMBOL_ALIASES.get(lookup, [])]
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for candidate in raw_candidates:
+            token = self._normalize_symbol_token(candidate)
+            if token and token not in seen:
+                seen.add(token)
+                normalized.append(token)
+        return normalized
+
+    def _score_symbol_match(self, broker_symbol: str, bases: list[str]) -> int:
+        broker_token = self._normalize_symbol_token(broker_symbol)
+        if not broker_token:
+            return 0
+
+        best = 0
+        for base in bases:
+            if not base:
+                continue
+            score = 0
+            if broker_token == base:
+                score = 1000
+            elif broker_token.startswith(base) or broker_token.endswith(base):
+                score = 920
+            elif base in broker_token:
+                score = 860
+            elif broker_token in base:
+                score = 760
+            else:
+                continue
+
+            score -= abs(len(broker_token) - len(base))
+            if score > best:
+                best = score
+        return best
+
+    def _get_symbol_candidates(self, symbol: str) -> list[str]:
+        lookup = self._symbol_lookup_key(symbol)
+        if not self._broker_symbols:
+            return [lookup.replace("_", "")]
+
+        bases = self._candidate_bases(lookup)
+        scored: list[tuple[int, str]] = []
+        for broker_symbol in self._broker_symbols:
+            score = self._score_symbol_match(broker_symbol, bases)
+            if score > 0:
+                scored.append((score, broker_symbol))
+
+        if not scored:
+            return []
+
+        scored.sort(key=lambda item: (-item[0], len(item[1])))
+        ordered: list[str] = []
+        seen: set[str] = set()
+        for _, broker_symbol in scored:
+            if broker_symbol not in seen:
+                seen.add(broker_symbol)
+                ordered.append(broker_symbol)
+
+        mapped = self._symbol_map.get(lookup)
+        if mapped and mapped in seen:
+            ordered = [mapped, *[item for item in ordered if item != mapped]]
+
+        return ordered
+
+    def _is_trade_mode_compatible(self, trade_mode: Any, side: OrderSide | None = None) -> bool:
+        """Return True if symbol tradeMode allows opening a position for the requested side."""
+        if trade_mode is None:
+            return True
+
+        if isinstance(trade_mode, (int, float)):
+            mode = int(trade_mode)
+            if mode == 0:  # SYMBOL_TRADE_MODE_DISABLED
+                return False
+            if mode == 1:  # SYMBOL_TRADE_MODE_LONGONLY
+                return side != OrderSide.SELL
+            if mode == 2:  # SYMBOL_TRADE_MODE_SHORTONLY
+                return side != OrderSide.BUY
+            if mode == 3:  # SYMBOL_TRADE_MODE_CLOSEONLY
+                return False
+            if mode == 4:  # SYMBOL_TRADE_MODE_FULL
+                return True
+            return True
+
+        mode = str(trade_mode).strip().upper()
+        if not mode:
+            return True
+        if "DISABLED" in mode or "CLOSEONLY" in mode or "CLOSE_ONLY" in mode:
+            return False
+        if "LONGONLY" in mode or "LONG_ONLY" in mode:
+            return side != OrderSide.SELL
+        if "SHORTONLY" in mode or "SHORT_ONLY" in mode:
+            return side != OrderSide.BUY
+        return True
+
+    def _is_symbol_lookup_error(self, error_text: str) -> bool:
+        lowered = (error_text or "").lower()
+        markers = (
+            "invalid symbol",
+            "symbol not found",
+            "unknown symbol",
+            "symbol does not exist",
+            "no prices for symbol",
+            "failed to resolve symbol",
+            "not subscribed",
+        )
+        return any(marker in lowered for marker in markers)
+
+    async def _get_symbol_specification_for_broker_symbol(self, broker_symbol: str) -> dict[str, Any]:
+        """Get symbol specification using broker-native symbol name."""
+        if not self._connected:
+            await self.connect()
+
+        cache_key = f"symbol_spec_broker_{broker_symbol}"
+        cached = self._get_cache(cache_key)
+        if cached is not None:
+            return cached
+
+        spec = await self._request(
+            "GET",
+            f"/users/current/accounts/{self.account_id}/symbols/{broker_symbol}/specification",
+        )
+        self._set_cache(cache_key, spec, 300)  # Cache for 5 minutes
+        return spec
+
+    async def _resolve_symbol_for_order(
+        self,
+        symbol: str,
+        side: OrderSide,
+    ) -> tuple[str, dict[str, Any], str | None]:
+        """
+        Resolve symbol and prefer a tradable variant if broker uses prefixes/suffixes.
+        Returns: (broker_symbol, spec, optional_error_message)
+        """
+        lookup = self._symbol_lookup_key(symbol)
+        candidates = self._get_symbol_candidates(lookup)
+        if not candidates:
+            fallback = lookup.replace("_", "")
+            self._symbol_map[lookup] = fallback
+            try:
+                spec = await self._get_symbol_specification_for_broker_symbol(fallback)
+            except Exception:
+                spec = {}
+            return fallback, spec, None
+
+        disabled_details: list[str] = []
+        unknown_mode_candidates: list[tuple[str, dict[str, Any]]] = []
+
+        for broker_symbol in candidates[:30]:
+            try:
+                spec = await self._get_symbol_specification_for_broker_symbol(broker_symbol)
+            except Exception as exc:
+                print(f"[MetaTrader] Symbol spec lookup failed for {broker_symbol}: {exc}")
+                continue
+
+            trade_mode = spec.get("tradeMode")
+            if trade_mode in {None, ""}:
+                trade_mode = self._broker_symbol_meta.get(broker_symbol, {}).get("tradeMode")
+
+            if trade_mode in {None, ""}:
+                unknown_mode_candidates.append((broker_symbol, spec))
+                continue
+
+            if self._is_trade_mode_compatible(trade_mode, side):
+                self._symbol_map[lookup] = broker_symbol
+                return broker_symbol, spec, None
+
+            disabled_details.append(f"{broker_symbol}({trade_mode})")
+
+        if unknown_mode_candidates:
+            broker_symbol, spec = unknown_mode_candidates[0]
+            self._symbol_map[lookup] = broker_symbol
+            return broker_symbol, spec, None
+
+        fallback_symbol = candidates[0]
+        self._symbol_map[lookup] = fallback_symbol
+        detail = (
+            f"Nessuna variante tradabile trovata per {lookup}. "
+            f"Varianti controllate: {', '.join(disabled_details[:8])}"
+        )
+        if len(disabled_details) > 8:
+            detail += f" (+{len(disabled_details) - 8} altre)"
+        return fallback_symbol, {}, detail
+
     def _resolve_symbol(self, symbol: str) -> str:
         """
-        Resolve our internal symbol to broker's symbol format.
-
-        Examples:
-            EUR_USD -> EURUSD (or EURUSDm, EURUSD., EURUSD+, etc. depending on broker)
-            XAU_USD -> GOLD (or XAUUSD, GOLDm, XAUUSD+, etc.)
-            EUR/USD -> EUR_USD -> EURUSD (also accepts slash format)
+        Resolve our internal symbol to broker symbol, supporting arbitrary prefixes/suffixes.
         """
-        # Normalize: accept both EUR/USD and EUR_USD
-        symbol = symbol.replace("/", "_")
+        lookup = self._symbol_lookup_key(symbol)
+        mapped = self._symbol_map.get(lookup)
+        if mapped:
+            return mapped
 
-        # If already mapped, return the mapped symbol
-        if symbol in self._symbol_map:
-            return self._symbol_map[symbol]
+        candidates = self._get_symbol_candidates(lookup)
+        if candidates:
+            resolved = candidates[0]
+            self._symbol_map[lookup] = resolved
+            return resolved
 
-        # Try to find a match in available broker symbols
-        if self._broker_symbols:
-            # Normalize our symbol (remove underscore)
-            base_symbol = symbol.replace('_', '')
-
-            # PRIORITY 1: Check for tradeable suffix variants first (e.g., EURUSD+ for Ultima Markets)
-            # These suffixes typically indicate the tradeable version of a symbol
-            tradeable_suffixes = ['+', '.stp', '.pro', '.raw', 'm', '.']
-            for suffix in tradeable_suffixes:
-                candidate = base_symbol.upper() + suffix.upper()
-                for broker_sym in self._broker_symbols:
-                    if broker_sym.upper() == candidate:
-                        print(f"[MetaTrader] Resolved {symbol} -> {broker_sym} (tradeable suffix)")
-                        self._symbol_map[symbol] = broker_sym
-                        return broker_sym
-
-            # PRIORITY 2: Check exact match (case insensitive)
-            for broker_sym in self._broker_symbols:
-                if broker_sym.upper() == base_symbol.upper():
-                    self._symbol_map[symbol] = broker_sym
-                    return broker_sym
-
-            # Check known aliases (exact match)
-            aliases = self.SYMBOL_ALIASES.get(symbol, [])
-            for alias in aliases:
-                for broker_sym in self._broker_symbols:
-                    if broker_sym.upper() == alias.upper():
-                        self._symbol_map[symbol] = broker_sym
-                        return broker_sym
-
-            # Check aliases with suffix patterns (e.g., "US30" matches "US30.stp", "US30m", etc.)
-            for alias in aliases:
-                for broker_sym in self._broker_symbols:
-                    broker_upper = broker_sym.upper()
-                    alias_upper = alias.upper()
-                    # Match if broker symbol starts with alias or alias starts with broker symbol
-                    if broker_upper.startswith(alias_upper) or alias_upper.startswith(broker_upper):
-                        self._symbol_map[symbol] = broker_sym
-                        return broker_sym
-
-            # Fuzzy match - broker symbol starts with base symbol
-            for broker_sym in self._broker_symbols:
-                if broker_sym.upper().startswith(base_symbol.upper()):
-                    self._symbol_map[symbol] = broker_sym
-                    return broker_sym
-
-            # Reverse fuzzy match - base symbol starts with broker symbol
-            for broker_sym in self._broker_symbols:
-                if base_symbol.upper().startswith(broker_sym.upper()):
-                    self._symbol_map[symbol] = broker_sym
-                    return broker_sym
-
-            # Check if any alias is contained in broker symbol (for patterns like "[US30]" or ".US30")
-            for alias in aliases:
-                for broker_sym in self._broker_symbols:
-                    # Strip common prefixes/suffixes and check
-                    clean_broker = broker_sym.strip('[]._-').upper()
-                    if clean_broker == alias.upper():
-                        self._symbol_map[symbol] = broker_sym
-                        return broker_sym
-
-            # Log that we couldn't find a match (only once per symbol)
-            if symbol not in self._symbol_map:
-                print(f"[MetaTrader] WARNING: Could not resolve symbol '{symbol}' to broker format")
-                print(f"[MetaTrader] Tried aliases: {aliases[:5]}...")
-                # Cache the fallback to avoid repeated logs
-                fallback = symbol.replace('_', '')
-                self._symbol_map[symbol] = fallback
-                return fallback
-
-        # Fallback: return without underscore
-        return symbol.replace('_', '')
+        fallback = lookup.replace("_", "")
+        if lookup not in self._symbol_map:
+            aliases = self.SYMBOL_ALIASES.get(lookup, [])
+            print(f"[MetaTrader] WARNING: Could not resolve symbol '{lookup}' to broker format")
+            print(f"[MetaTrader] Tried aliases: {aliases[:5]}...")
+        self._symbol_map[lookup] = fallback
+        return fallback
 
     async def _build_symbol_map(self) -> None:
         """Build symbol mapping from broker's available symbols."""
         try:
             symbols = await self.get_symbols()
-            self._broker_symbols = [s.get('symbol', s) if isinstance(s, dict) else s for s in symbols]
+            self._broker_symbols = []
+            self._broker_symbol_meta = {}
+            for item in symbols:
+                if isinstance(item, dict):
+                    broker_symbol = str(item.get("symbol", "")).strip()
+                    if not broker_symbol:
+                        continue
+                    self._broker_symbols.append(broker_symbol)
+                    self._broker_symbol_meta[broker_symbol] = item
+                else:
+                    broker_symbol = str(item).strip()
+                    if not broker_symbol:
+                        continue
+                    self._broker_symbols.append(broker_symbol)
+
+            # Deduplicate while preserving order
+            self._broker_symbols = list(dict.fromkeys(self._broker_symbols))
 
             print(f"[MetaTrader] Broker has {len(self._broker_symbols)} symbols available")
 
@@ -853,22 +996,23 @@ class MetaTraderBroker(BaseBroker):
         if not self._connected:
             await self.connect()
 
-        cache_key = f"symbol_spec_{symbol}"
+        lookup = self._symbol_lookup_key(symbol)
+        cache_key = f"symbol_spec_{lookup}"
         cached = self._get_cache(cache_key)
         if cached is not None:
             return cached
 
-        try:
-            broker_symbol = self._resolve_symbol(symbol)
-            spec = await self._request(
-                "GET",
-                f"/users/current/accounts/{self.account_id}/symbols/{broker_symbol}/specification",
-            )
-            self._set_cache(cache_key, spec, 300)  # Cache for 5 minutes
-            return spec
-        except Exception as e:
-            print(f"[MetaTrader] Could not fetch symbol specification for {symbol}: {e}")
-            return {}
+        candidates = self._get_symbol_candidates(lookup) or [self._resolve_symbol(lookup)]
+        for broker_symbol in candidates[:10]:
+            try:
+                spec = await self._get_symbol_specification_for_broker_symbol(broker_symbol)
+                self._symbol_map[lookup] = broker_symbol
+                self._set_cache(cache_key, spec, 300)  # Cache for 5 minutes
+                return spec
+            except Exception as e:
+                print(f"[MetaTrader] Could not fetch symbol specification for {lookup} via {broker_symbol}: {e}")
+
+        return {}
 
     def _normalize_volume(self, volume: float, spec: dict[str, Any]) -> float:
         """Normalize volume to broker's min/max/step constraints."""
@@ -910,9 +1054,24 @@ class MetaTraderBroker(BaseBroker):
                 error_message="Terminale MT non connesso al broker. Verificare le credenziali e lo stato dell'account MetaApi.",
             )
 
-        # Fetch symbol specification for fillingModes and volume limits
-        broker_symbol = self._resolve_symbol(order.symbol)
-        spec = await self.get_symbol_specification(order.symbol)
+        # Fetch symbol specification and choose a tradable symbol variant (prefix/suffix aware)
+        broker_symbol, spec, symbol_resolution_error = await self._resolve_symbol_for_order(
+            order.symbol,
+            order.side,
+        )
+        if symbol_resolution_error:
+            print(f"[MetaTrader] {symbol_resolution_error}")
+            return OrderResult(
+                order_id="",
+                symbol=order.symbol,
+                side=order.side,
+                order_type=order.order_type,
+                status=OrderStatus.REJECTED,
+                size=order.size,
+                filled_size=Decimal("0"),
+                error_message=symbol_resolution_error,
+            )
+
         if spec:
             print(f"[MetaTrader] Symbol spec for {broker_symbol}: "
                   f"fillingModes={spec.get('fillingModes')}, "
@@ -921,21 +1080,24 @@ class MetaTraderBroker(BaseBroker):
                   f"executionMode={spec.get('executionMode')}, "
                   f"tradeMode={spec.get('tradeMode')}")
 
-            # Check if trading is enabled on this symbol
-            trade_mode = spec.get('tradeMode', '')
-            if trade_mode != 'SYMBOL_TRADE_MODE_FULL':
-                error_msg = f"Trading disabilitato su {broker_symbol} (tradeMode={trade_mode}). Verificare account broker o simbolo."
-                print(f"[MetaTrader] {error_msg}")
-                return OrderResult(
-                    order_id="",
-                    symbol=order.symbol,
-                    side=order.side,
-                    order_type=order.order_type,
-                    status=OrderStatus.REJECTED,
-                    size=order.size,
-                    filled_size=Decimal("0"),
-                    error_message=error_msg,
-                )
+        # Check if trading is enabled for requested side on this symbol
+        trade_mode = spec.get("tradeMode") if spec else self._broker_symbol_meta.get(broker_symbol, {}).get("tradeMode")
+        if not self._is_trade_mode_compatible(trade_mode, order.side):
+            error_msg = (
+                f"Trading non consentito su {broker_symbol} per side={order.side.value} "
+                f"(tradeMode={trade_mode})."
+            )
+            print(f"[MetaTrader] {error_msg}")
+            return OrderResult(
+                order_id="",
+                symbol=order.symbol,
+                side=order.side,
+                order_type=order.order_type,
+                status=OrderStatus.REJECTED,
+                size=order.size,
+                filled_size=Decimal("0"),
+                error_message=error_msg,
+            )
 
         # Normalize volume to broker constraints
         raw_volume = float(order.size)
@@ -1501,7 +1663,8 @@ class MetaTraderBroker(BaseBroker):
         if not self._connected:
             await self.connect()
 
-        broker_symbol = self._resolve_symbol(symbol)
+        lookup = self._symbol_lookup_key(symbol)
+        broker_symbol = self._resolve_symbol(lookup)
         cache_key = f"price_{symbol}"
 
         # Check cache first
@@ -1517,21 +1680,43 @@ class MetaTraderBroker(BaseBroker):
             raise RateLimitError(f"Rate limited and no cached price for {symbol}")
 
         try:
-            price_data = await self._request(
-                "GET",
-                f"/users/current/accounts/{self.account_id}/symbols/{broker_symbol}/current-price",
-            )
+            candidates = self._get_symbol_candidates(lookup) or [broker_symbol]
+            if broker_symbol in candidates:
+                candidates = [broker_symbol, *[c for c in candidates if c != broker_symbol]]
+            else:
+                candidates = [broker_symbol, *candidates]
 
-            tick = Tick(
-                symbol=symbol,  # Return original symbol for consistency
-                bid=Decimal(str(price_data.get("bid", 0))),
-                ask=Decimal(str(price_data.get("ask", 0))),
-                timestamp=datetime.now(),
-            )
+            last_error: Exception | None = None
+            for idx, candidate in enumerate(candidates[:12]):
+                try:
+                    price_data = await self._request(
+                        "GET",
+                        f"/users/current/accounts/{self.account_id}/symbols/{candidate}/current-price",
+                    )
 
-            # Cache the result
-            self._set_cache(cache_key, tick, self.PRICES_CACHE_TTL)
-            return tick
+                    if candidate != broker_symbol:
+                        print(f"[MetaTrader] Price fallback resolved {lookup} -> {candidate}")
+                        self._symbol_map[lookup] = candidate
+
+                    tick = Tick(
+                        symbol=symbol,  # Return original symbol for consistency
+                        bid=Decimal(str(price_data.get("bid", 0))),
+                        ask=Decimal(str(price_data.get("ask", 0))),
+                        timestamp=datetime.now(),
+                    )
+
+                    # Cache the result
+                    self._set_cache(cache_key, tick, self.PRICES_CACHE_TTL)
+                    return tick
+                except Exception as exc:
+                    last_error = exc
+                    if idx == 0 and not self._is_symbol_lookup_error(str(exc)):
+                        # If first candidate failed for non-symbol reasons, don't spam alternate tries.
+                        break
+
+            if last_error:
+                raise last_error
+            raise Exception("No symbol candidates available for pricing")
 
         except RateLimitError:
             if cache_key in self._cache:
