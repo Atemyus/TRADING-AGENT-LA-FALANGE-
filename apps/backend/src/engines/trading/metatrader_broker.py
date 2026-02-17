@@ -299,11 +299,87 @@ class MetaTraderBroker(BaseBroker):
             self._rate_limit_endpoint = endpoint
             print(f"[MetaTrader] Rate limited (parse error: {e}), backing off for 5 minutes")
 
+    def _is_metaapi_routing_or_connection_error(self, error_text: str) -> bool:
+        """Detect MetaApi errors which are usually resolved by region/account-state refresh."""
+        lowered = (error_text or "").lower()
+        markers = (
+            "does not match the account region",
+            "not connected to broker yet",
+            "api-access/api-urls",
+            '"error":"timeouterror"',
+        )
+        return any(marker in lowered for marker in markers)
+
+    async def _refresh_metaapi_routing(
+        self,
+        *,
+        wait_for_connected: bool = True,
+        max_wait_checks: int = 6,
+        wait_seconds: int = 5,
+    ) -> bool:
+        """
+        Refresh account region routing and optionally wait for terminal connection.
+        Returns True when account is connected, otherwise False.
+        """
+        account = await self._request(
+            "GET",
+            f"/users/current/accounts/{self.account_id}",
+            base_url=self.PROVISIONING_URL,
+            retry_on_metaapi_region_error=False,
+        )
+
+        region = account.get("region", "vint-hill")
+        self._client_api_url = f"https://mt-client-api-v1.{region}.agiliumtrade.ai"
+        state = account.get("state", "UNKNOWN")
+        conn_status = account.get("connectionStatus", "UNKNOWN")
+
+        if state != "DEPLOYED":
+            print(f"[MetaTrader] Account state={state}, deploying before retry...")
+            await self._request(
+                "POST",
+                f"/users/current/accounts/{self.account_id}/deploy",
+                base_url=self.PROVISIONING_URL,
+                retry_on_metaapi_region_error=False,
+            )
+            await asyncio.sleep(wait_seconds)
+            account = await self._request(
+                "GET",
+                f"/users/current/accounts/{self.account_id}",
+                base_url=self.PROVISIONING_URL,
+                retry_on_metaapi_region_error=False,
+            )
+            conn_status = account.get("connectionStatus", "UNKNOWN")
+
+        if not wait_for_connected:
+            return conn_status == "CONNECTED"
+
+        if conn_status == "CONNECTED":
+            return True
+
+        for i in range(max_wait_checks):
+            await asyncio.sleep(wait_seconds)
+            account = await self._request(
+                "GET",
+                f"/users/current/accounts/{self.account_id}",
+                base_url=self.PROVISIONING_URL,
+                retry_on_metaapi_region_error=False,
+            )
+            conn_status = account.get("connectionStatus", "UNKNOWN")
+            if conn_status == "CONNECTED":
+                return True
+            print(
+                f"[MetaTrader] Waiting terminal connection {i + 1}/{max_wait_checks}: "
+                f"{conn_status}"
+            )
+
+        return False
+
     async def _request(
         self,
         method: str,
         endpoint: str,
         base_url: str | None = None,
+        retry_on_metaapi_region_error: bool = True,
         **kwargs
     ) -> dict[str, Any]:
         """Make API request with rate limit handling."""
@@ -330,6 +406,33 @@ class MetaTraderBroker(BaseBroker):
 
         if response.status_code >= 400:
             error_text = response.text
+            should_retry_routing = (
+                retry_on_metaapi_region_error
+                and response.status_code in {500, 502, 503, 504}
+                and effective_base_url != self.PROVISIONING_URL
+                and self._is_metaapi_routing_or_connection_error(error_text)
+            )
+            if should_retry_routing:
+                print(
+                    f"[MetaTrader] MetaApi {response.status_code} indicates routing/connection issue. "
+                    "Refreshing account routing and retrying once..."
+                )
+                try:
+                    await self._refresh_metaapi_routing(
+                        wait_for_connected=True,
+                        max_wait_checks=6,
+                        wait_seconds=5,
+                    )
+                    return await self._request(
+                        method,
+                        endpoint,
+                        base_url=base_url,
+                        retry_on_metaapi_region_error=False,
+                        **kwargs,
+                    )
+                except Exception as refresh_error:
+                    print(f"[MetaTrader] Routing refresh failed: {refresh_error}")
+
             # For trade endpoints, try to return JSON body so caller can parse error details
             if "/trade" in endpoint:
                 try:
@@ -510,9 +613,9 @@ class MetaTraderBroker(BaseBroker):
             conn_status = account.get("connectionStatus", "UNKNOWN")
             print(f"[MetaTrader] Account state: {account.get('state')} | connectionStatus: {conn_status}")
 
-            if conn_status == "DISCONNECTED":
+            if conn_status != "CONNECTED":
                 # Wait for terminal to connect to broker
-                print("[MetaTrader] Terminal disconnected, waiting for connection...")
+                print(f"[MetaTrader] Terminal status is {conn_status}, waiting for connection...")
                 for wait_attempt in range(6):
                     await asyncio.sleep(5)
                     account = await self._request(
@@ -592,7 +695,7 @@ class MetaTraderBroker(BaseBroker):
             return True
         except Exception as e:
             print(f"[MetaTrader] Error checking connection status: {e}")
-            return True  # Proceed anyway, maybe the trade will work
+            return False
 
     async def disconnect(self) -> None:
         """Disconnect from MetaApi."""
