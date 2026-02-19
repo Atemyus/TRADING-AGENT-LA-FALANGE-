@@ -480,6 +480,13 @@ async def update_broker(
         broker.slot_index = await _validate_update_slot_index(db, current_user, broker, data.slot_index)
     if data.metaapi_account_id is not None:
         broker.metaapi_account_id = normalized_metaapi_account_id
+        if not normalized_metaapi_account_id:
+            # Explicit clear: remove legacy id from credentials too, so runtime resolution
+            # does not resurrect a stale MetaApi account id.
+            cleaned_credentials = normalize_credentials(broker.credentials)
+            if "metaapi_account_id" in cleaned_credentials:
+                cleaned_credentials.pop("metaapi_account_id", None)
+                broker.credentials = cleaned_credentials
     if data.metaapi_token is not None:
         broker.metaapi_token = preserve_if_masked(data.metaapi_token, broker.metaapi_token)
     if data.credentials is not None:

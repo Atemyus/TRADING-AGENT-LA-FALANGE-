@@ -902,6 +902,14 @@ function BrokerAccountsSettings() {
     const hasLegacyMetaApiId = Boolean((editingAccount?.metaapi_account_id || '').trim())
     const hasProvidedMetaApiId = Boolean(explicitMetaApiAccountId)
     const hasAnyMetaApiId = hasLegacyMetaApiId || hasProvidedMetaApiId
+    const shouldClearMetaApiAccountId =
+      Boolean(editingAccount) &&
+      isMetaTraderPlatform &&
+      Boolean(
+        (editingAccount?.metaapi_account_id || '').trim() ||
+        (editingAccount?.credentials?.metaapi_account_id || '').trim(),
+      ) &&
+      !hasProvidedMetaApiId
     const mtLoginCredentialKeys = ['account_number', 'account_password', 'server_name']
     const hasAnyMtLoginCredential = mtLoginCredentialKeys.some((key) => Boolean(normalizedCredentials[key]))
     const hasAllRequiredMtCredentials = mtLoginCredentialKeys.every((key) => Boolean(normalizedCredentials[key]))
@@ -943,7 +951,7 @@ function BrokerAccountsSettings() {
       broker_catalog_id: selectedCatalogBroker.id,
       platform_id: selectedPlatform.id,
       name: (formData.name || '').trim() || generatedName,
-      metaapi_account_id: explicitMetaApiAccountId,
+      metaapi_account_id: explicitMetaApiAccountId ?? (shouldClearMetaApiAccountId ? '' : undefined),
       metaapi_token: undefined,
       credentials: normalizedCredentials,
     } as BrokerAccountCreate
