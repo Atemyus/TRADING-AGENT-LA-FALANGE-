@@ -568,6 +568,10 @@ class MetaTraderBroker(BaseBroker):
             "no prices for symbol",
             "failed to resolve symbol",
             "not subscribed",
+            "could not find path",
+            "notfounderror",
+            "/symbols/",
+            ". not found",
         )
         return any(marker in lowered for marker in markers)
 

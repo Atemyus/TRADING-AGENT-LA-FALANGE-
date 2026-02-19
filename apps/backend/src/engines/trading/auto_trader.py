@@ -525,6 +525,41 @@ class AutoTrader:
 
         return (stop_loss, take_profit, adjusted)
 
+    def _expand_stops_after_invalid_rejection(
+        self,
+        symbol: str,
+        direction: str,
+        current_price: float,
+        stop_loss: float,
+        take_profit: float,
+        min_distance: float,
+        retry_index: int,
+    ) -> tuple[float, float]:
+        """
+        Force-widen SL/TP after broker INVALID_STOPS rejection.
+
+        Used when broker constraints are stricter than advertised in symbol spec.
+        """
+        round_price = lambda value: self._round_price(symbol, value)
+        pip_size = max(self._get_pip_size(symbol), 1e-8)
+
+        # Aggressive widening floor for brokers which do not expose stopLevel/freezeLevel.
+        fallback_floor = pip_size * (12 + (retry_index * 8))
+        # Add a price-relative floor to handle symbols with unusual point sizes.
+        relative_floor = current_price * min(0.008, 0.0015 + (0.0007 * retry_index))
+        target_distance = max(min_distance, fallback_floor, relative_floor)
+
+        if direction == "LONG":
+            tp_distance = max(take_profit - current_price, target_distance * 2.0)
+            stop_loss = round_price(current_price - target_distance)
+            take_profit = round_price(current_price + tp_distance)
+        else:
+            tp_distance = max(current_price - take_profit, target_distance * 2.0)
+            stop_loss = round_price(current_price + target_distance)
+            take_profit = round_price(current_price - tp_distance)
+
+        return (stop_loss, take_profit)
+
     def add_callback(self, callback: Callable):
         """Add a callback for trade notifications."""
         self._callbacks.append(callback)
@@ -1486,6 +1521,20 @@ class AutoTrader:
                         tick=tick,
                     )
 
+                    if not changed:
+                        prev_sl = stop_loss
+                        prev_tp = take_profit
+                        stop_loss, take_profit = self._expand_stops_after_invalid_rejection(
+                            symbol=symbol,
+                            direction=direction,
+                            current_price=current_price,
+                            stop_loss=stop_loss,
+                            take_profit=take_profit,
+                            min_distance=min_stop_distance,
+                            retry_index=invalid_stops_retries,
+                        )
+                        changed = (prev_sl != stop_loss) or (prev_tp != take_profit)
+
                     if changed:
                         sl_distance = abs(current_price - stop_loss)
                         if sl_distance <= 0:
@@ -1535,11 +1584,22 @@ class AutoTrader:
                             symbol,
                             "info",
                             (
-                                "Retry ordine dopo INVALID_STOPS con SL/TP adattati: "
-                                f"SL={stop_loss}, TP={take_profit}, lotto={attempt_lot_size}"
+                                f"Retry #{invalid_stops_retries} dopo INVALID_STOPS con SL/TP adattati: "
+                                f"SL={stop_loss}, TP={take_profit}, lotto={attempt_lot_size}, "
+                                f"distanzaSL={sl_pips:.1f} pips"
                             ),
                         )
                         continue
+
+                    self._log_analysis(
+                        symbol,
+                        "info",
+                        (
+                            f"Retry #{invalid_stops_retries} INVALID_STOPS senza modifica utile SL/TP, "
+                            "nuovo tentativo con prezzo aggiornato"
+                        ),
+                    )
+                    continue
 
                 if not no_money_reject or attempt == MAX_ORDER_RETRIES - 1:
                     lot_size = attempt_lot_size
