@@ -39,7 +39,7 @@ except ImportError:
     TRADINGVIEW_AGENT_AVAILABLE = False
     TradingViewAIAgent = None
 from src.core.config import settings
-from src.engines.trading.base_broker import BaseBroker, OrderRequest, OrderSide, OrderType
+from src.engines.trading.base_broker import BaseBroker, OrderRequest, OrderSide, OrderStatus, OrderType
 from src.engines.trading.broker_factory import BrokerFactory
 from src.services.economic_calendar_service import (
     EconomicCalendarService,
@@ -192,6 +192,7 @@ class AutoTrader:
         self._stop_event = asyncio.Event()
         self._callbacks: list[Callable] = []
         self._last_news_refresh: datetime | None = None
+        self._start_stop_lock = asyncio.Lock()
 
     def configure(self, config: BotConfig):
         """Update bot configuration."""
@@ -371,18 +372,175 @@ class AutoTrader:
 
         return None
 
+    def _is_invalid_stops_rejection(self, message: str | None) -> bool:
+        """Detect broker rejections caused by invalid/too-close SL/TP stops."""
+        if not message:
+            return False
+
+        upper = message.upper()
+        markers = (
+            "TRADE_RETCODE_INVALID_STOPS",
+            "INVALID_STOPS",
+            "INVALID STOPS",
+            "SL/TP NON VALIDI",
+            "STOP LEVEL",
+            "STOPS LEVEL",
+            "FREEZE LEVEL",
+            "TOO CLOSE",
+            "MINIMUM DISTANCE",
+        )
+        return any(marker in upper for marker in markers)
+
+    def _raw_stop_value_to_price_distance(
+        self,
+        raw_value: float | None,
+        point_size: float,
+        current_price: float,
+    ) -> float:
+        """
+        Convert stop/freeze raw value to price distance.
+
+        Most MetaTrader specs expose points (distance = points * point_size).
+        Some adapters may expose price distance directly for very small values.
+        """
+        if raw_value is None or raw_value <= 0:
+            return 0.0
+
+        as_points_distance = raw_value * point_size
+        if raw_value < 1 and point_size < 0.1:
+            return raw_value
+        if as_points_distance <= 0:
+            return raw_value
+        if as_points_distance > current_price * 0.25 and raw_value < current_price:
+            return raw_value
+        return as_points_distance
+
+    def _compute_broker_min_stop_distance(
+        self,
+        symbol: str,
+        current_price: float,
+        broker_spec: dict[str, Any] | None,
+        tick: Any | None = None,
+        multiplier: float = 1.0,
+    ) -> tuple[float, float]:
+        """
+        Return (min_stop_distance_price, point_size_price).
+
+        Uses broker spec when available (stop/freeze levels) and adds a small
+        safety buffer to avoid boundary rejections after rounding.
+        """
+        spec = broker_spec or {}
+
+        point_size = (
+            self._to_float(spec.get("point"))
+            or self._to_float(spec.get("pointSize"))
+            or self._to_float(spec.get("tickSize"))
+            or (self._get_pip_size(symbol) / 10.0)
+        )
+        if point_size <= 0:
+            point_size = max(self._get_pip_size(symbol) / 10.0, 1e-8)
+
+        stop_level_raw = max(
+            (
+                self._to_float(spec.get(key)) or 0.0
+                for key in (
+                    "stopsLevel",
+                    "stopLevel",
+                    "tradeStopsLevel",
+                    "tradeStopLevel",
+                    "stopsDistance",
+                    "minStopDistance",
+                )
+            ),
+            default=0.0,
+        )
+        freeze_level_raw = max(
+            (
+                self._to_float(spec.get(key)) or 0.0
+                for key in (
+                    "freezeLevel",
+                    "tradeFreezeLevel",
+                    "freezeDistance",
+                )
+            ),
+            default=0.0,
+        )
+
+        stop_distance = self._raw_stop_value_to_price_distance(stop_level_raw, point_size, current_price)
+        freeze_distance = self._raw_stop_value_to_price_distance(freeze_level_raw, point_size, current_price)
+
+        spread = 0.0
+        if tick is not None:
+            bid = self._to_float(getattr(tick, "bid", None))
+            ask = self._to_float(getattr(tick, "ask", None))
+            if bid and ask and ask > bid:
+                spread = ask - bid
+
+        base_distance = max(stop_distance, freeze_distance, spread * 1.5, point_size * 10)
+        safety_buffer = max(point_size * 3, spread * 0.5)
+        min_distance = (base_distance + safety_buffer) * max(multiplier, 1.0)
+        return (min_distance, point_size)
+
+    def _enforce_broker_stop_distance(
+        self,
+        symbol: str,
+        direction: str,
+        current_price: float,
+        stop_loss: float,
+        take_profit: float,
+        min_distance: float,
+        point_size: float,
+        tick: Any | None = None,
+    ) -> tuple[float, float, bool]:
+        """Ensure SL/TP satisfy broker minimum stop distance constraints."""
+        if min_distance <= 0:
+            return (stop_loss, take_profit, False)
+
+        adjusted = False
+        round_price = lambda value: self._round_price(symbol, value)
+
+        distance = max(min_distance, point_size * 2)
+        if direction == "LONG":
+            sl_reference = self._to_float(getattr(tick, "bid", None)) or current_price
+            tp_reference = self._to_float(getattr(tick, "ask", None)) or current_price
+            target_sl = sl_reference - distance
+            target_tp = tp_reference + distance
+            if stop_loss >= target_sl:
+                stop_loss = round_price(target_sl - point_size)
+                adjusted = True
+            if take_profit <= target_tp:
+                take_profit = round_price(target_tp + point_size)
+                adjusted = True
+        else:
+            sl_reference = self._to_float(getattr(tick, "ask", None)) or current_price
+            tp_reference = self._to_float(getattr(tick, "bid", None)) or current_price
+            target_sl = sl_reference + distance
+            target_tp = tp_reference - distance
+            if stop_loss <= target_sl:
+                stop_loss = round_price(target_sl + point_size)
+                adjusted = True
+            if take_profit >= target_tp:
+                take_profit = round_price(target_tp - point_size)
+                adjusted = True
+
+        return (stop_loss, take_profit, adjusted)
+
     def add_callback(self, callback: Callable):
         """Add a callback for trade notifications."""
         self._callbacks.append(callback)
 
     async def start(self):
         """Start the trading bot."""
-        if self.state.status == BotStatus.RUNNING:
-            return
+        async with self._start_stop_lock:
+            if self.state.status in {BotStatus.RUNNING, BotStatus.STARTING}:
+                return
+            if self._task and not self._task.done():
+                self.state.status = BotStatus.RUNNING
+                return
 
-        self.state.status = BotStatus.STARTING
-        self.state.started_at = datetime.utcnow()
-        self.state.errors = []
+            self.state.status = BotStatus.STARTING
+            self.state.started_at = datetime.utcnow()
+            self.state.errors = []
 
         try:
             print("[AutoTrader] Starting bot initialization...")
@@ -489,7 +647,8 @@ class AutoTrader:
 
     async def stop(self):
         """Stop the trading bot."""
-        self._stop_event.set()
+        async with self._start_stop_lock:
+            self._stop_event.set()
 
         if self._task:
             self._task.cancel()
@@ -498,7 +657,8 @@ class AutoTrader:
             except asyncio.CancelledError:
                 pass
 
-        self.state.status = BotStatus.STOPPED
+        async with self._start_stop_lock:
+            self.state.status = BotStatus.STOPPED
         await self._notify("🛑 Bot stopped.")
 
     async def pause(self):
@@ -733,6 +893,93 @@ class AutoTrader:
         """Normalizza simbolo da formato UI (EUR/USD) a formato interno (EUR_USD)."""
         return symbol.replace("/", "_")
 
+    def _canonical_symbol(self, symbol: str | None) -> str:
+        """Canonical symbol key for resilient matching across brokers/suffixes."""
+        raw = str(symbol or "").strip().upper()
+        if not raw:
+            return ""
+
+        # Remove common broker suffixes before stripping separators.
+        suffixes = (".RAW", ".PRO", ".A", ".B", ".C", ".I", ".E", "_SB", "M")
+        for suffix in suffixes:
+            if raw.endswith(suffix):
+                raw = raw[:-len(suffix)]
+                break
+
+        return (
+            raw.replace("/", "")
+            .replace("_", "")
+            .replace("-", "")
+            .replace(".", "")
+            .replace(" ", "")
+        )
+
+    async def _get_exposure_snapshot(self) -> tuple[int, set[str]]:
+        """
+        Return (effective_open_count, exposed_symbols).
+
+        effective_open_count includes:
+        - local tracked open positions
+        - broker live open positions
+        - broker pending market orders (treated as reserved slots)
+        """
+        local_symbols: set[str] = set()
+        for tracked in self.state.open_positions:
+            canonical = self._canonical_symbol(getattr(tracked, "symbol", ""))
+            if canonical:
+                local_symbols.add(canonical)
+        local_count = len(self.state.open_positions)
+
+        if not self.broker:
+            return local_count, local_symbols
+
+        broker_count = 0
+        pending_market_orders = 0
+        exposed_symbols = set(local_symbols)
+
+        try:
+            broker_positions = await self.broker.get_positions()
+            broker_count = len(broker_positions)
+            for pos in broker_positions:
+                canonical = self._canonical_symbol(getattr(pos, "symbol", ""))
+                if canonical:
+                    exposed_symbols.add(canonical)
+        except Exception:
+            pass
+
+        try:
+            open_orders = await self.broker.get_open_orders()
+            for order in open_orders:
+                if (
+                    getattr(order, "status", None) == OrderStatus.PENDING
+                    and getattr(order, "order_type", None) == OrderType.MARKET
+                ):
+                    pending_market_orders += 1
+                    canonical = self._canonical_symbol(getattr(order, "symbol", ""))
+                    if canonical:
+                        exposed_symbols.add(canonical)
+        except Exception:
+            pass
+
+        effective_count = max(local_count, broker_count) + pending_market_orders
+        return effective_count, exposed_symbols
+
+    async def _can_open_trade_for_symbol(self, symbol: str) -> tuple[bool, str]:
+        """Hard gate for max positions and duplicate symbol exposure."""
+        target = self._canonical_symbol(symbol)
+        effective_count, exposed_symbols = await self._get_exposure_snapshot()
+
+        if effective_count >= self.config.max_open_positions:
+            return (
+                False,
+                f"max posizioni raggiunte ({effective_count}/{self.config.max_open_positions})",
+            )
+
+        if target and target in exposed_symbols:
+            return False, f"esposizione già presente su {symbol}"
+
+        return True, ""
+
     async def _analyze_and_trade(self):
         """Analyze all symbols and execute trades if conditions met."""
         # First manage existing positions (BE, Trailing Stop)
@@ -749,16 +996,10 @@ class AutoTrader:
 
         for symbol in symbols:
             try:
-                # Skip if max positions reached
-                if len(self.state.open_positions) >= self.config.max_open_positions:
-                    self._log_analysis(symbol, "skip", f"Max posizioni raggiunte ({self.config.max_open_positions})")
+                can_open, block_reason = await self._can_open_trade_for_symbol(symbol)
+                if not can_open:
+                    self._log_analysis(symbol, "skip", f"Condizioni non soddisfatte: {block_reason}")
                     continue
-
-                # Skip if already have position in this symbol
-                if any(p.symbol == symbol for p in self.state.open_positions):
-                    self._log_analysis(symbol, "skip", "Posizione già aperta su questo asset")
-                    continue
-
                 # NEWS FILTER: Skip if blocked by upcoming/recent news
                 news_blocked, blocking_event = self._is_news_blocked(symbol)
                 if news_blocked and blocking_event:
@@ -919,6 +1160,11 @@ class AutoTrader:
             direction = consensus.get("direction", "HOLD")
             self._log_analysis(symbol, "trade", f"📋 Esecuzione trade {direction} su {symbol}...")
 
+            can_open, block_reason = await self._can_open_trade_for_symbol(symbol)
+            if not can_open:
+                self._log_analysis(symbol, "skip", f"Trade annullato prima dell'esecuzione: {block_reason}")
+                return
+
             # Verifica che stop_loss e take_profit siano presenti
             stop_loss = consensus.get("stop_loss")
             take_profit = consensus.get("take_profit")
@@ -1046,6 +1292,39 @@ class AutoTrader:
             except Exception as spec_err:
                 self._log_analysis(symbol, "info", f"⚠️ Specifiche broker non disponibili: {spec_err}")
 
+            min_stop_distance, point_size = self._compute_broker_min_stop_distance(
+                symbol=symbol,
+                current_price=current_price,
+                broker_spec=broker_spec,
+                tick=tick,
+            )
+            stop_loss, take_profit, broker_stop_adjusted = self._enforce_broker_stop_distance(
+                symbol=symbol,
+                direction=direction,
+                current_price=current_price,
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+                min_distance=min_stop_distance,
+                point_size=point_size,
+                tick=tick,
+            )
+            if broker_stop_adjusted:
+                self._log_analysis(
+                    symbol,
+                    "info",
+                    (
+                        f"SL/TP adeguati ai vincoli broker (minDistance={min_stop_distance:.6f}): "
+                        f"SL={stop_loss} | TP={take_profit}"
+                    ),
+                )
+                sl_distance = abs(current_price - stop_loss)
+                if sl_distance == 0:
+                    self._log_analysis(
+                        symbol,
+                        "error",
+                        f"Trade annullato: distanza SL = 0 dopo adeguamento broker (prezzo={current_price}, SL={stop_loss})",
+                    )
+                    return
             # Calcola distanza SL in pips e valore pip per 1 lotto standard
             sl_pips, pip_value = self._calculate_pip_info(symbol, current_price, sl_distance, broker_spec)
 
@@ -1094,6 +1373,7 @@ class AutoTrader:
 
             # ====== CONTROLLO MARGINE: limita size in base al margine disponibile ======
             margin_available = float(getattr(account_info, "margin_available", 0) or 0)
+            max_lot_by_margin: float | None = None
             margin_per_lot = self._estimate_margin_per_lot(
                 symbol=symbol,
                 current_price=current_price,
@@ -1141,12 +1421,18 @@ class AutoTrader:
 
             self._log_analysis(symbol, "trade", f"📊 Ordine: {side.value} {lot_size} lotti | SL: {stop_loss} ({sl_pips:.1f} pips) | TP: {take_profit} | Rischio: ${actual_risk:.2f} ({risk_pct:.2f}%)")
 
-            # Retry automatico in caso di margine insufficiente
+            can_open_now, block_reason_now = await self._can_open_trade_for_symbol(symbol)
+            if not can_open_now:
+                self._log_analysis(symbol, "skip", f"Trade annullato prima dell'invio ordine: {block_reason_now}")
+                return
+
+            # Retry automatico in caso di margine insufficiente o invalid stops
             order_result = None
             attempt_lot_size = lot_size
-            MAX_MARGIN_RETRIES = 4
+            MAX_ORDER_RETRIES = 6
+            invalid_stops_retries = 0
 
-            for attempt in range(MAX_MARGIN_RETRIES):
+            for attempt in range(MAX_ORDER_RETRIES):
                 order = OrderRequest(
                     symbol=symbol,
                     side=side,
@@ -1169,8 +1455,93 @@ class AutoTrader:
                     or "MARGINE INSUFFICIENTE" in reject_upper
                     or "INSUFFICIENT MARGIN" in reject_upper
                 )
+                invalid_stops_reject = self._is_invalid_stops_rejection(reject_msg)
 
-                if not no_money_reject or attempt == MAX_MARGIN_RETRIES - 1:
+                if invalid_stops_reject and attempt < MAX_ORDER_RETRIES - 1:
+                    invalid_stops_retries += 1
+                    stop_retry_multiplier = 1.0 + (0.35 * invalid_stops_retries)
+
+                    try:
+                        tick = await self.broker.get_current_price(symbol)
+                        current_price = float(tick.mid)
+                    except Exception:
+                        # Keep previous price/tick if refresh fails.
+                        pass
+
+                    min_stop_distance, point_size = self._compute_broker_min_stop_distance(
+                        symbol=symbol,
+                        current_price=current_price,
+                        broker_spec=broker_spec,
+                        tick=tick,
+                        multiplier=stop_retry_multiplier,
+                    )
+                    stop_loss, take_profit, changed = self._enforce_broker_stop_distance(
+                        symbol=symbol,
+                        direction=direction,
+                        current_price=current_price,
+                        stop_loss=stop_loss,
+                        take_profit=take_profit,
+                        min_distance=min_stop_distance,
+                        point_size=point_size,
+                        tick=tick,
+                    )
+
+                    if changed:
+                        sl_distance = abs(current_price - stop_loss)
+                        if sl_distance <= 0:
+                            self._log_analysis(
+                                symbol,
+                                "error",
+                                "Trade annullato: distanza SL non valida dopo retry INVALID_STOPS",
+                            )
+                            break
+
+                        sl_pips, pip_value = self._calculate_pip_info(symbol, current_price, sl_distance, broker_spec)
+                        if sl_pips <= 0 or pip_value <= 0:
+                            self._log_analysis(
+                                symbol,
+                                "error",
+                                "Trade annullato: impossibile ricalcolare rischio dopo retry INVALID_STOPS",
+                            )
+                            break
+
+                        max_lot_for_risk = round(risk_amount / (sl_pips * pip_value), 2)
+                        if max_lot_for_risk < MIN_LOT:
+                            self._log_analysis(
+                                symbol,
+                                "error",
+                                (
+                                    "Trade annullato: broker richiede stop troppo ampio per il lotto minimo "
+                                    f"(SL={sl_pips:.1f} pips, rischio max=${risk_amount:.2f})."
+                                ),
+                            )
+                            break
+
+                        if attempt_lot_size > max_lot_for_risk:
+                            self._log_analysis(
+                                symbol,
+                                "info",
+                                (
+                                    f"Size ridotta per mantenere rischio dopo INVALID_STOPS: "
+                                    f"{attempt_lot_size} -> {max_lot_for_risk}"
+                                ),
+                            )
+                            attempt_lot_size = max_lot_for_risk
+
+                        if max_lot_by_margin is not None and attempt_lot_size > max_lot_by_margin:
+                            attempt_lot_size = max(MIN_LOT, max_lot_by_margin)
+
+                        self._log_analysis(
+                            symbol,
+                            "info",
+                            (
+                                "Retry ordine dopo INVALID_STOPS con SL/TP adattati: "
+                                f"SL={stop_loss}, TP={take_profit}, lotto={attempt_lot_size}"
+                            ),
+                        )
+                        continue
+
+                if not no_money_reject or attempt == MAX_ORDER_RETRIES - 1:
                     lot_size = attempt_lot_size
                     break
 
@@ -1336,6 +1707,11 @@ class AutoTrader:
         try:
             from decimal import Decimal
 
+            can_open, block_reason = await self._can_open_trade_for_symbol(symbol)
+            if not can_open:
+                self._log_analysis(symbol, "skip", f"Trade annullato (autonomous): {block_reason}")
+                return
+
             # Get current price
             tick = await self.broker.get_current_price(symbol)
             current_price = float(tick.mid)
@@ -1461,6 +1837,11 @@ class AutoTrader:
         """Execute a trade based on analysis result."""
         try:
             from decimal import Decimal
+
+            can_open, block_reason = await self._can_open_trade_for_symbol(result.symbol)
+            if not can_open:
+                self._log_analysis(result.symbol, "skip", f"Trade annullato: {block_reason}")
+                return
 
             # Get current price
             tick = await self.broker.get_current_price(result.symbol)
@@ -1633,3 +2014,4 @@ def get_auto_trader() -> AutoTrader:
     if _auto_trader is None:
         _auto_trader = AutoTrader()
     return _auto_trader
+
