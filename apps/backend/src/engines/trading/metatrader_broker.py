@@ -419,11 +419,16 @@ class MetaTraderBroker(BaseBroker):
                     "Refreshing account routing and retrying once..."
                 )
                 try:
-                    await self._refresh_metaapi_routing(
+                    connected = await self._refresh_metaapi_routing(
                         wait_for_connected=True,
                         max_wait_checks=6,
                         wait_seconds=5,
                     )
+                    if not connected:
+                        raise Exception(
+                            "MetaApi account is not connected to broker yet (connectionStatus!=CONNECTED). "
+                            "Open MetaApi dashboard, verify MT login/server/password, deploy account, and retry."
+                        )
                     return await self._request(
                         method,
                         endpoint,
@@ -771,7 +776,21 @@ class MetaTraderBroker(BaseBroker):
                     if conn_status == "CONNECTED":
                         break
                 if conn_status != "CONNECTED":
-                    print(f"[MetaTrader] WARNING: Account connectionStatus is '{conn_status}' - trades may fail!")
+                    print(
+                        f"[MetaTrader] Account still '{conn_status}' after initial wait. "
+                        "Refreshing routing and waiting longer..."
+                    )
+                    connected = await self._refresh_metaapi_routing(
+                        wait_for_connected=True,
+                        max_wait_checks=12,  # extra 60s for slow broker terminal handshakes
+                        wait_seconds=5,
+                    )
+                    if not connected:
+                        raise Exception(
+                            "MetaApi account is deployed but terminal is not connected to broker yet "
+                            "(connectionStatus!=CONNECTED). Verify MT login/password/server in MetaApi, "
+                            "wait for CONNECTED state, then retry start."
+                        )
 
             # Get account information from client API
             self._account_info = await self._request(

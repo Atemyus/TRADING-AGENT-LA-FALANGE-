@@ -663,16 +663,29 @@ async def test_broker_connection(
                 )
                 if response.status_code == 200:
                     account_info = response.json()
+                    state = account_info.get("state", "Unknown")
+                    connection_status = account_info.get("connectionStatus", "Unknown")
+                    ready_for_trading = state == "DEPLOYED" and connection_status == "CONNECTED"
+                    message = (
+                        "Connected successfully"
+                        if ready_for_trading
+                        else (
+                            "MetaApi account reachable but not ready for trading "
+                            f"(state={state}, connectionStatus={connection_status})"
+                        )
+                    )
 
                     broker.is_connected = True
                     broker.last_connected_at = datetime.now(UTC)
                     await db.flush()
                     return {
                         "status": "success",
-                        "message": "Connected successfully",
+                        "message": message,
                         "account_name": account_info.get("name", "Unknown"),
                         "platform": account_info.get("platform", runtime.get("platform", "mt5")),
-                        "state": account_info.get("state", "Unknown"),
+                        "state": state,
+                        "connection_status": connection_status,
+                        "ready_for_trading": ready_for_trading,
                         "broker": account_info.get("broker", "Unknown"),
                         "metaapi_account_id": effective_metaapi_account_id,
                         "using_global_token": using_global_token,
