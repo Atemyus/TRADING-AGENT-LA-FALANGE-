@@ -93,6 +93,8 @@ const MODES = [
 // TradingView Free plan limit: 2 indicators
 const MAX_INDICATORS_FREE_PLAN = 2
 
+const formatTimeframeLabel = (tf: string) => (tf === 'D' ? 'Daily' : `${tf}m`)
+
 export default function AIAnalysisPage() {
   const [symbol, setSymbol] = useState('EUR_USD')
   const [mode, setMode] = useState<'quick' | 'standard' | 'premium' | 'ultra'>('standard')
@@ -753,7 +755,7 @@ export default function AIAnalysisPage() {
                 {Object.entries(tvAgentResult.timeframe_consensus).map(([tf, consensus]) => (
                   <div key={tf} className="flex items-center justify-between p-3 bg-dark-800/50 rounded-lg">
                     <div className="flex items-center gap-3">
-                      <span className="font-mono font-bold text-primary-400">{tf === 'D' ? 'Daily' : `${tf}m`}</span>
+                      <span className="font-mono font-bold text-primary-400">{formatTimeframeLabel(tf)}</span>
                       <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
                         consensus.direction === 'LONG' ? 'bg-neon-green/20 text-neon-green' :
                         consensus.direction === 'SHORT' ? 'bg-neon-red/20 text-neon-red' : 'bg-neon-yellow/20 text-neon-yellow'
@@ -789,13 +791,37 @@ export default function AIAnalysisPage() {
                   </div>
                 ))}
               </div>
-              <h4 className="text-sm font-semibold mb-2 text-dark-400">Indicatori Utilizzati</h4>
+              <h4 className="text-sm font-semibold mb-2 text-dark-400">Indicatori Globali (Consensus)</h4>
               <div className="flex flex-wrap gap-2">
                 {tvAgentResult.indicators_used.map((ind, i) => (
                   <span key={i} className="px-2 py-1 bg-primary-500/20 text-primary-300 rounded text-xs">
                     {ind}
                   </span>
                 ))}
+              </div>
+              <h4 className="text-sm font-semibold mt-4 mb-2 text-dark-400">Scelte Dinamiche per Modello/TF</h4>
+              <div className="space-y-2">
+                {tvAgentResult.models_used.map((modelName, modelIdx) => {
+                  const modelResults = tvAgentResult.individual_results?.filter(r => r.model_display_name === modelName) || []
+                  return (
+                    <div key={`${modelName}-${modelIdx}`} className="p-2 bg-dark-800/50 rounded-lg">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs font-semibold tracking-wide text-primary-300">{['OA', 'GO', 'XA', 'AL', 'DS', 'ZH', 'ME', 'MI'][modelIdx] || 'AI'}</span>
+                        <span className="text-xs text-dark-300">{modelName}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {modelResults.map((r, idx) => (
+                          <span key={`${modelName}-${r.timeframe}-${idx}`} className="px-2 py-1 rounded text-xs bg-primary-500/10 border border-primary-500/20 text-primary-300">
+                            {formatTimeframeLabel(r.timeframe)}: {r.indicators_used?.join(' + ') || '--'}
+                          </span>
+                        ))}
+                        {modelResults.length === 0 && (
+                          <span className="px-2 py-1 rounded text-xs bg-dark-700/50 text-dark-400">Nessun dettaglio indicatori</span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             </motion.div>
 
@@ -848,6 +874,7 @@ export default function AIAnalysisPage() {
                 const icons = ['OA', 'GO', 'XA', 'AL', 'DS', 'ZH', 'ME', 'MI']
                 const icon = icons[modelIdx] || 'AI'
                 const isExpanded = expandedTvResult === modelName
+                const uniqueIndicators = [...new Set(modelResults.flatMap(r => r.indicators_used || []))]
 
                 // Calculate model consensus
                 const longVotes = modelResults.filter(r => r.direction === 'LONG').length
@@ -875,6 +902,8 @@ export default function AIAnalysisPage() {
                             <span>{modelResults[0]?.analysis_style || 'Technical'} analysis</span>
                             <span>|</span>
                             <span>{modelResults.length} timeframe</span>
+                            <span>|</span>
+                            <span>{uniqueIndicators.length} indicatori dinamici</span>
                           </div>
                         </div>
                       </div>
@@ -926,7 +955,7 @@ export default function AIAnalysisPage() {
                               <div className="flex items-center justify-between mb-3">
                                 <div className="flex items-center gap-2">
                                   <span className="px-2 py-1 bg-primary-500/30 text-primary-300 rounded font-mono text-sm font-bold">
-                                    {r.timeframe === 'D' ? 'Daily' : `${r.timeframe}m`}
+                                    {formatTimeframeLabel(r.timeframe)}
                                   </span>
                                   <span className={`px-2 py-1 rounded text-xs font-semibold ${
                                     r.direction === 'LONG' ? 'bg-neon-green/20 text-neon-green' :
@@ -942,6 +971,21 @@ export default function AIAnalysisPage() {
                                     <span>Error</span>
                                   </div>
                                 )}
+                              </div>
+
+                              {/* Indicatori selezionati dinamicamente */}
+                              <div className="mb-3">
+                                <p className="text-xs text-dark-400 mb-2">Indicatori Selezionati</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {(r.indicators_used || []).map((indicator, j) => (
+                                    <span key={`${r.model_display_name}-${r.timeframe}-${indicator}-${j}`} className="px-2 py-1 rounded text-xs bg-primary-500/20 text-primary-300">
+                                      {indicator}
+                                    </span>
+                                  ))}
+                                  {(!r.indicators_used || r.indicators_used.length === 0) && (
+                                    <span className="px-2 py-1 rounded text-xs bg-dark-700/50 text-dark-400">Nessun indicatore riportato</span>
+                                  )}
+                                </div>
                               </div>
 
                               {/* Osservazioni chiave */}

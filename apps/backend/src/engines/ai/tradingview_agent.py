@@ -973,6 +973,44 @@ class TradingViewAIAgent:
         except ValueError:
             return None
 
+    def _sanitize_indicators(
+        self,
+        indicators: Any,
+        fallback: list[str] | None = None,
+    ) -> list[str]:
+        """Normalize indicator names, deduplicate, and enforce max indicators."""
+        max_indicators = max(1, int(self.max_indicators))
+        fallback_list = fallback if isinstance(fallback, list) else ["EMA", "RSI"]
+
+        def _clean(raw: Any) -> list[str]:
+            items = raw if isinstance(raw, list) else [raw] if isinstance(raw, str) else []
+            cleaned: list[str] = []
+            for item in items:
+                name = str(item).strip().strip('"').strip("'")
+                if not name:
+                    continue
+                if name.lower() in {"none", "null", "n/a"}:
+                    continue
+                if name not in cleaned:
+                    cleaned.append(name)
+                if len(cleaned) >= max_indicators:
+                    break
+            return cleaned
+
+        normalized = _clean(indicators)
+        if normalized:
+            return normalized
+
+        fallback_normalized = _clean(fallback_list)
+        if fallback_normalized:
+            return fallback_normalized
+
+        return ["EMA", "RSI"][:max_indicators]
+
+    def _default_indicators_for_model(self, model_key: str) -> list[str]:
+        preferences = self.MODEL_PREFERENCES.get(model_key, {})
+        return self._sanitize_indicators(preferences.get("indicators", ["EMA", "RSI"]))
+
     def _normalize_response_text(self, content: Any) -> str:
         if content is None:
             return ""
@@ -1183,7 +1221,7 @@ class TradingViewAIAgent:
 
             # Step 3: Ask AI what indicators to add
             indicators_to_add = await self._ask_ai_for_indicators(
-                model_id, initial_screenshot, symbol, preferences
+                model_id, initial_screenshot, symbol, preferences, timeframe
             )
 
             # Step 4: Add the indicators
@@ -1292,14 +1330,17 @@ class TradingViewAIAgent:
         model_id: str,
         screenshot: str,
         symbol: str,
-        preferences: dict[str, Any]
+        preferences: dict[str, Any],
+        timeframe: str | None = None,
     ) -> list[str]:
         """Ask AI which indicators to add based on initial chart."""
 
         # Respect TradingView indicator limit
-        max_ind = min(self.max_indicators, 4)  # Cap at 4 for performance
+        max_ind = max(1, min(self.max_indicators, 4))  # Cap at 4 for performance
+        timeframe_label = timeframe or "15"
+        fallback = self._sanitize_indicators(preferences.get("indicators", ["EMA", "RSI"]))
 
-        prompt = f"""Stai analizzando un grafico {symbol} su TradingView.
+        prompt = f"""Stai analizzando un grafico {symbol} su TradingView (timeframe {timeframe_label}).
 
 Il tuo stile di analisi preferito: {preferences.get('style', 'mixed')}
 Il tuo focus preferito: {preferences.get('focus', 'analisi generale')}
@@ -1356,15 +1397,36 @@ Rispondi SOLO con un array JSON di nomi di indicatori (max {max_ind}), es.:
                 match = re.search(r'\[.*?\]', text, re.DOTALL)
                 if match:
                     indicators = json.loads(match.group())
-                    # Enforce the max_indicators limit
-                    return indicators[:self.max_indicators]
+                    return self._sanitize_indicators(indicators, fallback=fallback)[:max_ind]
                 # Fallback: use preferences but respect limit
-                fallback = preferences.get("indicators", ["EMA", "RSI"])
-                return fallback[:self.max_indicators]
+                return fallback[:max_ind]
 
         except Exception as e:
             print(f"Error asking AI for indicators: {e}")
-            return preferences.get("indicators", ["EMA", "RSI"])
+            return fallback[:max_ind]
+
+    async def _select_indicators_for_model(
+        self,
+        model_key: str,
+        screenshot: str,
+        symbol: str,
+        timeframe: str,
+    ) -> list[str]:
+        """Get dynamic indicator selection for one model."""
+        model_id = self.VISION_MODELS.get(model_key)
+        if not model_id:
+            return self._default_indicators_for_model(model_key)
+
+        preferences = self.MODEL_PREFERENCES.get(model_key, {})
+        fallback = self._default_indicators_for_model(model_key)
+        indicators = await self._ask_ai_for_indicators(
+            model_id=model_id,
+            screenshot=screenshot,
+            symbol=symbol,
+            preferences=preferences,
+            timeframe=timeframe,
+        )
+        return self._sanitize_indicators(indicators, fallback=fallback)
 
     async def _ask_ai_for_drawings(
         self,
@@ -1549,6 +1611,7 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
         screenshot: str,
         symbol: str,
         timeframe: str,
+        indicators_used: list[str] | None = None,
     ) -> TradingViewAnalysisResult:
         """
         Analyze a screenshot with a specific AI model (API call only, no browser interaction).
@@ -1574,7 +1637,12 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
         # Build a comprehensive professional prompt for each AI model
         style = preferences.get('style', 'technical')
         focus = preferences.get('focus', 'general technical analysis')
-        indicators = ', '.join(preferences.get('indicators', ['EMA', 'RSI']))
+        selected_indicators = self._sanitize_indicators(
+            indicators_used if indicators_used is not None else preferences.get('indicators', ['EMA', 'RSI']),
+            fallback=self._default_indicators_for_model(model_key),
+        )
+        result.indicators_used = selected_indicators
+        indicators = ', '.join(selected_indicators)
 
         prompt = f"""Sei un analista di trading senior specializzato in {style.upper()} con oltre 15 anni di esperienza nell'analisi di {symbol} sul timeframe {timeframe} minuti.
 
@@ -1719,8 +1787,8 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
                     result.reasoning = reasoning.strip()
                     result.error = None
 
-                    # Mark indicators used based on model preferences
-                    result.indicators_used = preferences.get("indicators", ["EMA", "RSI"])
+                    # Track indicators that were actually prepared for this model screenshot.
+                    result.indicators_used = selected_indicators
 
                     if used_fallback:
                         print(
@@ -1812,7 +1880,7 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
         - ultra: 5 timeframes (5m, 15m, 1h, 4h, D), 8 models
 
         Each AI analyzes ALL timeframes for the mode, changing TF on TradingView.
-        AI calls are parallelized per timeframe for faster execution.
+        Indicator selection is per-model and market-adaptive; final API analyses are parallelized.
 
         Args:
             enabled_models: List of model keys to use. If None, uses all available.
@@ -1868,12 +1936,15 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
                 "error": "Browser not initialized"
             }
 
-        # Process each timeframe with all models in parallel
+        # Process each timeframe:
+        # 1) Select indicators per-model from the current market chart
+        # 2) Build one screenshot per-model with those indicators applied
+        # 3) Run model analysis in parallel on those prepared screenshots
         for tf_index, tf in enumerate(timeframes):
-            print(f"\n--- Analyzing {symbol} on {tf} timeframe with {len(model_keys)} models in parallel ---")
+            print(f"\n--- Analyzing {symbol} on {tf} timeframe with {len(model_keys)} models ---")
 
-            # Prepare chart for this timeframe
-            screenshot = None
+            # Prepare a clean chart snapshot for this timeframe
+            base_screenshot = None
             if self.browser and self.browser._initialized:
                 # Only change timeframe if not the first one (already set in open_chart)
                 if tf_index > 0:
@@ -1881,35 +1952,65 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
                     await self.browser.change_timeframe(tf)
                     await asyncio.sleep(2)  # Wait for chart to fully update
 
-                # Each AI model will use its OWN preferred indicators
-                # But for the shared screenshot, we add a base set
-                # Individual models specify which indicators they want in their prompts
-                base_indicators = ["EMA", "RSI"][:self.max_indicators]
-                print(f"[TradingViewAgent] Adding base indicators: {base_indicators}")
-                for indicator in base_indicators:
-                    success = await self.browser.add_indicator(indicator)
-                    if success:
-                        print(f"  [+] Added {indicator}")
-                    else:
-                        print(f"  [!] Failed to add {indicator}")
+                # Start from a clean chart with no indicators.
+                await self.browser.remove_all_indicators()
+                await asyncio.sleep(0.5)
+                base_screenshot = await self.browser.take_screenshot()
 
-                await asyncio.sleep(1)  # Wait for indicators to render
-                screenshot = await self.browser.take_screenshot()
-
-                # Remove indicators for next timeframe (clean slate)
-                if tf_index < len(timeframes) - 1:
-                    print("[TradingViewAgent] Clearing indicators for next timeframe...")
-                    await self.browser.remove_all_indicators()
-
-            if not screenshot:
+            if not base_screenshot:
                 print(f"  [WARNING] Could not capture screenshot for {tf} timeframe")
                 continue
 
-            # Run all models in parallel for this timeframe
-            print(f"  Sending screenshot to {len(model_keys)} AI models simultaneously...")
-            tasks = [
-                self._analyze_model_from_screenshot(model_key, screenshot, symbol, tf)
+            # Step 1: Ask each model which indicators it wants for this market/timeframe.
+            indicator_tasks = [
+                self._select_indicators_for_model(model_key, base_screenshot, symbol, tf)
                 for model_key in model_keys
+            ]
+            indicator_choices = await asyncio.gather(*indicator_tasks, return_exceptions=True)
+
+            # Step 2: Build model-specific screenshots with selected indicators applied.
+            model_payloads: list[tuple[str, str, list[str]]] = []
+            for idx, model_key in enumerate(model_keys):
+                selected: list[str]
+                choice = indicator_choices[idx]
+                if isinstance(choice, Exception):
+                    print(f"  [WARNING] Indicator selection failed for {model_key}: {choice}")
+                    selected = self._default_indicators_for_model(model_key)
+                else:
+                    selected = self._sanitize_indicators(choice, fallback=self._default_indicators_for_model(model_key))
+
+                if not self.browser or not self.browser._initialized:
+                    model_payloads.append((model_key, base_screenshot, selected))
+                    continue
+
+                await self.browser.remove_all_indicators()
+                await asyncio.sleep(0.2)
+
+                added: list[str] = []
+                for indicator in selected:
+                    success = await self.browser.add_indicator(indicator)
+                    if success:
+                        added.append(indicator)
+                    else:
+                        print(f"  [!] {model_key}: failed to add indicator '{indicator}'")
+
+                # Keep the model flowing even if one/all indicators fail to render.
+                await asyncio.sleep(0.6)
+                model_screenshot = await self.browser.take_screenshot() or base_screenshot
+                final_indicators = added if added else selected
+                print(f"  [{self.MODEL_DISPLAY_NAMES.get(model_key, model_key)}] indicators: {', '.join(final_indicators)}")
+                model_payloads.append((model_key, model_screenshot, final_indicators))
+
+            # Clear chart before moving to next timeframe.
+            if self.browser and self.browser._initialized and tf_index < len(timeframes) - 1:
+                print("[TradingViewAgent] Clearing indicators for next timeframe...")
+                await self.browser.remove_all_indicators()
+
+            # Step 3: Run all model analyses in parallel using model-specific screenshots.
+            print(f"  Sending {len(model_payloads)} model-specific screenshots to AI models...")
+            tasks = [
+                self._analyze_model_from_screenshot(model_key, screenshot, symbol, tf, indicators_used=indicators)
+                for model_key, screenshot, indicators in model_payloads
             ]
             tf_results = await asyncio.gather(*tasks, return_exceptions=True)
 
