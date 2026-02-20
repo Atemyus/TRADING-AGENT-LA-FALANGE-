@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -324,12 +325,13 @@ class TradingViewBrowser:
             formatted_symbol = symbol.replace("_", "").replace("/", "")
             if not formatted_symbol.startswith("FX:") and len(formatted_symbol) == 6:
                 formatted_symbol = f"FX:{formatted_symbol}"
+            encoded_symbol = quote(formatted_symbol, safe=":")
 
             # Get URL timeframe format
             tf_url = self.TIMEFRAME_URL.get(timeframe, timeframe)
 
             # Build TradingView chart URL
-            url = f"https://www.tradingview.com/chart/?symbol={formatted_symbol}&interval={tf_url}"
+            url = f"https://www.tradingview.com/chart/?symbol={encoded_symbol}&interval={tf_url}"
             print(f"[TradingViewBrowser] Opening: {url}")
 
             # Navigate with extended timeout

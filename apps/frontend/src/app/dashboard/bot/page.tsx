@@ -32,6 +32,7 @@ import {
   Loader2,
   Flame,
   Sparkles,
+  Plus,
 } from "lucide-react";
 import {
   botApi,
@@ -319,6 +320,34 @@ const ANALYSIS_MODES = [
   { value: "ultra", label: "Ultra", description: "5 timeframes + all models" },
 ];
 
+const symbolKey = (symbol: string) =>
+  symbol.trim().toUpperCase().replace(/\s+/g, "").replace(/_/g, "/");
+
+const includesSymbol = (symbols: string[], candidate: string) =>
+  symbols.some((value) => symbolKey(value) === symbolKey(candidate));
+
+const normalizeSymbolInput = (value: string): string => {
+  const raw = value.trim().toUpperCase();
+  if (!raw) return "";
+
+  const compact = raw.replace(/\s+/g, "");
+  if (compact.includes("/") || compact.includes("_")) {
+    const normalized = compact.replace(/_/g, "/");
+    const [left, right] = normalized.split("/", 2);
+    if (left && right) {
+      return `${left}/${right}`;
+    }
+    return normalized;
+  }
+
+  const alnumOnly = compact.replace(/[^A-Z0-9]/g, "");
+  if (alnumOnly.length === 6 && /^[A-Z]{6}$/.test(alnumOnly)) {
+    return `${alnumOnly.slice(0, 3)}/${alnumOnly.slice(3)}`;
+  }
+
+  return compact;
+};
+
 export default function BotControlPage() {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<BotStatus | null>(null);
@@ -328,6 +357,8 @@ export default function BotControlPage() {
   const [showConfig, setShowConfig] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [previewSymbol, setPreviewSymbol] = useState<string>("EUR/USD");
+  const [customSymbolInput, setCustomSymbolInput] = useState("");
+  const [symbolEditorError, setSymbolEditorError] = useState<string | null>(null);
 
   // Multi-broker state
   const [brokers, setBrokers] = useState<BrokerAccountData[]>([]);
@@ -692,6 +723,38 @@ export default function BotControlPage() {
   const scopedOpenPositions = selectedBrokerId
     ? resolveOpenPositions(selectedBrokerId, brokerStatuses[selectedBrokerId])
     : scopedLivePositions.length;
+  const symbolSuggestions = Array.from(
+    new Set([
+      ...AVAILABLE_SYMBOLS,
+      ...brokers.flatMap((broker) => broker.symbols || []),
+      ...currentConfig.symbols,
+    ]),
+  );
+
+  const handleToggleSymbol = async (symbol: string) => {
+    const nextSymbols = includesSymbol(currentConfig.symbols, symbol)
+      ? currentConfig.symbols.filter((value) => symbolKey(value) !== symbolKey(symbol))
+      : [...currentConfig.symbols, symbol];
+    setSymbolEditorError(null);
+    await handleConfigUpdate({ symbols: nextSymbols });
+  };
+
+  const handleAddCustomSymbol = async () => {
+    const normalized = normalizeSymbolInput(customSymbolInput);
+    if (!normalized) {
+      setSymbolEditorError("Inserisci un simbolo valido.");
+      return;
+    }
+    if (includesSymbol(currentConfig.symbols, normalized)) {
+      setSymbolEditorError("Simbolo gi\u00e0 presente nella lista.");
+      return;
+    }
+
+    setSymbolEditorError(null);
+    await handleConfigUpdate({ symbols: [...currentConfig.symbols, normalized] });
+    setCustomSymbolInput("");
+    setPreviewSymbol(normalized);
+  };
 
   return (
     <motion.div
@@ -1094,18 +1157,38 @@ export default function BotControlPage() {
               <label className="block text-sm font-medium mb-2">
                 Trading Symbols
               </label>
-              <div className="grid grid-cols-3 gap-2">
-                {AVAILABLE_SYMBOLS.map((symbol) => (
+              <div className="flex gap-2 mb-3">
+                <input
+                  type="text"
+                  value={customSymbolInput}
+                  onChange={(e) => setCustomSymbolInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void handleAddCustomSymbol();
+                    }
+                  }}
+                  placeholder="Aggiungi simbolo libero (es. XAUUSDm, GER40Cash#, US500)"
+                  className="input flex-1"
+                />
+                <button
+                  onClick={() => void handleAddCustomSymbol()}
+                  className="btn-secondary flex items-center gap-1 px-3"
+                >
+                  <Plus size={14} />
+                  Add
+                </button>
+              </div>
+              {symbolEditorError && (
+                <p className="text-xs text-red-400 mb-3">{symbolEditorError}</p>
+              )}
+              <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1">
+                {symbolSuggestions.map((symbol) => (
                   <button
                     key={symbol}
-                    onClick={() => {
-                      const newSymbols = currentConfig.symbols.includes(symbol)
-                        ? currentConfig.symbols.filter((s) => s !== symbol)
-                        : [...currentConfig.symbols, symbol];
-                      handleConfigUpdate({ symbols: newSymbols });
-                    }}
+                    onClick={() => void handleToggleSymbol(symbol)}
                     className={`px-3 py-2 rounded-lg text-sm transition-colors ${
-                      currentConfig.symbols.includes(symbol)
+                      includesSymbol(currentConfig.symbols, symbol)
                         ? "bg-indigo-600 text-white"
                         : "bg-slate-700 text-slate-300 hover:bg-slate-600"
                     }`}
@@ -1114,6 +1197,9 @@ export default function BotControlPage() {
                   </button>
                 ))}
               </div>
+              <p className="text-xs text-slate-400 mt-3">
+                I simboli vengono risolti dinamicamente dal broker anche con prefissi/suffissi.
+              </p>
             </div>
 
             {/* Analysis Mode */}

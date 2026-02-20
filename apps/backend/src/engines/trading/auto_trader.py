@@ -11,6 +11,7 @@ This bot:
 """
 
 import asyncio
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -929,8 +930,38 @@ class AutoTrader:
         return self.calendar_service.should_avoid_trading(symbol)
 
     def _normalize_symbol(self, symbol: str) -> str:
-        """Normalizza simbolo da formato UI (EUR/USD) a formato interno (EUR_USD)."""
-        return symbol.replace("/", "_")
+        """Normalize symbol input while preserving broker-native variants."""
+        raw = str(symbol or "").strip().upper()
+        if not raw:
+            return ""
+
+        compact = re.sub(r"\s+", "", raw)
+        compact = compact.replace("\\", "/")
+
+        if "/" in compact:
+            left, right = compact.split("/", 1)
+            if left and right:
+                return f"{left}_{right}"
+            return compact.replace("/", "_")
+
+        if "_" in compact:
+            left, right = compact.split("_", 1)
+            if left and right:
+                return f"{left}_{right}"
+            return compact
+
+        plain = "".join(ch for ch in compact if ch.isalnum())
+        if len(plain) == 6 and plain.isalpha():
+            return f"{plain[:3]}_{plain[3:]}"
+
+        return compact
+
+    def _format_symbol_for_tradingview(self, symbol: str) -> str:
+        raw = str(symbol or "").strip().upper()
+        if not raw:
+            return ""
+        compact = raw.replace("/", "").replace("_", "")
+        return "".join(ch for ch in compact if ch.isalnum() or ch == ":")
 
     def _canonical_symbol(self, symbol: str | None) -> str:
         """Canonical symbol key for resilient matching across brokers/suffixes."""
@@ -1207,7 +1238,7 @@ class AutoTrader:
                 self._log_analysis(symbol, "info", f"Avvio analisi AI per {symbol}...")
 
                 # TradingView AI Agent - UNICO motore di analisi
-                tv_symbol = symbol.replace("/", "").replace("_", "")
+                tv_symbol = self._format_symbol_for_tradingview(symbol)
                 mode_str = self.config.analysis_mode.value.lower()
 
                 self._log_analysis(symbol, "analysis", f"TradingView Agent: analisi {mode_str} su {tv_symbol}")

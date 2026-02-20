@@ -17,6 +17,7 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -210,6 +211,26 @@ class MetaTraderBroker(BaseBroker):
         'ZN1': ['ZN', 'ZNm', 'ZN1', 'ZN1!', 'TNOTE'],
     }
 
+    # Affixes frequently used by MT brokers around instrument names.
+    LOOKUP_AFFIX_SUFFIXES = (
+        "MICRO", "MINI", "NANO",
+        "CASH", "SPOT",
+        "PRO", "RAW", "ECN", "STP",
+        "MT4", "MT5",
+        "M", "I", "R", "S", "Z", "P", "Q",
+    )
+    LOOKUP_AFFIX_PREFIXES = (
+        "MICRO", "MINI", "NANO",
+        "PRO", "RAW", "ECN", "STP",
+        "MT4", "MT5",
+        "M", "I", "R", "S", "Z", "P", "Q",
+    )
+    CONTRACT_TAIL_PATTERNS = (
+        r"(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)(20)?\d{2}$",
+        r"Q[1-4](20)?\d{2}$",
+        r"[FGHJKMNQUVXZ]\d{1,2}$",
+    )
+
     # Cache TTLs (in seconds)
     ACCOUNT_INFO_CACHE_TTL = 30  # Cache account info for 30 seconds
     POSITIONS_CACHE_TTL = 15  # Cache positions for 15 seconds
@@ -237,6 +258,8 @@ class MetaTraderBroker(BaseBroker):
         self._symbol_map: dict[str, str] = {}  # Maps our symbols to broker symbols
         self._broker_symbols: list[str] = []  # List of available broker symbols
         self._broker_symbol_meta: dict[str, dict[str, Any]] = {}  # Raw symbol metadata from MetaApi
+        self._broker_token_map: dict[str, str] = {}  # token -> unique broker symbol
+        self._broker_token_collisions: set[str] = set()
         self._alias_lookup_map: dict[str, str] = self._build_alias_lookup_map()
         self._client_api_url: str | None = None  # Set during connect based on region
 
@@ -482,37 +505,70 @@ class MetaTraderBroker(BaseBroker):
         if not token:
             return raw
 
-        canonical = self._alias_lookup_map.get(token)
-        if canonical:
-            return canonical
+        for candidate in self._expand_symbol_token_candidates(token):
+            canonical = self._alias_lookup_map.get(candidate)
+            if canonical:
+                return canonical
 
-        # Try again stripping common broker adornments.
-        trimmed = token
-        for suffix in ("CASH", "SPOT", "PRO", "RAW", "ECN", "MICRO"):
-            if trimmed.endswith(suffix) and len(trimmed) > len(suffix):
-                candidate = trimmed[: -len(suffix)]
-                canonical = self._alias_lookup_map.get(candidate)
-                if canonical:
-                    return canonical
-                trimmed = candidate
-
-        # Try removing date/futures code tail for user-provided contract strings.
-        contract_patterns = (
-            r"(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)(20)?\d{2}$",
-            r"Q[1-4](20)?\d{2}$",
-            r"[FGHJKMNQUVXZ]\d{1,2}$",
-        )
-        for pattern in contract_patterns:
-            candidate = re.sub(pattern, "", trimmed)
-            if candidate != trimmed and candidate:
-                canonical = self._alias_lookup_map.get(candidate)
-                if canonical:
-                    return canonical
+        for candidate in self._expand_symbol_token_candidates(token):
+            broker_symbol = self._broker_token_map.get(candidate)
+            if broker_symbol:
+                return broker_symbol
 
         return raw
 
     def _normalize_symbol_token(self, symbol: str) -> str:
         return "".join(ch for ch in (symbol or "").upper() if ch.isalnum())
+
+    def _encode_symbol_path(self, symbol: str) -> str:
+        """Encode broker-native symbol for safe usage inside URL path segments."""
+        return quote(str(symbol or ""), safe="")
+
+    def _strip_contract_tail_token(self, token: str) -> str:
+        current = token
+        for pattern in self.CONTRACT_TAIL_PATTERNS:
+            updated = re.sub(pattern, "", current)
+            if updated != current and updated:
+                return updated
+        return current
+
+    def _expand_symbol_token_candidates(self, token: str) -> list[str]:
+        if not token:
+            return []
+
+        ordered: list[str] = []
+        seen: set[str] = set()
+        pending: list[str] = [token]
+
+        while pending and len(ordered) < 48:
+            current = pending.pop(0)
+            if not current or current in seen:
+                continue
+            seen.add(current)
+            ordered.append(current)
+
+            stripped_contract = self._strip_contract_tail_token(current)
+            if stripped_contract and stripped_contract != current:
+                pending.append(stripped_contract)
+
+            for suffix in self.LOOKUP_AFFIX_SUFFIXES:
+                if current.endswith(suffix) and len(current) > (len(suffix) + 2):
+                    pending.append(current[: -len(suffix)])
+
+            for prefix in self.LOOKUP_AFFIX_PREFIXES:
+                if current.startswith(prefix) and len(current) > (len(prefix) + 2):
+                    pending.append(current[len(prefix):])
+
+            if len(current) > 6 and current[-1:].isdigit():
+                pending.append(current[:-1])
+            if len(current) > 7 and current[-2:].isdigit():
+                pending.append(current[:-2])
+            if len(current) > 6 and current[:1].isdigit():
+                pending.append(current[1:])
+            if len(current) > 7 and current[:2].isdigit():
+                pending.append(current[2:])
+
+        return ordered
 
     def _candidate_bases(self, symbol: str) -> list[str]:
         lookup = self._symbol_lookup_key(symbol)
@@ -521,9 +577,12 @@ class MetaTraderBroker(BaseBroker):
         seen: set[str] = set()
         for candidate in raw_candidates:
             token = self._normalize_symbol_token(candidate)
-            if token and token not in seen:
-                seen.add(token)
-                normalized.append(token)
+            if not token:
+                continue
+            for variant in self._expand_symbol_token_candidates(token):
+                if variant and variant not in seen:
+                    seen.add(variant)
+                    normalized.append(variant)
         return normalized
 
     def _is_forex_lookup(self, lookup: str) -> bool:
@@ -951,7 +1010,7 @@ class MetaTraderBroker(BaseBroker):
 
         spec = await self._request(
             "GET",
-            f"/users/current/accounts/{self.account_id}/symbols/{broker_symbol}/specification",
+            f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(broker_symbol)}/specification",
         )
         self._set_cache(cache_key, spec, 300)  # Cache for 5 minutes
         return spec
@@ -1104,6 +1163,19 @@ class MetaTraderBroker(BaseBroker):
 
             # Deduplicate while preserving order
             self._broker_symbols = list(dict.fromkeys(self._broker_symbols))
+            self._broker_token_map = {}
+            self._broker_token_collisions = set()
+            for broker_symbol in self._broker_symbols:
+                token = self._normalize_symbol_token(broker_symbol)
+                if not token:
+                    continue
+                existing = self._broker_token_map.get(token)
+                if existing and existing != broker_symbol:
+                    self._broker_token_collisions.add(token)
+                else:
+                    self._broker_token_map[token] = broker_symbol
+            for token in self._broker_token_collisions:
+                self._broker_token_map.pop(token, None)
 
             print(f"[MetaTrader] Broker has {len(self._broker_symbols)} symbols available")
 
@@ -2242,8 +2314,10 @@ class MetaTraderBroker(BaseBroker):
 
             last_error: Exception | None = None
             skipped_or_rejected: list[str] = []
+            attempted_candidates: list[str] = []
             request_attempts = 0
             for candidate in candidates[:12]:
+                attempted_candidates.append(candidate)
                 if self._is_forex_lookup(lookup) and not self._is_forex_candidate_compatible(lookup, candidate):
                     skipped_or_rejected.append(f"{candidate}(FOREX_MISMATCH)")
                     continue
@@ -2273,7 +2347,7 @@ class MetaTraderBroker(BaseBroker):
                     request_attempts += 1
                     price_data = await self._request(
                         "GET",
-                        f"/users/current/accounts/{self.account_id}/symbols/{candidate}/current-price",
+                        f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(candidate)}/current-price",
                     )
 
                     try:
@@ -2319,7 +2393,9 @@ class MetaTraderBroker(BaseBroker):
                 )
 
             if last_error:
-                raise last_error
+                detail = f"{type(last_error).__name__}: {last_error}"
+                tried = ", ".join(attempted_candidates[:12]) or "<none>"
+                raise Exception(f"{detail} | candidates tried: {tried}")
             raise Exception("No symbol candidates available for pricing")
 
         except RateLimitError:
@@ -2405,7 +2481,7 @@ class MetaTraderBroker(BaseBroker):
 
         candles = await self._request(
             "GET",
-            f"/users/current/accounts/{self.account_id}/historical-market-data/symbols/{broker_symbol}/timeframes/{mt_timeframe}/candles",
+            f"/users/current/accounts/{self.account_id}/historical-market-data/symbols/{self._encode_symbol_path(broker_symbol)}/timeframes/{mt_timeframe}/candles",
             params={"limit": count},
         )
 
