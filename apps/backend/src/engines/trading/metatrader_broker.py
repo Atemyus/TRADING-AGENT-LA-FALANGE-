@@ -585,6 +585,41 @@ class MetaTraderBroker(BaseBroker):
                     normalized.append(variant)
         return normalized
 
+    def _with_common_symbol_suffix_variants(self, candidates: list[str]) -> list[str]:
+        """
+        Expand raw fallback candidates with common broker suffix variants.
+        Important for brokers like XM that append '#'.
+        """
+        expanded: list[str] = []
+        seen: set[str] = set()
+
+        for candidate in candidates:
+            base = str(candidate or "").strip()
+            if not base:
+                continue
+
+            variants = [base]
+            if base.endswith("#"):
+                variants.append(base[:-1])
+            else:
+                variants.append(f"{base}#")
+
+            # Common dotted forms used by some brokers.
+            if not base.endswith("."):
+                variants.append(f"{base}.")
+            if not base.endswith(".#"):
+                variants.append(f"{base}.#")
+
+            for variant in variants:
+                if not variant:
+                    continue
+                token = self._normalize_symbol_token(variant)
+                if token and token not in seen:
+                    seen.add(token)
+                    expanded.append(variant)
+
+        return expanded
+
     def _lookup_probe_tokens(self, lookup: str) -> list[str]:
         """
         Build search probes for fuzzy broker-symbol matching when direct alias
@@ -905,6 +940,7 @@ class MetaTraderBroker(BaseBroker):
         lookup = self._symbol_lookup_key(symbol)
         if not self._broker_symbols:
             raw_candidates = [lookup.replace("_", ""), *self.SYMBOL_ALIASES.get(lookup, [])]
+            raw_candidates = self._with_common_symbol_suffix_variants(raw_candidates)
             ordered_fallback: list[str] = []
             seen_tokens: set[str] = set()
             for candidate in raw_candidates:
@@ -935,6 +971,7 @@ class MetaTraderBroker(BaseBroker):
                 lookup.replace("_", ""),
                 *self.SYMBOL_ALIASES.get(lookup, []),
             ]
+            raw_candidates = self._with_common_symbol_suffix_variants(raw_candidates)
             ordered_fallback: list[str] = []
             seen_tokens: set[str] = set()
             for candidate in raw_candidates:
