@@ -781,7 +781,16 @@ class MetaTraderBroker(BaseBroker):
     def _get_symbol_candidates(self, symbol: str) -> list[str]:
         lookup = self._symbol_lookup_key(symbol)
         if not self._broker_symbols:
-            return [lookup.replace("_", "")]
+            raw_candidates = [lookup.replace("_", ""), *self.SYMBOL_ALIASES.get(lookup, [])]
+            ordered_fallback: list[str] = []
+            seen_tokens: set[str] = set()
+            for candidate in raw_candidates:
+                normalized = self._normalize_symbol_token(candidate)
+                if not normalized or normalized in seen_tokens:
+                    continue
+                seen_tokens.add(normalized)
+                ordered_fallback.append(candidate)
+            return ordered_fallback or [lookup.replace("_", "")]
 
         bases = self._candidate_bases(lookup)
         scored: list[tuple[int, str]] = []
@@ -793,7 +802,21 @@ class MetaTraderBroker(BaseBroker):
                 score_by_symbol[broker_symbol] = score
 
         if not scored:
-            return []
+            # Some broker setups expose fewer symbols in /symbols than those tradable
+            # via current-price/trade endpoints. Try canonical + aliases as fallback.
+            sticky = self._symbol_map.get(lookup)
+            raw_candidates = [sticky, lookup.replace("_", ""), *self.SYMBOL_ALIASES.get(lookup, [])]
+            ordered_fallback: list[str] = []
+            seen_tokens: set[str] = set()
+            for candidate in raw_candidates:
+                if not candidate:
+                    continue
+                normalized = self._normalize_symbol_token(candidate)
+                if not normalized or normalized in seen_tokens:
+                    continue
+                seen_tokens.add(normalized)
+                ordered_fallback.append(candidate)
+            return ordered_fallback
 
         scored.sort(key=lambda item: (-item[0], len(item[1])))
         ordered: list[str] = []
