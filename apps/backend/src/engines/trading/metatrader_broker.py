@@ -11,6 +11,7 @@ Setup:
 """
 
 import asyncio
+import re
 import time
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
@@ -473,13 +474,58 @@ class MetaTraderBroker(BaseBroker):
                 normalized.append(token)
         return normalized
 
-    def _score_symbol_match(self, broker_symbol: str, bases: list[str]) -> int:
+    def _is_forex_lookup(self, lookup: str) -> bool:
+        parts = (lookup or "").split("_")
+        return len(parts) == 2 and all(len(part) == 3 and part.isalpha() for part in parts)
+
+    def _looks_like_dated_contract(self, broker_symbol: str) -> bool:
+        upper = (broker_symbol or "").upper()
+        if not upper:
+            return False
+
+        month_pattern = r"(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)"
+        if re.search(rf"(?:^|[^A-Z]){month_pattern}(?:20)?\d{{2}}(?:[^A-Z]|$)", upper):
+            return True
+        if re.search(r"(?:^|[^A-Z])Q[1-4](?:20)?\d{2}(?:[^A-Z]|$)", upper):
+            return True
+
+        token = self._normalize_symbol_token(upper)
+        if re.search(r"[FGHJKMNQUVXZ]\d{1,2}$", token):
+            return True
+        return False
+
+    def _variant_score_adjustment(self, lookup: str, broker_symbol: str) -> int:
+        """
+        Prefer spot/cash symbols and penalize expiring futures-style contracts.
+        This keeps routing stable across brokers using suffix/prefix naming.
+        """
+        upper = (broker_symbol or "").upper()
+        token = self._normalize_symbol_token(upper)
+        if not token:
+            return 0
+
+        adjustment = 0
+        if any(marker in upper for marker in ("CASH", "SPOT", ".CASH", "_CASH", "#")):
+            adjustment += 80
+        if any(marker in upper for marker in ("FUT", "FUTURE", "CONTRACT", "ROLL")):
+            adjustment -= 120
+        if self._looks_like_dated_contract(upper):
+            adjustment -= 220
+
+        # For forex pairs, dated contracts are almost always a wrong variant.
+        if self._is_forex_lookup(lookup) and self._looks_like_dated_contract(upper):
+            adjustment -= 140
+
+        return adjustment
+
+    def _score_symbol_match(self, broker_symbol: str, bases: list[str], lookup: str) -> int:
         broker_token = self._normalize_symbol_token(broker_symbol)
         if not broker_token:
             return 0
 
         best = 0
-        for base in bases:
+        matched = False
+        for idx, base in enumerate(bases):
             if not base:
                 continue
             score = 0
@@ -494,10 +540,17 @@ class MetaTraderBroker(BaseBroker):
             else:
                 continue
 
+            matched = True
             score -= abs(len(broker_token) - len(base))
+            score += max(0, 120 - (idx * 6))  # Respect alias priority (canonical first)
             if score > best:
                 best = score
-        return best
+
+        if not matched:
+            return 0
+
+        best += self._variant_score_adjustment(lookup, broker_symbol)
+        return max(1, best)
 
     def _get_symbol_candidates(self, symbol: str) -> list[str]:
         lookup = self._symbol_lookup_key(symbol)
@@ -506,10 +559,12 @@ class MetaTraderBroker(BaseBroker):
 
         bases = self._candidate_bases(lookup)
         scored: list[tuple[int, str]] = []
+        score_by_symbol: dict[str, int] = {}
         for broker_symbol in self._broker_symbols:
-            score = self._score_symbol_match(broker_symbol, bases)
+            score = self._score_symbol_match(broker_symbol, bases, lookup)
             if score > 0:
                 scored.append((score, broker_symbol))
+                score_by_symbol[broker_symbol] = score
 
         if not scored:
             return []
@@ -524,7 +579,16 @@ class MetaTraderBroker(BaseBroker):
 
         mapped = self._symbol_map.get(lookup)
         if mapped and mapped in seen:
-            ordered = [mapped, *[item for item in ordered if item != mapped]]
+            top_score = scored[0][0]
+            mapped_score = score_by_symbol.get(mapped, 0)
+            # Keep sticky mapping only if comparable with current best candidate.
+            if mapped_score >= (top_score - 40):
+                ordered = [mapped, *[item for item in ordered if item != mapped]]
+            else:
+                print(
+                    f"[MetaTrader] Ignoring stale mapped symbol {mapped} for {lookup} "
+                    f"(mappedScore={mapped_score}, bestScore={top_score})"
+                )
 
         return ordered
 
