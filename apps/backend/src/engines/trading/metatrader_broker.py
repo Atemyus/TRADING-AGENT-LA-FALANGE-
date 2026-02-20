@@ -237,6 +237,7 @@ class MetaTraderBroker(BaseBroker):
         self._symbol_map: dict[str, str] = {}  # Maps our symbols to broker symbols
         self._broker_symbols: list[str] = []  # List of available broker symbols
         self._broker_symbol_meta: dict[str, dict[str, Any]] = {}  # Raw symbol metadata from MetaApi
+        self._alias_lookup_map: dict[str, str] = self._build_alias_lookup_map()
         self._client_api_url: str | None = None  # Set during connect based on region
 
         # Cache for API responses to avoid rate limiting
@@ -456,8 +457,59 @@ class MetaTraderBroker(BaseBroker):
 
         return response.json()
 
+    def _build_alias_lookup_map(self) -> dict[str, str]:
+        """
+        Build token->canonical lookup map from SYMBOL_ALIASES.
+
+        Allows users to type common variants (e.g. DAX, XAUUSD, GER40Cash#)
+        while keeping internal canonical keys (e.g. DE40, XAU_USD).
+        """
+        mapping: dict[str, str] = {}
+        for canonical, aliases in self.SYMBOL_ALIASES.items():
+            raw_variants = [canonical, canonical.replace("_", ""), *aliases]
+            for variant in raw_variants:
+                token = self._normalize_symbol_token(variant)
+                if token and token not in mapping:
+                    mapping[token] = canonical
+        return mapping
+
     def _symbol_lookup_key(self, symbol: str) -> str:
-        return (symbol or "").replace("/", "_").strip().upper()
+        raw = (symbol or "").replace("/", "_").strip().upper()
+        if not raw:
+            return raw
+
+        token = self._normalize_symbol_token(raw)
+        if not token:
+            return raw
+
+        canonical = self._alias_lookup_map.get(token)
+        if canonical:
+            return canonical
+
+        # Try again stripping common broker adornments.
+        trimmed = token
+        for suffix in ("CASH", "SPOT", "PRO", "RAW", "ECN", "MICRO"):
+            if trimmed.endswith(suffix) and len(trimmed) > len(suffix):
+                candidate = trimmed[: -len(suffix)]
+                canonical = self._alias_lookup_map.get(candidate)
+                if canonical:
+                    return canonical
+                trimmed = candidate
+
+        # Try removing date/futures code tail for user-provided contract strings.
+        contract_patterns = (
+            r"(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)(20)?\d{2}$",
+            r"Q[1-4](20)?\d{2}$",
+            r"[FGHJKMNQUVXZ]\d{1,2}$",
+        )
+        for pattern in contract_patterns:
+            candidate = re.sub(pattern, "", trimmed)
+            if candidate != trimmed and candidate:
+                canonical = self._alias_lookup_map.get(candidate)
+                if canonical:
+                    return canonical
+
+        return raw
 
     def _normalize_symbol_token(self, symbol: str) -> str:
         return "".join(ch for ch in (symbol or "").upper() if ch.isalnum())
@@ -477,6 +529,21 @@ class MetaTraderBroker(BaseBroker):
     def _is_forex_lookup(self, lookup: str) -> bool:
         parts = (lookup or "").split("_")
         return len(parts) == 2 and all(len(part) == 3 and part.isalpha() for part in parts)
+
+    def _is_futures_intent_lookup(self, lookup: str) -> bool:
+        """
+        Return True when our internal symbol explicitly targets futures contracts.
+        Examples: ES1, NQ1, YM1, CL1, 6E1.
+        """
+        token = self._normalize_symbol_token(lookup)
+        if not token or not token.endswith("1"):
+            return False
+        if token in {"US30", "US500", "US2000", "NAS100"}:
+            return False
+        if len(token) <= 5:
+            return True
+        known_prefixes = {"ES", "NQ", "YM", "RTY", "GC", "SI", "CL", "NG", "6E", "6B", "6J", "ZB", "ZN"}
+        return any(token.startswith(prefix) for prefix in known_prefixes)
 
     def _looks_like_dated_contract(self, broker_symbol: str) -> bool:
         upper = (broker_symbol or "").upper()
@@ -576,6 +643,14 @@ class MetaTraderBroker(BaseBroker):
             if broker_symbol not in seen:
                 seen.add(broker_symbol)
                 ordered.append(broker_symbol)
+
+        # If this lookup is not futures-oriented, avoid expiring contracts when
+        # non-dated variants are available (e.g. prefer GER40Cash# over GER40-MAR26).
+        if not self._is_futures_intent_lookup(lookup):
+            non_dated = [s for s in ordered if not self._looks_like_dated_contract(s)]
+            dated = [s for s in ordered if self._looks_like_dated_contract(s)]
+            if non_dated:
+                ordered = [*non_dated, *dated]
 
         mapped = self._symbol_map.get(lookup)
         if mapped and mapped in seen:
@@ -678,12 +753,15 @@ class MetaTraderBroker(BaseBroker):
 
         disabled_details: list[str] = []
         unknown_mode_candidates: list[tuple[str, dict[str, Any]]] = []
+        unresolved_spec_candidates: list[str] = []
+        disabled_candidates: list[tuple[str, dict[str, Any], Any]] = []
 
         for broker_symbol in candidates[:30]:
             try:
                 spec = await self._get_symbol_specification_for_broker_symbol(broker_symbol)
             except Exception as exc:
                 print(f"[MetaTrader] Symbol spec lookup failed for {broker_symbol}: {exc}")
+                unresolved_spec_candidates.append(broker_symbol)
                 continue
 
             trade_mode = spec.get("tradeMode")
@@ -699,11 +777,33 @@ class MetaTraderBroker(BaseBroker):
                 return broker_symbol, spec, None
 
             disabled_details.append(f"{broker_symbol}({trade_mode})")
+            disabled_candidates.append((broker_symbol, spec, trade_mode))
 
         if unknown_mode_candidates:
             broker_symbol, spec = unknown_mode_candidates[0]
             self._symbol_map[lookup] = broker_symbol
             return broker_symbol, spec, None
+
+        if disabled_candidates:
+            # Do not hard-fail immediately on tradeMode metadata; some brokers
+            # can return stale/overly strict mode flags while order endpoint still
+            # provides the definitive answer.
+            broker_symbol, spec, trade_mode = disabled_candidates[0]
+            self._symbol_map[lookup] = broker_symbol
+            print(
+                f"[MetaTrader] No explicitly tradable variant for {lookup} based on tradeMode "
+                f"(selected fallback {broker_symbol}, tradeMode={trade_mode})."
+            )
+            return broker_symbol, spec, None
+
+        if unresolved_spec_candidates:
+            broker_symbol = unresolved_spec_candidates[0]
+            self._symbol_map[lookup] = broker_symbol
+            print(
+                f"[MetaTrader] Falling back to unresolved-spec candidate for {lookup}: "
+                f"{broker_symbol}"
+            )
+            return broker_symbol, {}, None
 
         fallback_symbol = candidates[0]
         self._symbol_map[lookup] = fallback_symbol
