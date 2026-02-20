@@ -585,6 +585,70 @@ class MetaTraderBroker(BaseBroker):
                     normalized.append(variant)
         return normalized
 
+    def _lookup_probe_tokens(self, lookup: str) -> list[str]:
+        """
+        Build search probes for fuzzy broker-symbol matching when direct alias
+        mapping is not enough.
+        """
+        stopwords = {
+            "USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD",
+            "SGD", "HKD", "NOK", "SEK", "DKK", "PLN", "TRY", "MXN",
+            "ZAR", "CNH", "HUF", "CZK", "RON",
+            "CASH", "SPOT", "PRO", "RAW", "ECN", "STP", "MICRO", "MINI",
+            "MT4", "MT5",
+        }
+        probes: set[str] = set()
+        for base in self._candidate_bases(lookup)[:14]:
+            for part in re.findall(r"[A-Z0-9]{3,}", base.upper()):
+                if part in stopwords:
+                    continue
+                probes.add(part)
+
+        # Metals often use broker-specific names with only GOLD/SILVER in description.
+        if "XAU" in probes or lookup == "XAU_USD":
+            probes.update({"XAU", "GOLD"})
+        if "XAG" in probes or lookup == "XAG_USD":
+            probes.update({"XAG", "SILVER"})
+
+        ordered = sorted(probes, key=lambda token: (-len(token), token))
+        return ordered[:20]
+
+    def _match_broker_symbols_by_lookup(self, lookup: str, limit: int = 20) -> list[str]:
+        if not self._broker_symbols:
+            return []
+
+        probes = self._lookup_probe_tokens(lookup)
+        if not probes:
+            return []
+
+        scored: list[tuple[int, str]] = []
+        for broker_symbol in self._broker_symbols:
+            token = self._normalize_symbol_token(broker_symbol)
+            meta = self._broker_symbol_meta.get(broker_symbol, {})
+            description = self._normalize_symbol_token(str(meta.get("description", "")))
+            if not token and not description:
+                continue
+
+            best_score = 0
+            for probe in probes:
+                if probe in token or probe in description:
+                    best_score = max(best_score, len(probe))
+
+            if best_score > 0:
+                scored.append((best_score, broker_symbol))
+
+        scored.sort(key=lambda item: (-item[0], len(item[1]), item[1]))
+        ordered: list[str] = []
+        seen: set[str] = set()
+        for _, broker_symbol in scored:
+            if broker_symbol in seen:
+                continue
+            seen.add(broker_symbol)
+            ordered.append(broker_symbol)
+            if len(ordered) >= limit:
+                break
+        return ordered
+
     def _is_forex_lookup(self, lookup: str) -> bool:
         parts = (lookup or "").split("_")
         return len(parts) == 2 and all(len(part) == 3 and part.isalpha() for part in parts)
@@ -864,7 +928,13 @@ class MetaTraderBroker(BaseBroker):
             # Some broker setups expose fewer symbols in /symbols than those tradable
             # via current-price/trade endpoints. Try canonical + aliases as fallback.
             sticky = self._symbol_map.get(lookup)
-            raw_candidates = [sticky, lookup.replace("_", ""), *self.SYMBOL_ALIASES.get(lookup, [])]
+            fuzzy_matches = self._match_broker_symbols_by_lookup(lookup, limit=20)
+            raw_candidates = [
+                sticky,
+                *fuzzy_matches,
+                lookup.replace("_", ""),
+                *self.SYMBOL_ALIASES.get(lookup, []),
+            ]
             ordered_fallback: list[str] = []
             seen_tokens: set[str] = set()
             for candidate in raw_candidates:
@@ -1025,6 +1095,8 @@ class MetaTraderBroker(BaseBroker):
         Returns: (broker_symbol, spec, optional_error_message)
         """
         lookup = self._symbol_lookup_key(symbol)
+        if not self._broker_symbols:
+            await self._ensure_symbol_inventory(force_reload=True)
         candidates = self._get_symbol_candidates(lookup)
         if not candidates:
             fallback = lookup.replace("_", "")
@@ -1202,6 +1274,25 @@ class MetaTraderBroker(BaseBroker):
 
         except Exception as e:
             print(f"Warning: Could not build symbol map: {e}")
+
+    async def _ensure_symbol_inventory(self, *, force_reload: bool = False) -> None:
+        """
+        Ensure broker symbols metadata is available.
+        Useful when initial symbol-map build failed during connect.
+        """
+        if not self._connected:
+            await self.connect()
+            return
+        if self._broker_symbols and not force_reload:
+            return
+
+        before = len(self._broker_symbols)
+        await self._build_symbol_map()
+        after = len(self._broker_symbols)
+        if after == 0:
+            print("[MetaTrader] WARNING: Broker symbol inventory still empty after refresh")
+        elif force_reload and after != before:
+            print(f"[MetaTrader] Symbol inventory refreshed: {before} -> {after}")
 
     async def connect(self) -> None:
         """Connect to MetaTrader account via MetaApi."""
@@ -2289,6 +2380,9 @@ class MetaTraderBroker(BaseBroker):
         if not self._connected:
             await self.connect()
 
+        if not self._broker_symbols:
+            await self._ensure_symbol_inventory(force_reload=True)
+
         lookup = self._symbol_lookup_key(symbol)
         broker_symbol = self._resolve_symbol(lookup)
         cache_key = f"price_{symbol}"
@@ -2395,7 +2489,11 @@ class MetaTraderBroker(BaseBroker):
             if last_error:
                 detail = f"{type(last_error).__name__}: {last_error}"
                 tried = ", ".join(attempted_candidates[:12]) or "<none>"
-                raise Exception(f"{detail} | candidates tried: {tried}")
+                related = self._match_broker_symbols_by_lookup(lookup, limit=8)
+                related_text = ", ".join(related) if related else "<none>"
+                raise Exception(
+                    f"{detail} | candidates tried: {tried} | broker related symbols: {related_text}"
+                )
             raise Exception("No symbol candidates available for pricing")
 
         except RateLimitError:
