@@ -193,6 +193,7 @@ class AutoTrader:
         self._callbacks: list[Callable] = []
         self._last_news_refresh: datetime | None = None
         self._start_stop_lock = asyncio.Lock()
+        self._symbol_tradability_cache: dict[tuple[str, str], tuple[bool, str, datetime]] = {}
 
     def configure(self, config: BotConfig):
         """Update bot configuration."""
@@ -629,6 +630,7 @@ class AutoTrader:
                 print("[AutoTrader] Using broker credentials from environment variables")
                 self.broker = BrokerFactory.create(broker_type=broker_type)
             await self.broker.connect()
+            self._symbol_tradability_cache.clear()
             print("[AutoTrader] Broker connected")
 
             # Initialize economic calendar service (news filter)
@@ -1015,6 +1017,57 @@ class AutoTrader:
 
         return True, ""
 
+
+    def _tradability_cache_key(self, symbol: str, side: OrderSide) -> tuple[str, str]:
+        return (self._normalize_symbol(symbol).upper(), side.value)
+
+    def _mark_symbol_side_untradable(self, symbol: str, side: OrderSide, reason: str) -> None:
+        key = self._tradability_cache_key(symbol, side)
+        self._symbol_tradability_cache[key] = (False, reason, datetime.utcnow())
+
+    async def _check_symbol_side_tradable(self, symbol: str, direction: str) -> tuple[bool, str]:
+        """
+        Verify tradability for a symbol/direction using broker-native routing.
+        Uses a short-lived cache to avoid repeated metadata requests.
+        """
+        if not self.broker:
+            return False, "broker non inizializzato"
+
+        direction_key = str(direction or "").strip().upper()
+        if direction_key in {"LONG", "BUY"}:
+            side = OrderSide.BUY
+        elif direction_key in {"SHORT", "SELL"}:
+            side = OrderSide.SELL
+        else:
+            return True, ""
+
+        cache_key = self._tradability_cache_key(symbol, side)
+        cached = self._symbol_tradability_cache.get(cache_key)
+        if cached:
+            is_tradable, reason, checked_at = cached
+            if (datetime.utcnow() - checked_at).total_seconds() <= 600:
+                return is_tradable, reason
+
+        checker = getattr(self.broker, "can_trade_symbol", None)
+        if not callable(checker):
+            return True, ""
+
+        try:
+            tradable, reason, resolved_symbol = await checker(symbol, side)
+            if tradable:
+                self._symbol_tradability_cache[cache_key] = (True, "", datetime.utcnow())
+                return True, ""
+
+            reason_text = reason or f"Simbolo non tradabile per side={side.value}"
+            if resolved_symbol:
+                reason_text = f"{reason_text} (resolved={resolved_symbol})"
+            self._symbol_tradability_cache[cache_key] = (False, reason_text, datetime.utcnow())
+            return False, reason_text
+        except Exception as exc:
+            # Do not block trading on temporary metadata/API failures.
+            self._log_analysis(symbol, "info", f"Check tradabilita saltato: {exc}")
+            return True, ""
+
     async def _analyze_and_trade(self):
         """Analyze all symbols and execute trades if conditions met."""
         # First manage existing positions (BE, Trailing Stop)
@@ -1034,6 +1087,19 @@ class AutoTrader:
                 can_open, block_reason = await self._can_open_trade_for_symbol(symbol)
                 if not can_open:
                     self._log_analysis(symbol, "skip", f"Condizioni non soddisfatte: {block_reason}")
+                    continue
+
+                long_tradable, long_reason = await self._check_symbol_side_tradable(symbol, "LONG")
+                short_tradable, short_reason = await self._check_symbol_side_tradable(symbol, "SHORT")
+                if not long_tradable and not short_tradable:
+                    self._log_analysis(
+                        symbol,
+                        "skip",
+                        (
+                            "Asset non tradabile su broker per entrambe le direzioni. "
+                            f"LONG: {long_reason} | SHORT: {short_reason}"
+                        ),
+                    )
                     continue
                 # NEWS FILTER: Skip if blocked by upcoming/recent news
                 news_blocked, blocking_event = self._is_news_blocked(symbol)
@@ -1198,6 +1264,15 @@ class AutoTrader:
             can_open, block_reason = await self._can_open_trade_for_symbol(symbol)
             if not can_open:
                 self._log_analysis(symbol, "skip", f"Trade annullato prima dell'esecuzione: {block_reason}")
+                return
+
+            side_tradable, side_reason = await self._check_symbol_side_tradable(symbol, str(direction))
+            if not side_tradable:
+                self._log_analysis(
+                    symbol,
+                    "skip",
+                    f"Trade annullato: simbolo non tradabile per direzione {direction} ({side_reason})",
+                )
                 return
 
             # Verifica che stop_loss e take_profit siano presenti
@@ -1670,6 +1745,14 @@ class AutoTrader:
                 reject_msg = order_result.error_message or 'motivo sconosciuto'
                 self._log_analysis(symbol, "error", f"❌ ORDINE RIFIUTATO: {reject_msg}")
                 self._log_analysis(symbol, "error", f"📋 Dettagli: {side.value} {lot_size} lotti {symbol} | SL: {stop_loss} | TP: {take_profit}")
+                reject_upper = reject_msg.upper()
+                if (
+                    "TRADING NON CONSENTITO" in reject_upper
+                    or "TRADE_MODE_DISABLED" in reject_upper
+                    or "SYMBOL_TRADE_MODE_DISABLED" in reject_upper
+                    or "NESSUNA VARIANTE TRADABILE" in reject_upper
+                ):
+                    self._mark_symbol_side_untradable(symbol, side, reject_msg)
                 print(f"[AutoTrader] Order REJECTED for {symbol}: status={order_result.status}, error={reject_msg}, order_id={order_result.order_id}")
             else:
                 self._log_analysis(symbol, "info", f"⏳ Ordine in stato: {order_result.status.value} — ID: {order_result.order_id or 'in attesa'}")

@@ -754,7 +754,6 @@ class MetaTraderBroker(BaseBroker):
         disabled_details: list[str] = []
         unknown_mode_candidates: list[tuple[str, dict[str, Any]]] = []
         unresolved_spec_candidates: list[str] = []
-        disabled_candidates: list[tuple[str, dict[str, Any], Any]] = []
 
         for broker_symbol in candidates[:30]:
             try:
@@ -777,23 +776,10 @@ class MetaTraderBroker(BaseBroker):
                 return broker_symbol, spec, None
 
             disabled_details.append(f"{broker_symbol}({trade_mode})")
-            disabled_candidates.append((broker_symbol, spec, trade_mode))
 
         if unknown_mode_candidates:
             broker_symbol, spec = unknown_mode_candidates[0]
             self._symbol_map[lookup] = broker_symbol
-            return broker_symbol, spec, None
-
-        if disabled_candidates:
-            # Do not hard-fail immediately on tradeMode metadata; some brokers
-            # can return stale/overly strict mode flags while order endpoint still
-            # provides the definitive answer.
-            broker_symbol, spec, trade_mode = disabled_candidates[0]
-            self._symbol_map[lookup] = broker_symbol
-            print(
-                f"[MetaTrader] No explicitly tradable variant for {lookup} based on tradeMode "
-                f"(selected fallback {broker_symbol}, tradeMode={trade_mode})."
-            )
             return broker_symbol, spec, None
 
         if unresolved_spec_candidates:
@@ -814,6 +800,32 @@ class MetaTraderBroker(BaseBroker):
         if len(disabled_details) > 8:
             detail += f" (+{len(disabled_details) - 8} altre)"
         return fallback_symbol, {}, detail
+
+    async def can_trade_symbol(
+        self,
+        symbol: str,
+        side: OrderSide,
+    ) -> tuple[bool, str, str | None]:
+        """
+        Check whether a symbol can be traded for the requested side.
+        Returns (is_tradable, reason_if_not, resolved_broker_symbol).
+        """
+        broker_symbol, spec, resolution_error = await self._resolve_symbol_for_order(symbol, side)
+        if resolution_error:
+            return (False, resolution_error, None)
+
+        trade_mode = spec.get("tradeMode") if spec else self._broker_symbol_meta.get(broker_symbol, {}).get("tradeMode")
+        if not self._is_trade_mode_compatible(trade_mode, side):
+            return (
+                False,
+                (
+                    f"Trading non consentito su {broker_symbol} per side={side.value} "
+                    f"(tradeMode={trade_mode})."
+                ),
+                broker_symbol,
+            )
+
+        return (True, "", broker_symbol)
 
     def _resolve_symbol(self, symbol: str) -> str:
         """
