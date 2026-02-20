@@ -1702,6 +1702,63 @@ class AutoTrader:
             if order_result.is_filled:
                 fill_price = float(order_result.average_fill_price) if order_result.average_fill_price else current_price
                 filled_size = float(order_result.filled_size) if order_result.filled_size else lot_size
+                broker_warning = (order_result.error_message or "").strip()
+
+                if broker_warning:
+                    warning_upper = broker_warning.upper()
+                    if "PROTECTION_NOT_SET" in warning_upper:
+                        self._log_analysis(
+                            symbol,
+                            "error",
+                            (
+                                "⚠️ Posizione aperta ma broker non ha confermato SL/TP al fill. "
+                                "Tentativo immediato di applicazione protezioni..."
+                            ),
+                        )
+                        protection_applied = False
+                        try:
+                            protection_applied = await self.broker.modify_position(
+                                symbol=symbol,
+                                stop_loss=Decimal(str(stop_loss)),
+                                take_profit=Decimal(str(take_profit)),
+                            )
+                        except Exception as protection_exc:
+                            self._log_analysis(
+                                symbol,
+                                "error",
+                                f"Errore durante applicazione SL/TP post-fill: {protection_exc}",
+                            )
+
+                        if protection_applied:
+                            self._log_analysis(symbol, "info", "✅ SL/TP applicati con successo dopo fallback broker.")
+                        else:
+                            self._log_analysis(
+                                symbol,
+                                "error",
+                                "❌ Impossibile impostare SL/TP post-fill. Chiusura di sicurezza della posizione in corso...",
+                            )
+                            try:
+                                close_res = await self.broker.close_position(symbol=symbol)
+                                if close_res.is_filled:
+                                    self._log_analysis(symbol, "error", "🛑 Posizione chiusa in sicurezza: SL/TP non applicabili.")
+                                else:
+                                    self._log_analysis(
+                                        symbol,
+                                        "error",
+                                        (
+                                            "⚠️ Chiusura di sicurezza non confermata. "
+                                            f"Verifica manualmente la posizione: {close_res.error_message or close_res.status.value}"
+                                        ),
+                                    )
+                            except Exception as close_exc:
+                                self._log_analysis(
+                                    symbol,
+                                    "error",
+                                    f"⚠️ Errore durante chiusura di sicurezza posizione: {close_exc}",
+                                )
+                            return
+                    else:
+                        self._log_analysis(symbol, "info", f"Nota broker su ordine eseguito: {broker_warning}")
 
                 # Break Even: usa il valore AI se disponibile, altrimenti default a 50% della distanza TP
                 be_trigger = consensus.get("break_even_trigger")

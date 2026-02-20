@@ -714,6 +714,49 @@ class MetaTraderBroker(BaseBroker):
         )
         return any(marker in lowered for marker in markers)
 
+    def _is_invalid_stops_rejection(self, string_code: str | None, message: str | None) -> bool:
+        code = (string_code or "").upper()
+        text = (message or "").upper()
+        if code == "TRADE_RETCODE_INVALID_STOPS":
+            return True
+        markers = (
+            "INVALID_STOPS",
+            "INVALID STOPS",
+            "SL/TP NON VALIDI",
+            "STOP LEVEL",
+            "STOPS LEVEL",
+            "FREEZE LEVEL",
+            "TOO CLOSE",
+            "MINIMUM DISTANCE",
+        )
+        return any(marker in text for marker in markers)
+
+    async def _modify_position_by_id(
+        self,
+        position_id: str,
+        stop_loss: float | None = None,
+        take_profit: float | None = None,
+    ) -> bool:
+        payload = {
+            "actionType": "POSITION_MODIFY",
+            "positionId": str(position_id),
+        }
+        if stop_loss is not None:
+            payload["stopLoss"] = float(stop_loss)
+        if take_profit is not None:
+            payload["takeProfit"] = float(take_profit)
+
+        try:
+            await self._request(
+                "POST",
+                f"/users/current/accounts/{self.account_id}/trade",
+                json=payload,
+            )
+            return True
+        except Exception as exc:
+            print(f"[MetaTrader] Failed to apply SL/TP via positionId={position_id}: {exc}")
+            return False
+
     async def _get_symbol_specification_for_broker_symbol(self, broker_symbol: str) -> dict[str, Any]:
         """Get symbol specification using broker-native symbol name."""
         if not self._connected:
@@ -1401,6 +1444,35 @@ class MetaTraderBroker(BaseBroker):
         RETRYABLE_CODES = {"TRADE_RETCODE_UNKNOWN", "TRADE_RETCODE_INVALID_FILL", "TRADE_RETCODE_CONNECTION", "TRADE_RETCODE_TIMEOUT"}
         last_reject_reason = ""
 
+        def _parse_trade_response(result_payload: dict[str, Any]) -> tuple[str, bool, str, Any, str, bool, bool]:
+            order_id = str(result_payload.get("orderId", result_payload.get("positionId", "")))
+            is_filled = bool(result_payload.get("positionId"))
+            string_code = result_payload.get("stringCode", "")
+            numeric_code = result_payload.get("numericCode")
+            error_msg = result_payload.get("errorMessage", result_payload.get("message", ""))
+
+            is_success_code = string_code in SUCCESS_CODES or (numeric_code in SUCCESS_NUMERIC if numeric_code else False)
+            has_order = bool(order_id)
+
+            # For MARKET orders: require positionId or explicit success code.
+            if order.order_type == OrderType.MARKET and not is_filled and not is_success_code and has_order:
+                print(
+                    f"[MetaTrader] Market order has orderId={order_id} but no positionId "
+                    f"and stringCode='{string_code}' - treating as rejection"
+                )
+                has_order = False
+
+            accepted = is_filled or is_success_code or has_order
+            return (
+                order_id,
+                is_filled,
+                string_code,
+                numeric_code,
+                str(error_msg or ""),
+                accepted,
+                has_order,
+            )
+
         for attempt in range(MAX_RETRIES):
             # Apply filling mode override for retries
             override = RETRY_FILLING_OVERRIDES[attempt]
@@ -1419,26 +1491,19 @@ class MetaTraderBroker(BaseBroker):
                 )
                 print(f"[MetaTrader] Order response: {result}")
 
-                order_id = str(result.get("orderId", result.get("positionId", "")))
-                is_filled = bool(result.get("positionId"))
-                string_code = result.get("stringCode", "")
-                numeric_code = result.get("numericCode")
-                error_msg = result.get("errorMessage", result.get("message", ""))
-
-                is_success_code = string_code in SUCCESS_CODES or (numeric_code in SUCCESS_NUMERIC if numeric_code else False)
-                has_order = bool(order_id)
-
-                # For MARKET orders: require positionId or explicit success code
-                # Some brokers return orderId even on rejection
-                is_market = order.order_type == OrderType.MARKET
-                if is_market and not is_filled and not is_success_code and has_order:
-                    # Market order with orderId but no positionId and no success code = likely rejection
-                    print(f"[MetaTrader] Market order has orderId={order_id} but no positionId and stringCode='{string_code}' — treating as rejection")
-                    has_order = False
+                (
+                    order_id,
+                    is_filled,
+                    string_code,
+                    numeric_code,
+                    error_msg,
+                    accepted,
+                    has_order,
+                ) = _parse_trade_response(result)
 
                 # Success path
-                if is_filled or is_success_code or has_order:
-                    if has_order and not is_success_code:
+                if accepted:
+                    if has_order and not is_filled and string_code not in SUCCESS_CODES:
                         print(f"[MetaTrader] WARNING: Unknown stringCode '{string_code}' (numericCode={numeric_code}) but order exists - treating as success")
 
                     order_status = OrderStatus.FILLED if is_filled else (OrderStatus.PENDING if has_order else OrderStatus.REJECTED)
@@ -1469,6 +1534,106 @@ class MetaTraderBroker(BaseBroker):
                     reject_reason = f"Risposta senza codice - full response: {result}"
 
                 last_reject_reason = reject_reason
+
+                invalid_stops_reject = self._is_invalid_stops_rejection(string_code, reject_reason)
+                has_protection_in_payload = ("stopLoss" in payload) or ("takeProfit" in payload)
+                if (
+                    invalid_stops_reject
+                    and order.order_type == OrderType.MARKET
+                    and has_protection_in_payload
+                ):
+                    fallback_payload = dict(payload)
+                    fallback_payload.pop("stopLoss", None)
+                    fallback_payload.pop("takeProfit", None)
+
+                    print(
+                        f"[MetaTrader] INVALID_STOPS on {broker_symbol}. "
+                        "Retrying market order without SL/TP and applying protection after fill..."
+                    )
+                    try:
+                        fallback_result = await self._request(
+                            "POST",
+                            f"/users/current/accounts/{self.account_id}/trade",
+                            json=fallback_payload,
+                        )
+                        print(f"[MetaTrader] Fallback order response (no SL/TP): {fallback_result}")
+
+                        (
+                            fb_order_id,
+                            fb_is_filled,
+                            fb_string_code,
+                            fb_numeric_code,
+                            fb_error_msg,
+                            fb_accepted,
+                            fb_has_order,
+                        ) = _parse_trade_response(fallback_result)
+
+                        if fb_accepted:
+                            order_status = OrderStatus.FILLED if fb_is_filled else (OrderStatus.PENDING if fb_has_order else OrderStatus.REJECTED)
+                            protection_warning = None
+                            requested_sl = float(order.stop_loss) if order.stop_loss is not None else None
+                            requested_tp = float(order.take_profit) if order.take_profit is not None else None
+
+                            if fb_is_filled and (requested_sl is not None or requested_tp is not None):
+                                position_id = str(fallback_result.get("positionId", "") or "")
+                                if position_id:
+                                    protected = await self._modify_position_by_id(
+                                        position_id=position_id,
+                                        stop_loss=requested_sl,
+                                        take_profit=requested_tp,
+                                    )
+                                    if not protected:
+                                        protection_warning = (
+                                            "PROTECTION_NOT_SET: posizione aperta senza SL/TP; "
+                                            "impostazione post-fill fallita"
+                                        )
+                                else:
+                                    protection_warning = (
+                                        "PROTECTION_NOT_SET: posizione aperta ma positionId assente, "
+                                        "impossibile applicare SL/TP post-fill"
+                                    )
+
+                            print(
+                                f"[MetaTrader] Fallback order {order_status.value} | "
+                                f"stringCode: {fb_string_code} | orderId: {fb_order_id}"
+                            )
+                            return OrderResult(
+                                order_id=fb_order_id,
+                                symbol=order.symbol,
+                                side=order.side,
+                                order_type=order.order_type,
+                                status=order_status,
+                                size=order.size,
+                                filled_size=Decimal(str(volume)),
+                                price=order.price,
+                                average_fill_price=Decimal(str(fallback_result.get("openPrice", 0))) if fallback_result.get("openPrice") else None,
+                                commission=Decimal(str(fallback_result.get("commission", 0))),
+                                error_message=protection_warning,
+                            )
+
+                        fb_known_error = MT5_ERROR_MESSAGES.get(fb_string_code)
+                        if fb_known_error:
+                            fb_reject_reason = f"{fb_known_error} [{fb_string_code}]"
+                        elif fb_error_msg:
+                            fb_reject_reason = f"{fb_error_msg} [{fb_string_code or f'code={fb_numeric_code}'}]"
+                        elif fb_string_code:
+                            fb_reject_reason = f"Broker: {fb_string_code} (numericCode={fb_numeric_code})"
+                        else:
+                            fb_reject_reason = f"Fallback senza SL/TP rifiutato - full response: {fallback_result}"
+
+                        last_reject_reason = (
+                            f"{reject_reason} | fallback senza SL/TP: {fb_reject_reason}"
+                        )
+                        if fb_string_code in RETRYABLE_CODES and attempt < MAX_RETRIES - 1:
+                            wait_secs = 2
+                            print(
+                                f"[MetaTrader] Retryable fallback error ({fb_string_code}), "
+                                f"trying different filling in {wait_secs}s..."
+                            )
+                            await asyncio.sleep(wait_secs)
+                            continue
+                    except Exception as fallback_exc:
+                        print(f"[MetaTrader] Fallback order without SL/TP failed: {fallback_exc}")
 
                 # If retryable and not last attempt, wait and retry with different filling
                 if string_code in RETRYABLE_CODES and attempt < MAX_RETRIES - 1:
