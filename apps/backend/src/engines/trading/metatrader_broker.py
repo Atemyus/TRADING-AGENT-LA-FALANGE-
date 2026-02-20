@@ -530,6 +530,112 @@ class MetaTraderBroker(BaseBroker):
         parts = (lookup or "").split("_")
         return len(parts) == 2 and all(len(part) == 3 and part.isalpha() for part in parts)
 
+    def _split_forex_lookup(self, lookup: str) -> tuple[str, str] | None:
+        parts = (lookup or "").split("_")
+        if len(parts) != 2:
+            return None
+        base, quote = parts[0], parts[1]
+        if len(base) == 3 and len(quote) == 3 and base.isalpha() and quote.isalpha():
+            return (base, quote)
+        return None
+
+    def _is_forex_candidate_compatible(self, lookup: str, broker_symbol: str) -> bool:
+        """
+        Ensure forex routing does not accidentally select a different cross.
+        Example: USD_CAD must not resolve to USDCADTRY.
+        """
+        pair = self._split_forex_lookup(lookup)
+        if not pair:
+            return True
+
+        pair_token = f"{pair[0]}{pair[1]}"
+        token = self._normalize_symbol_token(broker_symbol)
+        if not token or pair_token not in token:
+            return False
+
+        idx = token.find(pair_token)
+        prefix = token[:idx]
+        suffix = token[idx + len(pair_token):]
+        extras = [prefix, suffix]
+
+        known_affixes = {
+            "M", "I", "R", "S", "Z",
+            "PRO", "RAW", "ECN", "CASH", "SPOT", "MICRO", "MINI", "STD",
+            "MT4", "MT5",
+        }
+        currency_codes = {
+            "USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD",
+            "SGD", "HKD", "NOK", "SEK", "DKK", "PLN", "TRY", "MXN",
+            "ZAR", "HUF", "CZK", "RON", "ILS", "CNH",
+        }
+
+        for extra in extras:
+            if not extra:
+                continue
+            if extra in known_affixes:
+                continue
+            if extra.isdigit():
+                continue
+            if len(extra) <= 2:
+                continue
+            # Explicitly reject tails/prefixes that look like another currency.
+            if extra in currency_codes:
+                return False
+            if len(extra) >= 3:
+                if any(extra.startswith(code) or extra.endswith(code) for code in currency_codes):
+                    return False
+            # Unknown long alphabetic tails are likely different instruments.
+            if extra.isalpha() and len(extra) > 4:
+                return False
+        return True
+
+    def _is_plausible_price_for_lookup(
+        self,
+        lookup: str,
+        bid: float,
+        ask: float,
+    ) -> bool:
+        """
+        Sanity check used during symbol candidate routing.
+        Reject obviously wrong scales for forex pairs to avoid mismatched symbols.
+        """
+        if bid <= 0 or ask <= 0 or ask < bid:
+            return False
+
+        pair = self._split_forex_lookup(lookup)
+        if not pair:
+            return True
+
+        mid = (bid + ask) / 2.0
+        spread = ask - bid
+        if mid <= 0:
+            return False
+
+        # Defensive spread sanity for forex (5% is already very permissive).
+        if (spread / mid) > 0.05:
+            return False
+
+        quote = pair[1]
+        bounds_by_quote: dict[str, tuple[float, float]] = {
+            "JPY": (10.0, 500.0),
+            "HUF": (10.0, 5000.0),
+            "CLP": (10.0, 20000.0),
+            "IDR": (100.0, 200000.0),
+            "KRW": (100.0, 10000.0),
+            "TRY": (0.05, 500.0),
+            "MXN": (0.05, 500.0),
+            "ZAR": (0.05, 500.0),
+            "NOK": (0.05, 500.0),
+            "SEK": (0.05, 500.0),
+            "DKK": (0.05, 500.0),
+            "PLN": (0.05, 500.0),
+            "CZK": (0.05, 500.0),
+            "HKD": (0.05, 100.0),
+            "SGD": (0.05, 50.0),
+        }
+        low, high = bounds_by_quote.get(quote, (0.02, 10.0))
+        return low <= mid <= high
+
     def _is_futures_intent_lookup(self, lookup: str) -> bool:
         """
         Return True when our internal symbol explicitly targets futures contracts.
@@ -588,6 +694,9 @@ class MetaTraderBroker(BaseBroker):
     def _score_symbol_match(self, broker_symbol: str, bases: list[str], lookup: str) -> int:
         broker_token = self._normalize_symbol_token(broker_symbol)
         if not broker_token:
+            return 0
+
+        if self._is_forex_lookup(lookup) and not self._is_forex_candidate_compatible(lookup, broker_symbol):
             return 0
 
         best = 0
@@ -799,6 +908,10 @@ class MetaTraderBroker(BaseBroker):
         unresolved_spec_candidates: list[str] = []
 
         for broker_symbol in candidates[:30]:
+            if self._is_forex_lookup(lookup) and not self._is_forex_candidate_compatible(lookup, broker_symbol):
+                disabled_details.append(f"{broker_symbol}(FOREX_MISMATCH)")
+                continue
+
             try:
                 spec = await self._get_symbol_specification_for_broker_symbol(broker_symbol)
             except Exception as exc:
@@ -2051,12 +2164,32 @@ class MetaTraderBroker(BaseBroker):
                 candidates = [broker_symbol, *candidates]
 
             last_error: Exception | None = None
-            for idx, candidate in enumerate(candidates[:12]):
+            skipped_or_rejected: list[str] = []
+            request_attempts = 0
+            for candidate in candidates[:12]:
+                if self._is_forex_lookup(lookup) and not self._is_forex_candidate_compatible(lookup, candidate):
+                    skipped_or_rejected.append(f"{candidate}(FOREX_MISMATCH)")
+                    continue
+
                 try:
+                    request_attempts += 1
                     price_data = await self._request(
                         "GET",
                         f"/users/current/accounts/{self.account_id}/symbols/{candidate}/current-price",
                     )
+
+                    try:
+                        bid = float(price_data.get("bid", 0) or 0)
+                        ask = float(price_data.get("ask", 0) or 0)
+                    except Exception:
+                        bid = 0.0
+                        ask = 0.0
+
+                    if not self._is_plausible_price_for_lookup(lookup, bid, ask):
+                        skipped_or_rejected.append(
+                            f"{candidate}(IMPLAUSIBLE_PRICE bid={bid:.6g} ask={ask:.6g})"
+                        )
+                        continue
 
                     if candidate != broker_symbol:
                         print(f"[MetaTrader] Price fallback resolved {lookup} -> {candidate}")
@@ -2074,9 +2207,18 @@ class MetaTraderBroker(BaseBroker):
                     return tick
                 except Exception as exc:
                     last_error = exc
-                    if idx == 0 and not self._is_symbol_lookup_error(str(exc)):
+                    if request_attempts == 1 and not self._is_symbol_lookup_error(str(exc)):
                         # If first candidate failed for non-symbol reasons, don't spam alternate tries.
                         break
+
+            if skipped_or_rejected and last_error is None:
+                detail = ", ".join(skipped_or_rejected[:8])
+                if len(skipped_or_rejected) > 8:
+                    detail += f" (+{len(skipped_or_rejected) - 8} altre)"
+                raise Exception(
+                    f"Nessuna variante prezzo valida per {lookup}. "
+                    f"Varianti scartate: {detail}"
+                )
 
             if last_error:
                 raise last_error
