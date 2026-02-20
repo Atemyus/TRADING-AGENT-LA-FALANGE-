@@ -636,6 +636,56 @@ class MetaTraderBroker(BaseBroker):
         low, high = bounds_by_quote.get(quote, (0.02, 10.0))
         return low <= mid <= high
 
+    def _extract_spec_currency(
+        self,
+        spec: dict[str, Any] | None,
+        keys: tuple[str, ...],
+    ) -> str:
+        if not isinstance(spec, dict):
+            return ""
+        for key in keys:
+            raw = spec.get(key)
+            if raw is None:
+                continue
+            token = self._normalize_symbol_token(str(raw))
+            if len(token) == 3 and token.isalpha():
+                return token
+            if len(token) > 3 and token[:3].isalpha():
+                return token[:3]
+        return ""
+
+    def _is_forex_spec_compatible(self, lookup: str, spec: dict[str, Any] | None) -> bool:
+        """
+        Validate forex pair routing against broker-provided symbol specification.
+        If spec has no currency fields, keep candidate as potentially valid.
+        """
+        pair = self._split_forex_lookup(lookup)
+        if not pair:
+            return True
+
+        expected_base, expected_quote = pair
+        base = self._extract_spec_currency(
+            spec,
+            ("currencyBase", "baseCurrency", "currencyBaseCode", "base"),
+        )
+        quote = self._extract_spec_currency(
+            spec,
+            (
+                "currencyProfit",
+                "currencyQuote",
+                "quoteCurrency",
+                "profitCurrency",
+                "counterCurrency",
+                "currencyCounter",
+            ),
+        )
+
+        if base and base != expected_base:
+            return False
+        if quote and quote != expected_quote:
+            return False
+        return True
+
     def _is_futures_intent_lookup(self, lookup: str) -> bool:
         """
         Return True when our internal symbol explicitly targets futures contracts.
@@ -917,6 +967,10 @@ class MetaTraderBroker(BaseBroker):
             except Exception as exc:
                 print(f"[MetaTrader] Symbol spec lookup failed for {broker_symbol}: {exc}")
                 unresolved_spec_candidates.append(broker_symbol)
+                continue
+
+            if self._is_forex_lookup(lookup) and not self._is_forex_spec_compatible(lookup, spec):
+                disabled_details.append(f"{broker_symbol}(FOREX_SPEC_MISMATCH)")
                 continue
 
             trade_mode = spec.get("tradeMode")
@@ -2170,6 +2224,27 @@ class MetaTraderBroker(BaseBroker):
                 if self._is_forex_lookup(lookup) and not self._is_forex_candidate_compatible(lookup, candidate):
                     skipped_or_rejected.append(f"{candidate}(FOREX_MISMATCH)")
                     continue
+
+                if self._is_forex_lookup(lookup):
+                    meta = self._broker_symbol_meta.get(candidate, {})
+                    if meta and not self._is_forex_spec_compatible(lookup, meta):
+                        skipped_or_rejected.append(f"{candidate}(FOREX_SPEC_MISMATCH)")
+                        continue
+
+                    # If symbol list metadata does not expose currency fields, verify once via specification cache.
+                    has_currency_hint = bool(
+                        self._extract_spec_currency(meta, ("currencyBase", "baseCurrency", "currencyBaseCode"))
+                        or self._extract_spec_currency(meta, ("currencyProfit", "quoteCurrency", "currencyQuote"))
+                    )
+                    if not has_currency_hint:
+                        try:
+                            spec = await self._get_symbol_specification_for_broker_symbol(candidate)
+                            if not self._is_forex_spec_compatible(lookup, spec):
+                                skipped_or_rejected.append(f"{candidate}(FOREX_SPEC_MISMATCH)")
+                                continue
+                        except Exception:
+                            # Missing specification is handled by price retrieval path.
+                            pass
 
                 try:
                     request_attempts += 1

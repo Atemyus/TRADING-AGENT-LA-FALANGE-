@@ -194,6 +194,7 @@ class AutoTrader:
         self._last_news_refresh: datetime | None = None
         self._start_stop_lock = asyncio.Lock()
         self._symbol_tradability_cache: dict[tuple[str, str], tuple[bool, str, datetime]] = {}
+        self._symbol_price_guard_cache: dict[str, tuple[float, datetime]] = {}
 
     def configure(self, config: BotConfig):
         """Update bot configuration."""
@@ -631,6 +632,7 @@ class AutoTrader:
                 self.broker = BrokerFactory.create(broker_type=broker_type)
             await self.broker.connect()
             self._symbol_tradability_cache.clear()
+            self._symbol_price_guard_cache.clear()
             print("[AutoTrader] Broker connected")
 
             # Initialize economic calendar service (news filter)
@@ -950,6 +952,100 @@ class AutoTrader:
             .replace(".", "")
             .replace(" ", "")
         )
+
+    def _split_pair_symbol(self, symbol: str) -> tuple[str, str] | None:
+        normalized = self._normalize_symbol(symbol).strip().upper()
+        if "_" not in normalized:
+            return None
+        left, right = normalized.split("_", 1)
+        if not left or not right:
+            return None
+        if not left.isalpha() or not right.isalpha():
+            return None
+        return (left, right)
+
+    def _price_bounds_for_symbol(self, symbol: str) -> tuple[float, float] | None:
+        """
+        Return broad plausibility bounds for live prices.
+        Used only as a safety guard against broker-symbol mismatches.
+        """
+        pair = self._split_pair_symbol(symbol)
+        if pair:
+            base, quote = pair
+            if len(base) == 3 and len(quote) == 3:
+                high_quote = {"JPY", "HUF", "CLP", "IDR", "KRW"}
+                medium_quote = {
+                    "TRY", "MXN", "ZAR", "NOK", "SEK", "DKK", "PLN", "CZK",
+                    "RON", "HKD", "SGD", "CNH", "THB", "INR",
+                }
+                if quote in high_quote:
+                    return (0.02, 200000.0)
+                if quote in medium_quote:
+                    return (0.02, 500.0)
+                return (0.02, 10.0)
+
+            if base in {"XAU", "GOLD"}:
+                return (100.0, 100000.0)
+            if base in {"XAG", "SILVER"}:
+                return (1.0, 10000.0)
+            if base in {"XPT", "XPD"}:
+                return (50.0, 100000.0)
+
+        canon = self._canonical_symbol(symbol)
+        if any(token in canon for token in ("US30", "US500", "NAS100", "DE40", "GER40", "DAX", "FTSE", "JP225", "FR40", "EU50")):
+            return (100.0, 300000.0)
+        if any(token in canon for token in ("BTC", "ETH", "SOL", "XRP", "ADA", "DOGE", "LTC")):
+            return (0.0000001, 5000000.0)
+        return None
+
+    def _validate_price_plausibility(self, symbol: str, tick: Any) -> tuple[bool, str]:
+        try:
+            bid = float(getattr(tick, "bid", 0) or 0)
+            ask = float(getattr(tick, "ask", 0) or 0)
+            mid = float(getattr(tick, "mid", 0) or 0)
+        except Exception:
+            return (False, "tick non numerico")
+
+        if bid <= 0 or ask <= 0 or mid <= 0 or ask < bid:
+            return (False, f"tick invalido bid={bid} ask={ask} mid={mid}")
+
+        bounds = self._price_bounds_for_symbol(symbol)
+        if bounds:
+            low, high = bounds
+            if mid < low or mid > high:
+                return (False, f"prezzo fuori range plausibile ({mid} non in [{low}, {high}])")
+
+        spread = ask - bid
+        spread_ratio = (spread / mid) if mid > 0 else 0.0
+        if spread_ratio > 0.20:
+            return (False, f"spread anomalo ({spread_ratio * 100:.2f}%)")
+
+        pair = self._split_pair_symbol(symbol)
+        if pair and len(pair[0]) == 3 and len(pair[1]) == 3 and spread_ratio > 0.05:
+            return (False, f"spread forex anomalo ({spread_ratio * 100:.2f}%)")
+
+        key = self._normalize_symbol(symbol).upper()
+        cached = self._symbol_price_guard_cache.get(key)
+        now = datetime.utcnow()
+        if cached:
+            prev_mid, checked_at = cached
+            age = (now - checked_at).total_seconds()
+            if prev_mid > 0 and age <= 3600:
+                jump_ratio = max(mid / prev_mid, prev_mid / mid)
+                jump_limit = 6.0
+                if pair and len(pair[0]) == 3 and len(pair[1]) == 3:
+                    jump_limit = 3.0
+                if jump_ratio > jump_limit:
+                    return (
+                        False,
+                        (
+                            f"salto prezzo anomalo vs ultimo tick valido "
+                            f"({prev_mid} -> {mid}, x{jump_ratio:.2f})"
+                        ),
+                    )
+
+        self._symbol_price_guard_cache[key] = (mid, now)
+        return (True, "")
 
     async def _get_exposure_snapshot(self) -> tuple[int, set[str]]:
         """
@@ -1291,6 +1387,18 @@ class AutoTrader:
             tick = await self.broker.get_current_price(symbol)
             current_price = float(tick.mid)
             self._log_analysis(symbol, "info", f"Prezzo corrente: {current_price}")
+
+            price_ok, price_reason = self._validate_price_plausibility(symbol, tick)
+            if not price_ok:
+                self._log_analysis(
+                    symbol,
+                    "error",
+                    (
+                        "❌ Trade annullato: prezzo broker non plausibile per il simbolo richiesto "
+                        f"({price_reason}). Possibile mismatch mapping simbolo."
+                    ),
+                )
+                return
 
             # ====== VALIDAZIONE SL/TP rispetto alla direzione ======
             MIN_RR_RATIO = 2.0  # Min Risk:Reward ratio (1:2) — TP almeno 2x la distanza SL
@@ -1915,6 +2023,17 @@ class AutoTrader:
             # Get current price
             tick = await self.broker.get_current_price(symbol)
             current_price = float(tick.mid)
+            price_ok, price_reason = self._validate_price_plausibility(symbol, tick)
+            if not price_ok:
+                self._log_analysis(
+                    symbol,
+                    "error",
+                    (
+                        "❌ Trade annullato (autonomous): prezzo broker non plausibile "
+                        f"({price_reason}). Possibile mismatch mapping simbolo."
+                    ),
+                )
+                return
 
             # Calculate position size
             account_info = await self.broker.get_account_info()
