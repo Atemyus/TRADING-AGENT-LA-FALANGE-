@@ -85,6 +85,9 @@ class TradeRecord:
     partial_tp_percent: float | None = None  # Close this % at TP1
     is_break_even: bool = False  # Has SL been moved to entry?
     current_trailing_sl: float | None = None  # Current trailing SL level
+    initial_stop_loss: float | None = None  # Original SL at entry (for R-multiple tracking)
+    extreme_price: float | None = None  # Peak (LONG) / trough (SHORT) reached after entry
+    max_favorable_rr: float = 0.0  # Best achieved R-multiple
 
 
 @dataclass
@@ -118,6 +121,11 @@ class BotConfig:
     max_open_positions: int = 3
     max_daily_trades: int = 10
     max_daily_loss_percent: float = 5.0  # Stop trading if daily loss exceeds this
+    min_risk_reward_ratio: float = 1.5  # Keep TP at least 1.5R
+    max_risk_reward_ratio: float = 2.2  # Cap TP to avoid very swing targets
+    smart_exit_enabled: bool = True
+    smart_exit_min_rr: float = 1.0  # Arm smart exit after at least +1R
+    smart_exit_drawdown_percent: float = 45.0  # Close if retrace from peak >= this %
 
     # Trading hours (UTC)
     trading_start_hour: int = 7   # Start trading at 7 UTC
@@ -723,6 +731,11 @@ class AutoTrader:
                 "min_confidence": self.config.min_confidence,
                 "risk_per_trade": self.config.risk_per_trade_percent,
                 "max_positions": self.config.max_open_positions,
+                "min_risk_reward_ratio": self.config.min_risk_reward_ratio,
+                "max_risk_reward_ratio": self.config.max_risk_reward_ratio,
+                "smart_exit_enabled": self.config.smart_exit_enabled,
+                "smart_exit_min_rr": self.config.smart_exit_min_rr,
+                "smart_exit_drawdown_percent": self.config.smart_exit_drawdown_percent,
                 "analysis_engine": "TradingView AI Agent",
                 "enabled_models": self.config.enabled_models,
             },
@@ -790,7 +803,7 @@ class AutoTrader:
                 await asyncio.sleep(60)  # Wait before retrying
 
     async def _manage_open_positions(self):
-        """Manage open positions: sync with broker, Break Even, Trailing Stop."""
+        """Manage open positions: sync broker state, BE, trailing stop, smart exit."""
         # ====== SYNC: rimuovi posizioni chiuse dal broker ======
         try:
             broker_positions = await self.broker.get_positions()
@@ -834,25 +847,53 @@ class AutoTrader:
 
                     closed_trades.append(trade)
                     self.state.trade_history.append(trade)
-                    self._log_analysis(trade.symbol, "trade",
-                        f"📕 Posizione CHIUSA (rilevata dal broker) | P&L: {trade.profit_loss or 'N/A'}")
+                    self._log_analysis(
+                        trade.symbol,
+                        "trade",
+                        f"Posizione CHIUSA (rilevata dal broker) | P&L: {trade.profit_loss or 'N/A'}",
+                    )
 
             # Remove closed trades from open_positions
             if closed_trades:
                 self.state.open_positions = [
                     t for t in self.state.open_positions if t not in closed_trades
                 ]
-                self._log_analysis("ALL", "info",
-                    f"🔄 Sync broker: {len(closed_trades)} posizioni chiuse rimosse, {len(self.state.open_positions)} ancora aperte")
+                self._log_analysis(
+                    "ALL",
+                    "info",
+                    f"Sync broker: {len(closed_trades)} posizioni chiuse rimosse, {len(self.state.open_positions)} ancora aperte",
+                )
 
         except Exception as e:
             print(f"[AutoTrader] Error syncing positions with broker: {e}")
 
-        # ====== Gestione posizioni aperte: BE, Trailing Stop ======
+        # ====== Gestione posizioni aperte: BE, Trailing Stop, Smart Exit ======
+        smart_exit_closed_trades: list[TradeRecord] = []
         for trade in self.state.open_positions:
             try:
                 tick = await self.broker.get_current_price(trade.symbol)
                 current_price = float(tick.mid)
+
+                if trade.initial_stop_loss is None:
+                    trade.initial_stop_loss = trade.stop_loss
+                if trade.extreme_price is None:
+                    trade.extreme_price = trade.entry_price
+
+                initial_risk_distance = abs(trade.entry_price - trade.initial_stop_loss) if trade.initial_stop_loss else 0.0
+                if trade.direction == "LONG":
+                    trade.extreme_price = max(trade.extreme_price, current_price)
+                    best_favorable_move = max(0.0, trade.extreme_price - trade.entry_price)
+                    current_favorable_move = max(0.0, current_price - trade.entry_price)
+                else:
+                    trade.extreme_price = min(trade.extreme_price, current_price)
+                    best_favorable_move = max(0.0, trade.entry_price - trade.extreme_price)
+                    current_favorable_move = max(0.0, trade.entry_price - current_price)
+
+                if initial_risk_distance > 0 and best_favorable_move > 0:
+                    trade.max_favorable_rr = max(
+                        trade.max_favorable_rr,
+                        best_favorable_move / initial_risk_distance,
+                    )
 
                 # Check Break Even
                 if trade.break_even_trigger and not trade.is_break_even:
@@ -871,7 +912,7 @@ class AutoTrader:
                         )
                         trade.stop_loss = trade.entry_price
                         trade.is_break_even = True
-                        await self._notify(f"🔒 {trade.symbol} Break Even attivato a {trade.entry_price:.5f}")
+                        await self._notify(f"{trade.symbol} Break Even attivato a {trade.entry_price:.5f}")
 
                 # Check Trailing Stop
                 if trade.trailing_stop_pips and trade.is_break_even:
@@ -896,7 +937,71 @@ class AutoTrader:
                         )
                         trade.stop_loss = new_sl
                         trade.current_trailing_sl = new_sl
-                        await self._notify(f"📈 {trade.symbol} Trailing Stop aggiornato a {new_sl:.5f}")
+                        await self._notify(f"{trade.symbol} Trailing Stop aggiornato a {new_sl:.5f}")
+
+                # Smart exit: lock profit on deep pullback after +R progress.
+                if (
+                    self.config.smart_exit_enabled
+                    and trade.is_break_even
+                    and initial_risk_distance > 0
+                    and best_favorable_move > 0
+                    and trade.max_favorable_rr >= self.config.smart_exit_min_rr
+                    and current_favorable_move > 0
+                ):
+                    drawdown_ratio = (best_favorable_move - current_favorable_move) / best_favorable_move
+                    drawdown_threshold = min(max(self.config.smart_exit_drawdown_percent / 100.0, 0.05), 0.95)
+                    if drawdown_ratio >= drawdown_threshold:
+                        from decimal import Decimal
+
+                        close_size = Decimal(str(trade.units)) if trade.units > 0 else None
+                        close_result = await self.broker.close_position(
+                            symbol=trade.symbol,
+                            size=close_size,
+                        )
+                        if not close_result.is_filled and close_size is not None:
+                            # Some brokers ignore explicit size on close endpoint.
+                            close_result = await self.broker.close_position(symbol=trade.symbol)
+
+                        if close_result.is_filled:
+                            exit_price = (
+                                float(close_result.average_fill_price)
+                                if close_result.average_fill_price
+                                else current_price
+                            )
+                            trade.status = "closed_smart_exit"
+                            trade.exit_price = exit_price
+                            trade.exit_timestamp = datetime.utcnow()
+                            if trade.direction == "LONG":
+                                trade.profit_loss = (exit_price - trade.entry_price) * trade.units
+                            else:
+                                trade.profit_loss = (trade.entry_price - exit_price) * trade.units
+
+                            smart_exit_closed_trades.append(trade)
+                            self.state.trade_history.append(trade)
+                            self._log_analysis(
+                                trade.symbol,
+                                "trade",
+                                (
+                                    "Smart Exit eseguita: retrace profondo dopo profitto "
+                                    f"(max {trade.max_favorable_rr:.2f}R, retrace {drawdown_ratio * 100:.1f}%)"
+                                ),
+                            )
+                            await self._notify(
+                                (
+                                    f"{trade.symbol} Smart Exit: posizione chiusa in profitto "
+                                    f"(max {trade.max_favorable_rr:.2f}R, retrace {drawdown_ratio * 100:.1f}%)"
+                                )
+                            )
+                            continue
+
+                        self._log_analysis(
+                            trade.symbol,
+                            "error",
+                            (
+                                "Smart Exit non eseguita: "
+                                f"{close_result.error_message or close_result.status.value}"
+                            ),
+                        )
 
             except Exception as e:
                 self.state.errors.append({
@@ -904,6 +1009,19 @@ class AutoTrader:
                     "symbol": trade.symbol,
                     "error": f"Position management failed: {str(e)}"
                 })
+
+        if smart_exit_closed_trades:
+            self.state.open_positions = [
+                t for t in self.state.open_positions if t not in smart_exit_closed_trades
+            ]
+            self._log_analysis(
+                "ALL",
+                "trade",
+                (
+                    f"Smart Exit: chiuse {len(smart_exit_closed_trades)} posizioni, "
+                    f"aperte residue {len(self.state.open_positions)}"
+                ),
+            )
 
     async def _refresh_news_calendar(self):
         """Refresh economic calendar periodically."""
@@ -1432,8 +1550,8 @@ class AutoTrader:
                 return
 
             # ====== VALIDAZIONE SL/TP rispetto alla direzione ======
-            MIN_RR_RATIO = 2.0  # Min Risk:Reward ratio (1:2) — TP almeno 2x la distanza SL
-            MAX_RR_RATIO = 3.0  # Max Risk:Reward ratio (1:3) — TP non oltre 3x la distanza SL
+            MIN_RR_RATIO = max(1.0, float(self.config.min_risk_reward_ratio))
+            MAX_RR_RATIO = max(MIN_RR_RATIO, float(self.config.max_risk_reward_ratio))
 
             # ====== VALIDAZIONE DISTANZA MASSIMA SL (protezione da valori AI assurdi) ======
             # Percentuale UNIFORME per TUTTI gli asset - stesso comportamento su tutti i broker
@@ -1599,11 +1717,11 @@ class AutoTrader:
 
                 if direction == "LONG":
                     stop_loss = _rp(current_price - new_sl_distance)
-                    # Ricalcola TP con R:R 1:2
-                    take_profit = _rp(current_price + (new_sl_distance * 2))
+                    # Ricalcola TP con R:R minimo configurato
+                    take_profit = _rp(current_price + (new_sl_distance * MIN_RR_RATIO))
                 else:
                     stop_loss = _rp(current_price + new_sl_distance)
-                    take_profit = _rp(current_price - (new_sl_distance * 2))
+                    take_profit = _rp(current_price - (new_sl_distance * MIN_RR_RATIO))
 
                 lot_size = MIN_LOT
                 sl_pips = max_sl_pips
@@ -1930,6 +2048,8 @@ class AutoTrader:
                     total_models=consensus["total_models"],
                     break_even_trigger=be_trigger,
                     trailing_stop_pips=trailing_pips,
+                    initial_stop_loss=stop_loss,
+                    extreme_price=fill_price,
                 )
 
                 self.state.open_positions.append(trade)
@@ -2119,6 +2239,8 @@ class AutoTrader:
                     break_even_trigger=consensus.get("break_even_trigger"),
                     trailing_stop_pips=consensus.get("trailing_stop_pips"),
                     partial_tp_percent=consensus.get("partial_tp_percent"),
+                    initial_stop_loss=consensus["stop_loss"],
+                    extreme_price=fill_price,
                 )
 
                 self.state.open_positions.append(trade)
@@ -2243,6 +2365,8 @@ class AutoTrader:
                     timeframes_analyzed=list(result.timeframe_analyses.keys()),
                     models_agreed=result.total_models_used,
                     total_models=result.total_models_used,
+                    initial_stop_loss=result.stop_loss,
+                    extreme_price=fill_price,
                 )
 
                 self.state.open_positions.append(trade)
@@ -2364,4 +2488,3 @@ def get_auto_trader() -> AutoTrader:
     if _auto_trader is None:
         _auto_trader = AutoTrader()
     return _auto_trader
-

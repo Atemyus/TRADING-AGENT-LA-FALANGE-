@@ -305,6 +305,16 @@ def apply_config_to_bot(config_dict: dict) -> None:
         bot.config.max_daily_trades = config_dict["max_daily_trades"]
     if "max_daily_loss_percent" in config_dict:
         bot.config.max_daily_loss_percent = config_dict["max_daily_loss_percent"]
+    if "min_risk_reward_ratio" in config_dict:
+        bot.config.min_risk_reward_ratio = config_dict["min_risk_reward_ratio"]
+    if "max_risk_reward_ratio" in config_dict:
+        bot.config.max_risk_reward_ratio = config_dict["max_risk_reward_ratio"]
+    if "smart_exit_enabled" in config_dict:
+        bot.config.smart_exit_enabled = config_dict["smart_exit_enabled"]
+    if "smart_exit_min_rr" in config_dict:
+        bot.config.smart_exit_min_rr = config_dict["smart_exit_min_rr"]
+    if "smart_exit_drawdown_percent" in config_dict:
+        bot.config.smart_exit_drawdown_percent = config_dict["smart_exit_drawdown_percent"]
     if "trading_start_hour" in config_dict:
         bot.config.trading_start_hour = config_dict["trading_start_hour"]
     if "trading_end_hour" in config_dict:
@@ -358,6 +368,11 @@ class BotConfigRequest(BaseModel):
     max_open_positions: int | None = None
     max_daily_trades: int | None = None
     max_daily_loss_percent: float | None = None
+    min_risk_reward_ratio: float | None = None
+    max_risk_reward_ratio: float | None = None
+    smart_exit_enabled: bool | None = None
+    smart_exit_min_rr: float | None = None
+    smart_exit_drawdown_percent: float | None = None
     trading_start_hour: int | None = None
     trading_end_hour: int | None = None
     trade_on_weekends: bool | None = None
@@ -528,6 +543,32 @@ async def update_config(config: BotConfigRequest, db: AsyncSession = Depends(get
     if config.max_daily_loss_percent is not None:
         current_config.max_daily_loss_percent = config.max_daily_loss_percent
 
+    if config.min_risk_reward_ratio is not None:
+        if not 1.0 <= config.min_risk_reward_ratio <= 5.0:
+            raise HTTPException(status_code=400, detail="Min risk/reward ratio must be between 1.0 and 5.0")
+        current_config.min_risk_reward_ratio = config.min_risk_reward_ratio
+
+    if config.max_risk_reward_ratio is not None:
+        if not 1.0 <= config.max_risk_reward_ratio <= 6.0:
+            raise HTTPException(status_code=400, detail="Max risk/reward ratio must be between 1.0 and 6.0")
+        min_rr = config.min_risk_reward_ratio if config.min_risk_reward_ratio is not None else current_config.min_risk_reward_ratio
+        if config.max_risk_reward_ratio < min_rr:
+            raise HTTPException(status_code=400, detail="Max risk/reward ratio must be >= min risk/reward ratio")
+        current_config.max_risk_reward_ratio = config.max_risk_reward_ratio
+
+    if config.smart_exit_enabled is not None:
+        current_config.smart_exit_enabled = config.smart_exit_enabled
+
+    if config.smart_exit_min_rr is not None:
+        if not 0.2 <= config.smart_exit_min_rr <= 5.0:
+            raise HTTPException(status_code=400, detail="Smart exit min RR must be between 0.2 and 5.0")
+        current_config.smart_exit_min_rr = config.smart_exit_min_rr
+
+    if config.smart_exit_drawdown_percent is not None:
+        if not 5.0 <= config.smart_exit_drawdown_percent <= 90.0:
+            raise HTTPException(status_code=400, detail="Smart exit drawdown must be between 5% and 90%")
+        current_config.smart_exit_drawdown_percent = config.smart_exit_drawdown_percent
+
     if config.trading_start_hour is not None:
         if not 0 <= config.trading_start_hour <= 23:
             raise HTTPException(status_code=400, detail="Trading start hour must be between 0 and 23")
@@ -613,6 +654,11 @@ async def update_config(config: BotConfigRequest, db: AsyncSession = Depends(get
         "max_open_positions": current_config.max_open_positions,
         "max_daily_trades": current_config.max_daily_trades,
         "max_daily_loss_percent": current_config.max_daily_loss_percent,
+        "min_risk_reward_ratio": current_config.min_risk_reward_ratio,
+        "max_risk_reward_ratio": current_config.max_risk_reward_ratio,
+        "smart_exit_enabled": current_config.smart_exit_enabled,
+        "smart_exit_min_rr": current_config.smart_exit_min_rr,
+        "smart_exit_drawdown_percent": current_config.smart_exit_drawdown_percent,
         "trading_start_hour": current_config.trading_start_hour,
         "trading_end_hour": current_config.trading_end_hour,
         "trade_on_weekends": current_config.trade_on_weekends,
@@ -658,6 +704,11 @@ async def get_config():
         "max_open_positions": config.max_open_positions,
         "max_daily_trades": config.max_daily_trades,
         "max_daily_loss_percent": config.max_daily_loss_percent,
+        "min_risk_reward_ratio": config.min_risk_reward_ratio,
+        "max_risk_reward_ratio": config.max_risk_reward_ratio,
+        "smart_exit_enabled": config.smart_exit_enabled,
+        "smart_exit_min_rr": config.smart_exit_min_rr,
+        "smart_exit_drawdown_percent": config.smart_exit_drawdown_percent,
         "trading_start_hour": config.trading_start_hour,
         "trading_end_hour": config.trading_end_hour,
         "trade_on_weekends": config.trade_on_weekends,
