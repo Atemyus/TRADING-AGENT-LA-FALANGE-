@@ -658,6 +658,8 @@ class MetaTraderBroker(BaseBroker):
 
         scored: list[tuple[int, str]] = []
         for broker_symbol in self._broker_symbols:
+            if self._is_metal_lookup(lookup) and not self._is_metal_candidate_compatible(lookup, broker_symbol):
+                continue
             token = self._normalize_symbol_token(broker_symbol)
             meta = self._broker_symbol_meta.get(broker_symbol, {})
             description = self._normalize_symbol_token(str(meta.get("description", "")))
@@ -683,6 +685,99 @@ class MetaTraderBroker(BaseBroker):
             if len(ordered) >= limit:
                 break
         return ordered
+
+    def _is_metal_lookup(self, lookup: str) -> bool:
+        canonical_metals = {"XAU_USD", "XAG_USD", "XPT_USD", "XPD_USD", "XCU_USD"}
+        if lookup in canonical_metals:
+            return True
+
+        token = self._normalize_symbol_token(lookup)
+        if not token:
+            return False
+
+        metal_tokens = ("XAU", "XAG", "XPT", "XPD", "XCU", "GOLD", "SILVER", "PLATINUM", "PALLADIUM", "COPPER")
+        return any(marker in token for marker in metal_tokens)
+
+    def _metal_markers_for_lookup(self, lookup: str) -> tuple[str, str, set[str]]:
+        token = self._normalize_symbol_token(lookup)
+        if lookup == "XAU_USD" or token.startswith("XAU") or "GOLD" in token:
+            return ("XAU", "GOLD", {"XAG", "XPT", "XPD", "XCU"})
+        if lookup == "XAG_USD" or token.startswith("XAG") or "SILVER" in token:
+            return ("XAG", "SILVER", {"XAU", "XPT", "XPD", "XCU"})
+        if lookup == "XPT_USD" or token.startswith("XPT") or "PLATINUM" in token:
+            return ("XPT", "PLATINUM", {"XAU", "XAG", "XPD", "XCU"})
+        if lookup == "XPD_USD" or token.startswith("XPD") or "PALLADIUM" in token:
+            return ("XPD", "PALLADIUM", {"XAU", "XAG", "XPT", "XCU"})
+        if lookup == "XCU_USD" or token.startswith("XCU") or "COPPER" in token:
+            return ("XCU", "COPPER", {"XAU", "XAG", "XPT", "XPD"})
+        return ("", "", set())
+
+    def _is_metal_candidate_compatible(self, lookup: str, broker_symbol: str) -> bool:
+        """
+        Guard against routing metals (XAU/XAG/...) to stock/equity symbols that
+        happen to include words like GOLD/SILVER in their names.
+        """
+        if not self._is_metal_lookup(lookup):
+            return True
+
+        code_marker, text_marker, conflicting_codes = self._metal_markers_for_lookup(lookup)
+        token = self._normalize_symbol_token(broker_symbol)
+        meta = self._broker_symbol_meta.get(broker_symbol, {}) if isinstance(self._broker_symbol_meta, dict) else {}
+        description = self._normalize_symbol_token(str(meta.get("description", "")))
+        path = self._normalize_symbol_token(str(meta.get("path", "")))
+        category = self._normalize_symbol_token(str(meta.get("category", "")))
+        group = self._normalize_symbol_token(str(meta.get("group", "")))
+        meta_blob = f"{token} {description} {path} {category} {group}".upper()
+
+        if not token:
+            return False
+
+        # Reject obvious stock/equity contexts.
+        equity_markers = ("STOCK", "EQUITY", "SHARE", "ETF", "CFDSTOCK", "CFDEQUITY")
+        if any(marker in meta_blob for marker in equity_markers):
+            return False
+
+        # Reject explicit conflicting metal codes.
+        if conflicting_codes and any(code in token for code in conflicting_codes) and (code_marker not in token):
+            return False
+
+        has_primary_code = bool(code_marker and (code_marker in token or code_marker in meta_blob))
+        has_text_marker = bool(text_marker and (text_marker in token or text_marker in meta_blob))
+        if not has_primary_code and not has_text_marker:
+            return False
+
+        # If candidate only matches textual marker (e.g., GOLD), keep only
+        # contract-style names and reject company-like long prefixes/suffixes.
+        if text_marker and (text_marker in token) and not has_primary_code:
+            idx = token.find(text_marker)
+            prefix = token[:idx]
+            suffix = token[idx + len(text_marker):]
+            known_affixes = {
+                "M", "I", "R", "S", "Z", "P", "Q",
+                "PRO", "RAW", "ECN", "STP", "CASH", "SPOT",
+                "MICRO", "MINI", "MT4", "MT5",
+                "USD", "EUR", "GBP", "JPY",
+            }
+            for extra in (prefix, suffix):
+                if not extra:
+                    continue
+                if extra in known_affixes:
+                    continue
+                if extra.isdigit():
+                    continue
+                if len(extra) <= 2:
+                    continue
+                if extra.isalpha() and len(extra) > 4:
+                    return False
+
+            company_markers = (
+                "SACHS", "BARRICK", "KINROSS", "SANDSTORM", "OCEAN",
+                "MINING", "CORP", "INC", "LTD", "PLC", "NV",
+            )
+            if any(marker in meta_blob for marker in company_markers):
+                return False
+
+        return True
 
     def _is_forex_lookup(self, lookup: str) -> bool:
         parts = (lookup or "").split("_")
@@ -905,6 +1000,8 @@ class MetaTraderBroker(BaseBroker):
             return 0
 
         if self._is_forex_lookup(lookup) and not self._is_forex_candidate_compatible(lookup, broker_symbol):
+            return 0
+        if self._is_metal_lookup(lookup) and not self._is_metal_candidate_compatible(lookup, broker_symbol):
             return 0
 
         best = 0
@@ -2451,6 +2548,9 @@ class MetaTraderBroker(BaseBroker):
                 attempted_candidates.append(candidate)
                 if self._is_forex_lookup(lookup) and not self._is_forex_candidate_compatible(lookup, candidate):
                     skipped_or_rejected.append(f"{candidate}(FOREX_MISMATCH)")
+                    continue
+                if self._is_metal_lookup(lookup) and not self._is_metal_candidate_compatible(lookup, candidate):
+                    skipped_or_rejected.append(f"{candidate}(METAL_MISMATCH)")
                     continue
 
                 if self._is_forex_lookup(lookup):

@@ -1198,7 +1198,16 @@ class AutoTrader:
         if not raw:
             return ""
         compact = raw.replace("/", "").replace("_", "")
-        return "".join(ch for ch in compact if ch.isalnum() or ch == ":")
+        token = "".join(ch for ch in compact if ch.isalnum() or ch == ":")
+        plain = token.replace(":", "")
+
+        # Broker-specific metals aliases (e.g. GOLD#, GOLDm) -> TradingView spot symbols.
+        if "XAU" in plain or plain.startswith("GOLD"):
+            return "XAUUSD"
+        if "XAG" in plain or plain.startswith("SILVER"):
+            return "XAGUSD"
+
+        return token
 
     def _canonical_symbol(self, symbol: str | None) -> str:
         """Canonical symbol key for resilient matching across brokers/suffixes."""
@@ -2161,21 +2170,23 @@ class AutoTrader:
                     else:
                         self._log_analysis(symbol, "info", f"Nota broker su ordine eseguito: {broker_warning}")
 
-                # Break Even: usa il valore AI se disponibile, altrimenti default a 50% della distanza TP
+                # Advanced management is AI-driven: keep BE/trailing optional.
                 be_trigger = consensus.get("break_even_trigger")
                 trailing_pips = consensus.get("trailing_stop_pips")
-                if be_trigger is None:
-                    # Default BE: quando il prezzo raggiunge il 50% del TP
+                if be_trigger is None and trailing_pips is not None:
+                    # Compatibility fallback: if trailing is set but BE is missing,
+                    # arm BE at 50% TP distance so trailing can activate.
                     tp_distance = abs(take_profit - fill_price)
-                    if direction == "LONG":
-                        be_trigger = _rp(fill_price + (tp_distance * 0.5))
-                    else:
-                        be_trigger = _rp(fill_price - (tp_distance * 0.5))
-                    self._log_analysis(symbol, "info", f"🔒 Break Even auto impostato a {be_trigger} (50% del TP)")
-                if trailing_pips is None:
-                    # Default trailing: 15 pips dopo il BE
-                    trailing_pips = 15.0
-                    self._log_analysis(symbol, "info", f"📈 Trailing Stop auto: {trailing_pips} pips dopo BE")
+                    if tp_distance > 0:
+                        if direction == "LONG":
+                            be_trigger = _rp(fill_price + (tp_distance * 0.5))
+                        else:
+                            be_trigger = _rp(fill_price - (tp_distance * 0.5))
+                        self._log_analysis(
+                            symbol,
+                            "info",
+                            f"Break Even derivato automaticamente a {be_trigger} per supportare trailing stop.",
+                        )
 
                 trade = TradeRecord(
                     id=order_result.order_id,
@@ -2632,5 +2643,3 @@ def get_auto_trader() -> AutoTrader:
     if _auto_trader is None:
         _auto_trader = AutoTrader()
     return _auto_trader
-
-

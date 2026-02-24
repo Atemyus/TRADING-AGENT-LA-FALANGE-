@@ -1551,14 +1551,14 @@ Rispondi SOLO con un oggetto JSON:
   "entry_price": prezzo esatto o null,
   "stop_loss": prezzo esatto o null,
   "take_profit": [prezzo1, prezzo2, prezzo3] o [],
-  "break_even_trigger": prezzo ESATTO per spostare SL all'entry (OBBLIGATORIO se LONG o SHORT),
-  "trailing_stop_pips": distanza trailing stop in pips oppure null (a tua discrezione),
+  "break_even_trigger": prezzo ESATTO per spostare SL all'entry oppure null (OPZIONALE, usa null se non utile),
+  "trailing_stop_pips": distanza trailing stop in pips oppure null (OPZIONALE, usa null se non utile),
   "key_observations": ["osservazione1 IN ITALIANO", "osservazione2 IN ITALIANO", ...],
   "reasoning": "Spiegazione completa IN ITALIANO della tua analisi e perché raccomandi questo trade o perché dici HOLD"
 }}
 
 Sii specifico con i livelli di prezzo basandoti su ciò che vedi sul grafico.
-IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. trailing_stop_pips è a tua discrezione (null se non necessario).
+IMPORTANTE: break_even_trigger e trailing_stop_pips sono OPZIONALI. Usa null quando non sono necessari.
 """
 
         try:
@@ -1679,8 +1679,8 @@ Fornisci un'analisi di mercato completa e professionale. La tua analisi deve inc
    - Rischi chiave di questo trade
    - Scenari di invalidazione
 
-6. **GESTIONE AVANZATA DELLA POSIZIONE** (OBBLIGATORIO per LONG/SHORT):
-   - **Break Even**: A quale prezzo spostare lo stop loss al prezzo di entrata per proteggere il capitale. Tipicamente quando il prezzo raggiunge il 40-60% della distanza verso il TP1.
+6. **GESTIONE AVANZATA DELLA POSIZIONE** (OPZIONALE):
+   - **Break Even** (OPZIONALE): Se utile, indica a quale prezzo spostare lo stop loss al prezzo di entrata per proteggere il capitale. Se non necessario, restituisci null.
    - **Trailing Stop** (OPZIONALE): Se ritieni utile, indica quanti pips di distanza mantenere come trailing stop DOPO che il break even è stato attivato. Valuta in base alla volatilità e alle condizioni di mercato. Se non lo ritieni necessario, restituisci null.
 
 ## FORMATO OUTPUT
@@ -1691,8 +1691,8 @@ Rispondi SOLO con un oggetto JSON valido (niente markdown, niente spiegazioni fu
   "entry_price": prezzo esatto o null,
   "stop_loss": prezzo esatto o null,
   "take_profit": [TP1, TP2, TP3] o [],
-  "break_even_trigger": prezzo ESATTO al quale spostare lo SL all'entry (OBBLIGATORIO se LONG o SHORT),
-  "trailing_stop_pips": distanza in pips per il trailing stop dopo il break even oppure null (a tua discrezione),
+  "break_even_trigger": prezzo ESATTO al quale spostare lo SL all'entry oppure null (OPZIONALE, usa null se non utile),
+  "trailing_stop_pips": distanza in pips per il trailing stop dopo il break even oppure null (OPZIONALE, usa null se non utile),
   "key_observations": [
     "Osservazione sul trend IN ITALIANO",
     "Osservazione sugli indicatori IN ITALIANO",
@@ -1705,7 +1705,7 @@ Rispondi SOLO con un oggetto JSON valido (niente markdown, niente spiegazioni fu
 
 IMPORTANTE: Sii specifico con i livelli di prezzo effettivi visibili sul grafico. Non usare valori placeholder.
 IMPORTANTE: Scrivi TUTTO in ITALIANO (key_observations, reasoning).
-IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. trailing_stop_pips è a tua discrezione (restituisci null se non lo ritieni utile).
+IMPORTANTE: break_even_trigger e trailing_stop_pips sono OPZIONALI. Usa null quando non sono necessari.
 """
 
         try:
