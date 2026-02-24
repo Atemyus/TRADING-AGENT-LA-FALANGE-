@@ -121,8 +121,8 @@ class BotConfig:
     max_open_positions: int = 3
     max_daily_trades: int = 10
     max_daily_loss_percent: float = 5.0  # Stop trading if daily loss exceeds this
-    min_risk_reward_ratio: float = 1.5  # Keep TP at least 1.5R
-    max_risk_reward_ratio: float = 2.2  # Cap TP to avoid very swing targets
+    min_risk_reward_ratio: float = 2.0  # Keep TP at least 2R
+    max_risk_reward_ratio: float = 5.0  # Allow up to 5R on calmer markets
     smart_exit_enabled: bool = True
     smart_exit_min_rr: float = 1.0  # Arm smart exit after at least +1R
     smart_exit_drawdown_percent: float = 45.0  # Close if retrace from peak >= this %
@@ -342,6 +342,125 @@ class AutoTrader:
             return float(value)
         except (TypeError, ValueError):
             return None
+
+    def _extract_candle_ohlc(self, candle: Any) -> tuple[float, float, float, float] | None:
+        """Extract OHLC floats from dict/dataclass candle payloads."""
+        if isinstance(candle, dict):
+            open_v = self._to_float(candle.get("open", candle.get("o")))
+            high_v = self._to_float(candle.get("high", candle.get("h")))
+            low_v = self._to_float(candle.get("low", candle.get("l")))
+            close_v = self._to_float(candle.get("close", candle.get("c")))
+        else:
+            open_v = self._to_float(getattr(candle, "open", None))
+            high_v = self._to_float(getattr(candle, "high", None))
+            low_v = self._to_float(getattr(candle, "low", None))
+            close_v = self._to_float(getattr(candle, "close", None))
+
+        if open_v is None or high_v is None or low_v is None or close_v is None:
+            return None
+
+        if high_v < low_v:
+            high_v, low_v = low_v, high_v
+
+        return (open_v, high_v, low_v, close_v)
+
+    async def _estimate_dynamic_rr_from_volatility(
+        self,
+        symbol: str,
+        current_price: float,
+        min_rr: float,
+        max_rr: float,
+    ) -> tuple[float, str]:
+        """
+        Choose a target RR inside [min_rr, max_rr] using recent market volatility.
+
+        Lower volatility -> higher target RR.
+        Higher volatility -> lower target RR (faster profit locking).
+        """
+        if max_rr <= min_rr:
+            return (min_rr, "RR range fixed")
+
+        default_rr = min_rr + ((max_rr - min_rr) * 0.5)
+        if current_price <= 0:
+            return (default_rr, "invalid current price")
+
+        if not hasattr(self.broker, "get_candles"):
+            return (default_rr, "broker does not expose candles")
+
+        candles_raw: list[Any] = []
+        timeframe_candidates = ("15m", "M15", "1h", "H1")
+        for timeframe in timeframe_candidates:
+            try:
+                candles_raw = await self.broker.get_candles(symbol=symbol, timeframe=timeframe, count=80)
+            except TypeError:
+                try:
+                    candles_raw = await self.broker.get_candles(symbol, timeframe, 80)
+                except Exception:
+                    candles_raw = []
+            except Exception:
+                candles_raw = []
+
+            if isinstance(candles_raw, list) and len(candles_raw) >= 20:
+                break
+
+        if not candles_raw or len(candles_raw) < 20:
+            return (default_rr, "insufficient candles")
+
+        candles: list[tuple[float, float, float, float]] = []
+        for candle in candles_raw:
+            parsed = self._extract_candle_ohlc(candle)
+            if parsed is not None:
+                candles.append(parsed)
+
+        if len(candles) < 20:
+            return (default_rr, "insufficient valid candles")
+
+        # ATR proxy from true range
+        tr_values: list[float] = []
+        prev_close = candles[0][3]
+        for _, high_v, low_v, close_v in candles[1:]:
+            tr = max(
+                high_v - low_v,
+                abs(high_v - prev_close),
+                abs(low_v - prev_close),
+            )
+            tr_values.append(max(tr, 0.0))
+            prev_close = close_v
+
+        if not tr_values:
+            return (default_rr, "no true-range values")
+
+        atr_period = min(14, len(tr_values))
+        atr = sum(tr_values[-atr_period:]) / atr_period
+        sample = candles[-20:]
+        avg_range = sum((high_v - low_v) for _, high_v, low_v, _ in sample) / len(sample)
+
+        atr_ratio = atr / current_price
+        range_ratio = avg_range / current_price
+        vol_ratio = max(atr_ratio, range_ratio)
+
+        rr_span = max_rr - min_rr
+        if vol_ratio <= 0.0015:
+            target_rr = max_rr
+            vol_label = "LOW"
+        elif vol_ratio <= 0.0030:
+            target_rr = min_rr + (rr_span * 0.80)
+            vol_label = "LOW-MODERATE"
+        elif vol_ratio <= 0.0060:
+            target_rr = min_rr + (rr_span * 0.60)
+            vol_label = "MODERATE"
+        elif vol_ratio <= 0.0100:
+            target_rr = min_rr + (rr_span * 0.40)
+            vol_label = "HIGH"
+        else:
+            target_rr = min_rr + (rr_span * 0.25)
+            vol_label = "VERY-HIGH"
+
+        target_rr = min(max(target_rr, min_rr), max_rr)
+        return (
+            target_rr,
+            f"vol={vol_label}, atr={atr_ratio * 100:.3f}%, range={range_ratio * 100:.3f}%",
+        )
 
     def _estimate_margin_per_lot(
         self,
@@ -1552,6 +1671,17 @@ class AutoTrader:
             # ====== VALIDAZIONE SL/TP rispetto alla direzione ======
             MIN_RR_RATIO = max(1.0, float(self.config.min_risk_reward_ratio))
             MAX_RR_RATIO = max(MIN_RR_RATIO, float(self.config.max_risk_reward_ratio))
+            dynamic_target_rr, dynamic_rr_context = await self._estimate_dynamic_rr_from_volatility(
+                symbol=symbol,
+                current_price=current_price,
+                min_rr=MIN_RR_RATIO,
+                max_rr=MAX_RR_RATIO,
+            )
+            self._log_analysis(
+                symbol,
+                "info",
+                f"RR dinamico (volatilita): target 1:{dynamic_target_rr:.2f} - {dynamic_rr_context}",
+            )
 
             # ====== VALIDAZIONE DISTANZA MASSIMA SL (protezione da valori AI assurdi) ======
             # Percentuale UNIFORME per TUTTI gli asset - stesso comportamento su tutti i broker
@@ -1583,24 +1713,31 @@ class AutoTrader:
                     self._log_analysis(symbol, "error", f"⚠️ SL troppo lontano ({old_sl}, {((current_price - old_sl) / current_price * 100):.1f}%) → corretto a {stop_loss} ({MAX_SL_PERCENT}%)")
 
                 if take_profit <= current_price:
-                    self._log_analysis(symbol, "error", f"⚠️ TP ({take_profit}) <= prezzo ({current_price}) per LONG — TP invertito/invalido, correggo...")
-                    take_profit = _rp(current_price + (sl_dist * MIN_RR_RATIO))
-                    self._log_analysis(symbol, "info", f"TP corretto a: {take_profit} (R:R 1:{MIN_RR_RATIO})")
+                    self._log_analysis(symbol, "error", f"TP ({take_profit}) <= prezzo ({current_price}) per LONG - TP invertito/invalido, correggo...")
+                    take_profit = _rp(current_price + (sl_dist * dynamic_target_rr))
+                    self._log_analysis(symbol, "info", f"TP corretto a: {take_profit} (R:R 1:{dynamic_target_rr:.2f})")
                 else:
                     tp_dist = take_profit - current_price
                     actual_rr = tp_dist / sl_dist if sl_dist > 0 else 0
 
-                    # Enforce minimum R:R — se TP troppo vicino, spostalo a MIN_RR_RATIO
-                    if actual_rr < MIN_RR_RATIO:
-                        old_tp = take_profit
-                        take_profit = _rp(current_price + (sl_dist * MIN_RR_RATIO))
-                        self._log_analysis(symbol, "info", f"📏 TP troppo vicino ({old_tp}, R:R 1:{actual_rr:.1f}) → spostato a {take_profit} (R:R 1:{MIN_RR_RATIO})")
+                    bounded_ai_rr = min(MAX_RR_RATIO, max(MIN_RR_RATIO, actual_rr))
+                    effective_rr = min(
+                        MAX_RR_RATIO,
+                        max(MIN_RR_RATIO, (bounded_ai_rr * 0.65) + (dynamic_target_rr * 0.35)),
+                    )
 
-                    # Cap TP: se il TP è troppo lontano (oltre MAX_RR_RATIO x SL), limitalo
-                    elif actual_rr > MAX_RR_RATIO:
+                    # Align TP to configured bounds and to volatility-adaptive RR.
+                    if actual_rr < MIN_RR_RATIO or actual_rr > MAX_RR_RATIO or abs(actual_rr - effective_rr) >= 0.80:
                         old_tp = take_profit
-                        take_profit = _rp(current_price + (sl_dist * MAX_RR_RATIO))
-                        self._log_analysis(symbol, "info", f"📏 TP troppo lontano ({old_tp}, R:R 1:{actual_rr:.1f}) → cappato a {take_profit} (R:R 1:{MAX_RR_RATIO})")
+                        take_profit = _rp(current_price + (sl_dist * effective_rr))
+                        self._log_analysis(
+                            symbol,
+                            "info",
+                            (
+                                f"TP riallineato ({old_tp}) da R:R 1:{actual_rr:.2f} "
+                                f"a 1:{effective_rr:.2f} (target vol 1:{dynamic_target_rr:.2f})"
+                            ),
+                        )
 
             elif direction == "SHORT":
                 # SHORT: SL deve essere SOPRA il prezzo, TP deve essere SOTTO
@@ -1619,24 +1756,31 @@ class AutoTrader:
                     self._log_analysis(symbol, "error", f"⚠️ SL troppo lontano ({old_sl}, {((old_sl - current_price) / current_price * 100):.1f}%) → corretto a {stop_loss} ({MAX_SL_PERCENT}%)")
 
                 if take_profit >= current_price:
-                    self._log_analysis(symbol, "error", f"⚠️ TP ({take_profit}) >= prezzo ({current_price}) per SHORT — TP invertito/invalido, correggo...")
-                    take_profit = _rp(current_price - (sl_dist * MIN_RR_RATIO))
-                    self._log_analysis(symbol, "info", f"TP corretto a: {take_profit} (R:R 1:{MIN_RR_RATIO})")
+                    self._log_analysis(symbol, "error", f"TP ({take_profit}) >= prezzo ({current_price}) per SHORT - TP invertito/invalido, correggo...")
+                    take_profit = _rp(current_price - (sl_dist * dynamic_target_rr))
+                    self._log_analysis(symbol, "info", f"TP corretto a: {take_profit} (R:R 1:{dynamic_target_rr:.2f})")
                 else:
                     tp_dist = current_price - take_profit
                     actual_rr = tp_dist / sl_dist if sl_dist > 0 else 0
 
-                    # Enforce minimum R:R — se TP troppo vicino, spostalo a MIN_RR_RATIO
-                    if actual_rr < MIN_RR_RATIO:
-                        old_tp = take_profit
-                        take_profit = _rp(current_price - (sl_dist * MIN_RR_RATIO))
-                        self._log_analysis(symbol, "info", f"📏 TP troppo vicino ({old_tp}, R:R 1:{actual_rr:.1f}) → spostato a {take_profit} (R:R 1:{MIN_RR_RATIO})")
+                    bounded_ai_rr = min(MAX_RR_RATIO, max(MIN_RR_RATIO, actual_rr))
+                    effective_rr = min(
+                        MAX_RR_RATIO,
+                        max(MIN_RR_RATIO, (bounded_ai_rr * 0.65) + (dynamic_target_rr * 0.35)),
+                    )
 
-                    # Cap TP: se il TP è troppo lontano (oltre MAX_RR_RATIO x SL), limitalo
-                    elif actual_rr > MAX_RR_RATIO:
+                    # Align TP to configured bounds and to volatility-adaptive RR.
+                    if actual_rr < MIN_RR_RATIO or actual_rr > MAX_RR_RATIO or abs(actual_rr - effective_rr) >= 0.80:
                         old_tp = take_profit
-                        take_profit = _rp(current_price - (sl_dist * MAX_RR_RATIO))
-                        self._log_analysis(symbol, "info", f"📏 TP troppo lontano ({old_tp}, R:R 1:{actual_rr:.1f}) → cappato a {take_profit} (R:R 1:{MAX_RR_RATIO})")
+                        take_profit = _rp(current_price - (sl_dist * effective_rr))
+                        self._log_analysis(
+                            symbol,
+                            "info",
+                            (
+                                f"TP riallineato ({old_tp}) da R:R 1:{actual_rr:.2f} "
+                                f"a 1:{effective_rr:.2f} (target vol 1:{dynamic_target_rr:.2f})"
+                            ),
+                        )
 
             # ====== CALCOLO POSIZIONE (basato su valore pip) ======
             account_info = await self.broker.get_account_info()
@@ -2488,3 +2632,5 @@ def get_auto_trader() -> AutoTrader:
     if _auto_trader is None:
         _auto_trader = AutoTrader()
     return _auto_trader
+
+

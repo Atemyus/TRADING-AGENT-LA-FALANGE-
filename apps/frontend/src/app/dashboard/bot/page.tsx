@@ -256,6 +256,8 @@ interface BotConfig {
   max_open_positions: number;
   max_daily_trades: number;
   max_daily_loss_percent: number;
+  min_risk_reward_ratio: number;
+  max_risk_reward_ratio: number;
   trading_start_hour: number;
   trading_end_hour: number;
   trade_on_weekends: boolean;
@@ -427,6 +429,8 @@ export default function BotControlPage() {
     max_open_positions: 3,
     max_daily_trades: 10,
     max_daily_loss_percent: 5,
+    min_risk_reward_ratio: 2,
+    max_risk_reward_ratio: 5,
     trading_start_hour: 7,
     trading_end_hour: 21,
     trade_on_weekends: false,
@@ -506,7 +510,15 @@ export default function BotControlPage() {
   const fetchConfig = useCallback(async () => {
     try {
       const data = await botApi.getConfig() as BotConfig;
-      setConfig(data);
+      const rrMin = typeof data.min_risk_reward_ratio === "number" ? data.min_risk_reward_ratio : 2;
+      const rrMaxRaw = typeof data.max_risk_reward_ratio === "number" ? data.max_risk_reward_ratio : 5;
+      const rrMax = Math.max(rrMin, rrMaxRaw);
+      setConfig({
+        ...demoConfig,
+        ...data,
+        min_risk_reward_ratio: rrMin,
+        max_risk_reward_ratio: rrMax,
+      });
     } catch {
       setConfig(demoConfig);
     }
@@ -1282,6 +1294,48 @@ export default function BotControlPage() {
                         max_open_positions: parseInt(e.target.value),
                       })
                     }
+                    className="range-input"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400 block mb-1">
+                    Min R:R: 1:{currentConfig.min_risk_reward_ratio.toFixed(2)}
+                  </label>
+                  <input
+                    type="range"
+                    min="1"
+                    max="5"
+                    step="0.25"
+                    value={currentConfig.min_risk_reward_ratio}
+                    onChange={(e) => {
+                      const nextMin = parseFloat(e.target.value);
+                      const nextMax = Math.max(nextMin, currentConfig.max_risk_reward_ratio);
+                      handleConfigUpdate({
+                        min_risk_reward_ratio: nextMin,
+                        max_risk_reward_ratio: nextMax,
+                      });
+                    }}
+                    className="range-input"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400 block mb-1">
+                    Max R:R: 1:{currentConfig.max_risk_reward_ratio.toFixed(2)}
+                  </label>
+                  <input
+                    type="range"
+                    min="2"
+                    max="6"
+                    step="0.25"
+                    value={currentConfig.max_risk_reward_ratio}
+                    onChange={(e) => {
+                      const nextMax = parseFloat(e.target.value);
+                      const nextMin = Math.min(currentConfig.min_risk_reward_ratio, nextMax);
+                      handleConfigUpdate({
+                        min_risk_reward_ratio: nextMin,
+                        max_risk_reward_ratio: nextMax,
+                      });
+                    }}
                     className="range-input"
                   />
                 </div>
