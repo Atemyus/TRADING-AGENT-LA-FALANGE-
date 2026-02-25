@@ -320,7 +320,7 @@ class PlatformRestBroker(BaseBroker):
         }
 
     def _build_basic_auth_header(self) -> str:
-        raw = f"{self.account_id}:{self.password}".encode("utf-8")
+        raw = f"{self.account_id}:{self.password}".encode()
         return f"Basic {base64.b64encode(raw).decode('utf-8')}"
 
     def _auth_headers(self) -> dict[str, str]:

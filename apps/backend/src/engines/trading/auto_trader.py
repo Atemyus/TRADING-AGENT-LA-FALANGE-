@@ -40,7 +40,13 @@ except ImportError:
     TRADINGVIEW_AGENT_AVAILABLE = False
     TradingViewAIAgent = None
 from src.core.config import settings
-from src.engines.trading.base_broker import BaseBroker, OrderRequest, OrderSide, OrderStatus, OrderType
+from src.engines.trading.base_broker import (
+    BaseBroker,
+    OrderRequest,
+    OrderSide,
+    OrderStatus,
+    OrderType,
+)
 from src.engines.trading.broker_factory import BrokerFactory
 from src.services.economic_calendar_service import (
     EconomicCalendarService,
@@ -290,7 +296,7 @@ class AutoTrader:
                 self._log_analysis(symbol, "info", f"📊 Broker spec: tickValue={tick_value:.6g}, tickSize={tick_size:.6g}, contractSize={contract_size} → pip_value=${pip_value:.2f}/lotto")
                 return (sl_pips, pip_value)
             elif contract_size and contract_size > 0:
-                # Fallback matematico: se manca tickValue, per la maggior parte degli assett 
+                # Fallback matematico: se manca tickValue, per la maggior parte degli assett
                 # quotati in USD (Crypto, Metalli, Indici US), il valore in $ di 1 pip per lotto è:
                 # pip_size * contractSize
                 pip_value = pip_size * contract_size
@@ -504,12 +510,12 @@ class AutoTrader:
         leverage = self._to_float(getattr(account_info, "leverage", None)) or 0.0
         if contract_size and contract_size > 0 and current_price > 0:
             if leverage > 0:
-                # If the symbol has USD as the base currency (e.g., USDJPY, USDCAD), 
+                # If the symbol has USD as the base currency (e.g., USDJPY, USDCAD),
                 # the margin required in USD is simply contract_size / leverage.
                 sym_upper = symbol.upper().replace("/", "").replace("_", "").replace("-", "")
                 if sym_upper.startswith("USD"):
                     return contract_size / leverage
-                
+
                 # For non-USD base pairs (e.g., EURUSD, GBPUSD), it's (current_price * contract_size) / leverage.
                 return (current_price * contract_size) / leverage
             return current_price * contract_size
@@ -1125,10 +1131,10 @@ class AutoTrader:
                                 ),
                             )
                             await self._notify(
-                                (
+
                                     f"{trade.symbol} Smart Exit: posizione chiusa in profitto "
                                     f"(max {trade.max_favorable_rr:.2f}R, retrace {drawdown_ratio * 100:.1f}%)"
-                                )
+
                             )
                             continue
 

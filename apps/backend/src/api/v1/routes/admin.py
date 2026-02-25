@@ -14,7 +14,15 @@ from sqlalchemy.orm import selectinload
 from src.api.v1.routes.auth import get_current_user
 from src.core.database import get_db
 from src.core.email import email_service
-from src.core.models import BrokerAccount, License, LicenseStatus, User, WhopOrder, WhopOrderStatus, WhopProduct
+from src.core.models import (
+    BrokerAccount,
+    License,
+    LicenseStatus,
+    User,
+    WhopOrder,
+    WhopOrderStatus,
+    WhopProduct,
+)
 
 router = APIRouter()
 
