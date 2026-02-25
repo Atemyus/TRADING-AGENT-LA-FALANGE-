@@ -613,9 +613,14 @@ class MetaTraderBroker(BaseBroker):
             for variant in variants:
                 if not variant:
                     continue
-                token = self._normalize_symbol_token(variant)
-                if token and token not in seen:
-                    seen.add(token)
+                # Use the actual string (uppercased) for dedup, NOT the normalized
+                # token.  _normalize_symbol_token strips '#' and '.', which makes
+                # "GOLD" and "GOLD#" look identical even though they are distinct
+                # broker symbols (e.g. XM uses "GOLD" while the symbol list may
+                # report "GOLD#").
+                key = variant.strip().upper()
+                if key and key not in seen:
+                    seen.add(key)
                     expanded.append(variant)
 
         return expanded
@@ -1039,12 +1044,12 @@ class MetaTraderBroker(BaseBroker):
             raw_candidates = [lookup.replace("_", ""), *self.SYMBOL_ALIASES.get(lookup, [])]
             raw_candidates = self._with_common_symbol_suffix_variants(raw_candidates)
             ordered_fallback: list[str] = []
-            seen_tokens: set[str] = set()
+            seen_keys: set[str] = set()
             for candidate in raw_candidates:
-                normalized = self._normalize_symbol_token(candidate)
-                if not normalized or normalized in seen_tokens:
+                key = candidate.strip().upper()
+                if not key or key in seen_keys:
                     continue
-                seen_tokens.add(normalized)
+                seen_keys.add(key)
                 ordered_fallback.append(candidate)
             return ordered_fallback or [lookup.replace("_", "")]
 
@@ -1070,14 +1075,14 @@ class MetaTraderBroker(BaseBroker):
             ]
             raw_candidates = self._with_common_symbol_suffix_variants(raw_candidates)
             ordered_fallback: list[str] = []
-            seen_tokens: set[str] = set()
+            seen_keys: set[str] = set()
             for candidate in raw_candidates:
                 if not candidate:
                     continue
-                normalized = self._normalize_symbol_token(candidate)
-                if not normalized or normalized in seen_tokens:
+                key = candidate.strip().upper()
+                if not key or key in seen_keys:
                     continue
-                seen_tokens.add(normalized)
+                seen_keys.add(key)
                 ordered_fallback.append(candidate)
             return ordered_fallback
 
@@ -1109,6 +1114,17 @@ class MetaTraderBroker(BaseBroker):
                     f"[MetaTrader] Ignoring stale mapped symbol {mapped} for {lookup} "
                     f"(mappedScore={mapped_score}, bestScore={top_score})"
                 )
+
+        # Append raw SYMBOL_ALIASES as lower-priority fallbacks.
+        # The scoring path above only returns symbols found in the broker's
+        # symbol list.  Some brokers (e.g. XM) report "GOLD#" in their list
+        # while the actual tradeable symbol is "GOLD" (without '#').  By
+        # appending the canonical alias entries we ensure both forms are tried.
+        alias_fallbacks = [lookup.replace("_", ""), *self.SYMBOL_ALIASES.get(lookup, [])]
+        for alias in alias_fallbacks:
+            if alias and alias not in seen:
+                seen.add(alias)
+                ordered.append(alias)
 
         return ordered
 
