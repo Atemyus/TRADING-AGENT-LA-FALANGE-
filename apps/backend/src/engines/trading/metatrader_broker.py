@@ -101,11 +101,16 @@ class MetaTraderBroker(BaseBroker):
         'USD_PLN': ['USDPLN', 'USDPLNm', 'USDPLN.', 'USDPLN-ECN'],
 
         # ============ METALS ============
-        'XAU_USD': ['XAUUSD', 'XAUUSDm', 'GOLD', 'GOLDm', 'GOLD.', 'XAUUSD.', 'XAUUSD-ECN'],
-        'XAG_USD': ['XAGUSD', 'XAGUSDm', 'SILVER', 'SILVERm', 'SILVER.', 'XAGUSD.'],
-        'XPT_USD': ['XPTUSD', 'XPTUSDm', 'PLATINUM', 'XPTUSD.', 'PLATINUMm'],
-        'XPD_USD': ['XPDUSD', 'XPDUSDm', 'PALLADIUM', 'XPDUSD.', 'PALLADIUMm'],
-        'XCU_USD': ['XCUUSD', 'COPPER', 'COPPERm', 'COPPER.', 'HG', 'HGm'],
+        'XAU_USD': ['XAUUSD', 'XAUUSDm', 'GOLD', 'GOLDm', 'GOLD.', 'XAUUSD.', 'XAUUSD-ECN',
+                     'XAUUSD+', 'GOLD+', 'XAUUSD#', 'GOLD#'],
+        'XAG_USD': ['XAGUSD', 'XAGUSDm', 'SILVER', 'SILVERm', 'SILVER.', 'XAGUSD.',
+                     'XAGUSD+', 'SILVER+', 'XAGUSD#', 'SILVER#'],
+        'XPT_USD': ['XPTUSD', 'XPTUSDm', 'PLATINUM', 'XPTUSD.', 'PLATINUMm',
+                     'XPTUSD+', 'XPTUSD#'],
+        'XPD_USD': ['XPDUSD', 'XPDUSDm', 'PALLADIUM', 'XPDUSD.', 'PALLADIUMm',
+                     'XPDUSD+', 'XPDUSD#'],
+        'XCU_USD': ['XCUUSD', 'COPPER', 'COPPERm', 'COPPER.', 'HG', 'HGm',
+                     'XCUUSD+', 'COPPER+'],
 
         # ============ ENERGY / OIL ============
         'WTI_USD': ['USOUSD', 'USOUSDm', 'WTIUSD', 'WTI', 'USOIL', 'USOILm', 'XTIUSD', 'CL', 'CLm'],
@@ -727,10 +732,17 @@ class MetaTraderBroker(BaseBroker):
                 continue
 
             variants = [base]
+            # '#' suffix (XM style)
             if base.endswith("#"):
                 variants.append(base[:-1])
             else:
                 variants.append(f"{base}#")
+
+            # '+' suffix (some brokers use + instead of #)
+            if base.endswith("+"):
+                variants.append(base[:-1])
+            else:
+                variants.append(f"{base}+")
 
             # Common dotted forms used by some brokers.
             if not base.endswith("."):
@@ -1114,7 +1126,7 @@ class MetaTraderBroker(BaseBroker):
             return 0
 
         adjustment = 0
-        if any(marker in upper for marker in ("CASH", "SPOT", ".CASH", "_CASH", "#")):
+        if any(marker in upper for marker in ("CASH", "SPOT", ".CASH", "_CASH", "#", "+")):
             adjustment += 80
         if any(marker in upper for marker in ("FUT", "FUTURE", "CONTRACT", "ROLL")):
             adjustment -= 120
@@ -1604,6 +1616,33 @@ class MetaTraderBroker(BaseBroker):
                         f"[MetaTrader] Affix autodiscovery resolved {remapped} additional symbols "
                         f"(total: {mapped_count}/{len(self.SYMBOL_ALIASES)})"
                     )
+
+            # Pre-subscribe critical symbols (metals, indices) so they're in
+            # Market Watch when the first price request arrives.  Some MT5
+            # brokers only return prices for symbols already in Market Watch.
+            critical_keys = [
+                "XAU_USD", "XAG_USD", "US30", "US500", "NAS100",
+                "DE40", "UK100", "JP225", "EUR_USD", "GBP_USD",
+            ]
+            symbols_to_subscribe: list[str] = []
+            for key in critical_keys:
+                resolved = self._symbol_map.get(key)
+                if resolved:
+                    symbols_to_subscribe.append(resolved)
+
+            if symbols_to_subscribe:
+                subscribed = 0
+                for broker_sym in symbols_to_subscribe:
+                    try:
+                        await self._request(
+                            "POST",
+                            f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(broker_sym)}/subscribe"
+                        )
+                        subscribed += 1
+                    except Exception:
+                        pass  # Non-critical, symbol may already be subscribed
+                if subscribed > 0:
+                    print(f"[MetaTrader] Pre-subscribed {subscribed}/{len(symbols_to_subscribe)} critical symbols to Market Watch")
 
         except Exception as e:
             print(f"Warning: Could not build symbol map: {e}")
@@ -2729,45 +2768,56 @@ class MetaTraderBroker(BaseBroker):
                     # brokers (like XM with GOLD#), it fails silently or requires an explicit subscribe first.
                     exc_str = str(exc)
                     if "NotFoundError" in exc_str and "symbol price not found" in exc_str:
-                        try:
-                            # Attempt explicit subscription before giving up on this candidate
-                            self._log_analysis(symbol, "info", f"Prezzo non trovato per {candidate}, forzo iscrizione esplicita...")
-                            await self._request(
-                                "POST",
-                                f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(candidate)}/subscribe"
-                            )
-                            # Wait a moment for the subscription to propagate in MT5
-                            await asyncio.sleep(0.5)
-
-                            # Retry fetching the price
-                            price_data = await self._request(
-                                "GET",
-                                f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(candidate)}/current-price"
-                            )
-
+                        # Retry with explicit subscribe + progressive backoff.
+                        # Some MT5 brokers take 2-5 seconds to populate Market Watch
+                        # after a symbol subscription request.
+                        subscribe_waits = [1.0, 2.0, 4.0]
+                        price_recovered = False
+                        for sub_attempt, wait_time in enumerate(subscribe_waits):
                             try:
-                                bid = float(price_data.get("bid", 0) or 0)
-                                ask = float(price_data.get("ask", 0) or 0)
-                            except Exception:
-                                bid = 0.0
-                                ask = 0.0
+                                if sub_attempt == 0:
+                                    print(f"[MetaTrader] Price not found for {candidate}, subscribing (attempt {sub_attempt + 1}/{len(subscribe_waits)})...")
+                                    await self._request(
+                                        "POST",
+                                        f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(candidate)}/subscribe"
+                                    )
 
-                            if self._is_plausible_price_for_lookup(lookup, bid, ask):
-                                if candidate != broker_symbol:
-                                    print(f"[MetaTrader] Price fallback resolved {lookup} -> {candidate} (dopo iscrizione forzata)")
-                                    self._symbol_map[lookup] = candidate
+                                await asyncio.sleep(wait_time)
 
-                                tick = Tick(
-                                    symbol=symbol,
-                                    bid=Decimal(str(price_data.get("bid", 0))),
-                                    ask=Decimal(str(price_data.get("ask", 0))),
-                                    timestamp=datetime.now(),
+                                price_data = await self._request(
+                                    "GET",
+                                    f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(candidate)}/current-price",
+                                    params={"keepSubscription": "true"}
                                 )
-                                self._set_cache(cache_key, tick, self.PRICES_CACHE_TTL)
-                                return tick
 
-                        except Exception as sub_exc:
-                            print(f"[MetaTrader] Iscrizione forzata fallita per {candidate}: {sub_exc}")
+                                try:
+                                    bid = float(price_data.get("bid", 0) or 0)
+                                    ask = float(price_data.get("ask", 0) or 0)
+                                except Exception:
+                                    bid = 0.0
+                                    ask = 0.0
+
+                                if self._is_plausible_price_for_lookup(lookup, bid, ask):
+                                    if candidate != broker_symbol:
+                                        print(f"[MetaTrader] Price resolved {lookup} -> {candidate} (subscribe attempt {sub_attempt + 1})")
+                                        self._symbol_map[lookup] = candidate
+
+                                    tick = Tick(
+                                        symbol=symbol,
+                                        bid=Decimal(str(price_data.get("bid", 0))),
+                                        ask=Decimal(str(price_data.get("ask", 0))),
+                                        timestamp=datetime.now(),
+                                    )
+                                    self._set_cache(cache_key, tick, self.PRICES_CACHE_TTL)
+                                    return tick
+
+                                # Price returned but not plausible — don't retry, move to next candidate
+                                break
+
+                            except Exception as sub_exc:
+                                if sub_attempt == len(subscribe_waits) - 1:
+                                    print(f"[MetaTrader] Subscribe+retry failed for {candidate} after {len(subscribe_waits)} attempts: {sub_exc}")
+                                # else: silently retry with longer wait
 
                     last_error = exc
                     if request_attempts == 1 and not self._is_symbol_lookup_error(str(exc)):
