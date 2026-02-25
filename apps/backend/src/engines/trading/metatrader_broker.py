@@ -2544,13 +2544,13 @@ class MetaTraderBroker(BaseBroker):
                             )
                             # Wait a moment for the subscription to propagate in MT5
                             await asyncio.sleep(0.5)
-                            
+
                             # Retry fetching the price
                             price_data = await self._request(
                                 "GET",
                                 f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(candidate)}/current-price"
                             )
-                            
+
                             try:
                                 bid = float(price_data.get("bid", 0) or 0)
                                 ask = float(price_data.get("ask", 0) or 0)
@@ -2571,7 +2571,7 @@ class MetaTraderBroker(BaseBroker):
                                 )
                                 self._set_cache(cache_key, tick, self.PRICES_CACHE_TTL)
                                 return tick
-                                
+
                         except Exception as sub_exc:
                             print(f"[MetaTrader] Iscrizione forzata fallita per {candidate}: {sub_exc}")
 

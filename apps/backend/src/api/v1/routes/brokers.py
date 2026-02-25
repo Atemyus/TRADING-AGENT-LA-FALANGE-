@@ -4,6 +4,7 @@ Each broker account runs independently with its own trading configuration.
 """
 
 from datetime import UTC, datetime
+
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -24,8 +25,8 @@ from src.services.broker_credentials_service import (
     resolve_dxtrade_runtime_credentials,
     resolve_ig_runtime_credentials,
     resolve_matchtrader_runtime_credentials,
-    resolve_mt_bridge_runtime_credentials,
     resolve_metaapi_runtime_credentials,
+    resolve_mt_bridge_runtime_credentials,
     resolve_oanda_runtime_credentials,
     should_use_mt_bridge,
 )

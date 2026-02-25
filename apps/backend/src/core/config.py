@@ -10,7 +10,6 @@ from pathlib import Path
 from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
 _CONFIG_PATH = Path(__file__).resolve()
 _CONFIG_PARENTS = tuple(_CONFIG_PATH.parents)
 
