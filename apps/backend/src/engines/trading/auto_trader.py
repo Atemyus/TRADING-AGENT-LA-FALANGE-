@@ -703,23 +703,45 @@ class AutoTrader:
         if direction == "LONG":
             sl_reference = self._to_float(getattr(tick, "bid", None)) or current_price
             tp_reference = self._to_float(getattr(tick, "ask", None)) or current_price
+
+            # Forza SL sotto il prezzo se dalla parte sbagliata
+            if stop_loss >= sl_reference:
+                stop_loss = round_price(sl_reference - distance - point_size)
+                adjusted = True
+
             target_sl = sl_reference - distance
             target_tp = tp_reference + distance
             if stop_loss >= target_sl:
                 stop_loss = round_price(target_sl - point_size)
                 adjusted = True
-            if take_profit <= target_tp:
+
+            # Forza TP sopra il prezzo se dalla parte sbagliata
+            if take_profit <= tp_reference:
+                take_profit = round_price(tp_reference + distance + point_size)
+                adjusted = True
+            elif take_profit <= target_tp:
                 take_profit = round_price(target_tp + point_size)
                 adjusted = True
         else:
             sl_reference = self._to_float(getattr(tick, "ask", None)) or current_price
             tp_reference = self._to_float(getattr(tick, "bid", None)) or current_price
+
+            # Forza SL sopra il prezzo se dalla parte sbagliata
+            if stop_loss <= sl_reference:
+                stop_loss = round_price(sl_reference + distance + point_size)
+                adjusted = True
+
             target_sl = sl_reference + distance
             target_tp = tp_reference - distance
             if stop_loss <= target_sl:
                 stop_loss = round_price(target_sl + point_size)
                 adjusted = True
-            if take_profit >= target_tp:
+
+            # Forza TP sotto il prezzo se dalla parte sbagliata
+            if take_profit >= tp_reference:
+                take_profit = round_price(tp_reference - distance - point_size)
+                adjusted = True
+            elif take_profit >= target_tp:
                 take_profit = round_price(target_tp - point_size)
                 adjusted = True
 
@@ -2041,6 +2063,58 @@ class AutoTrader:
                 self._log_analysis(symbol, "skip", f"Trade annullato prima dell'invio ordine: {block_reason_now}")
                 return
 
+            # ====== GUARDRAIL FINALE: prezzo fresco + SL/TP dalla parte giusta ======
+            # Ri-fetcha il prezzo corrente per evitare che uno stale price
+            # faccia passare SL/TP invertiti attraverso la validazione.
+            try:
+                fresh_tick = await self.broker.get_current_price(symbol)
+                fresh_price = float(fresh_tick.mid)
+                if abs(fresh_price - current_price) / max(current_price, 1e-8) > 0.001:
+                    self._log_analysis(symbol, "info",
+                        f"Prezzo aggiornato prima dell'ordine: {current_price} → {fresh_price}")
+                    current_price = fresh_price
+                    tick = fresh_tick
+            except Exception:
+                pass  # Usa il prezzo precedente se il refresh fallisce
+
+            # Verifica ASSOLUTA: SL e TP devono essere dalla parte giusta
+            if direction == "LONG":
+                if stop_loss >= current_price or take_profit <= current_price:
+                    self._log_analysis(symbol, "error",
+                        f"⛔ GUARDRAIL: SL/TP dalla parte sbagliata per LONG "
+                        f"(price={current_price}, SL={stop_loss}, TP={take_profit}) — ricalcolo forzato")
+                    sl_dist_fresh = current_price * (MAX_SL_PERCENT / 100)
+                    stop_loss = _rp(current_price - sl_dist_fresh)
+                    take_profit = _rp(current_price + (sl_dist_fresh * dynamic_target_rr))
+                    sl_distance = sl_dist_fresh
+                    self._log_analysis(symbol, "info",
+                        f"SL/TP ricalcolati: SL={stop_loss} | TP={take_profit}")
+            elif direction == "SHORT":
+                if stop_loss <= current_price or take_profit >= current_price:
+                    self._log_analysis(symbol, "error",
+                        f"⛔ GUARDRAIL: SL/TP dalla parte sbagliata per SHORT "
+                        f"(price={current_price}, SL={stop_loss}, TP={take_profit}) — ricalcolo forzato")
+                    sl_dist_fresh = current_price * (MAX_SL_PERCENT / 100)
+                    stop_loss = _rp(current_price + sl_dist_fresh)
+                    take_profit = _rp(current_price - (sl_dist_fresh * dynamic_target_rr))
+                    sl_distance = sl_dist_fresh
+                    self._log_analysis(symbol, "info",
+                        f"SL/TP ricalcolati: SL={stop_loss} | TP={take_profit}")
+
+            # Ricalcola lot size se SL è cambiato nel guardrail
+            sl_distance = abs(current_price - stop_loss)
+            if sl_distance > 0:
+                sl_pips_check, pip_value_check = self._calculate_pip_info(symbol, current_price, sl_distance, broker_spec)
+                if sl_pips_check > 0 and pip_value_check > 0:
+                    recalc_lot = risk_amount / (sl_pips_check * pip_value_check)
+                    if VOL_STEP > 0:
+                        recalc_lot = round(round(recalc_lot / VOL_STEP) * VOL_STEP, 8)
+                    recalc_lot = max(MIN_LOT, min(recalc_lot, MAX_LOT_SIZE))
+                    if max_lot_by_margin is not None:
+                        recalc_lot = min(recalc_lot, max(MIN_LOT, max_lot_by_margin))
+                    if recalc_lot != lot_size:
+                        lot_size = recalc_lot
+
             # Retry automatico in caso di margine insufficiente o invalid stops
             order_result = None
             attempt_lot_size = lot_size
@@ -2116,6 +2190,18 @@ class AutoTrader:
                             broker_spec=broker_spec,
                         )
                         changed = (prev_sl != stop_loss) or (prev_tp != take_profit)
+
+                    # Guardrail dentro il retry loop: SL/TP devono stare dalla parte giusta
+                    if direction == "LONG" and (stop_loss >= current_price or take_profit <= current_price):
+                        sl_fix = current_price * 0.005
+                        stop_loss = self._round_price(symbol, current_price - sl_fix, broker_spec)
+                        take_profit = self._round_price(symbol, current_price + (sl_fix * max(dynamic_target_rr, 1.5)), broker_spec)
+                        changed = True
+                    elif direction == "SHORT" and (stop_loss <= current_price or take_profit >= current_price):
+                        sl_fix = current_price * 0.005
+                        stop_loss = self._round_price(symbol, current_price + sl_fix, broker_spec)
+                        take_profit = self._round_price(symbol, current_price - (sl_fix * max(dynamic_target_rr, 1.5)), broker_spec)
+                        changed = True
 
                     if changed:
                         sl_distance = abs(current_price - stop_loss)
