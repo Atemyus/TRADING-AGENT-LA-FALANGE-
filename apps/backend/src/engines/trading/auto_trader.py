@@ -492,6 +492,13 @@ class AutoTrader:
         leverage = self._to_float(getattr(account_info, "leverage", None)) or 0.0
         if contract_size and contract_size > 0 and current_price > 0:
             if leverage > 0:
+                # If the symbol has USD as the base currency (e.g., USDJPY, USDCAD), 
+                # the margin required in USD is simply contract_size / leverage.
+                sym_upper = symbol.upper().replace("/", "").replace("_", "").replace("-", "")
+                if sym_upper.startswith("USD"):
+                    return contract_size / leverage
+                
+                # For non-USD base pairs (e.g., EURUSD, GBPUSD), it's (current_price * contract_size) / leverage.
                 return (current_price * contract_size) / leverage
             return current_price * contract_size
 
