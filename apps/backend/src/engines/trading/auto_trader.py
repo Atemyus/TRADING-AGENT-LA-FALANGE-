@@ -229,8 +229,16 @@ class AutoTrader:
         if len(self.state.analysis_logs) > 500:
             self.state.analysis_logs = self.state.analysis_logs[-500:]
 
-    def _get_price_decimals(self, symbol: str) -> int:
-        """Restituisce il numero di decimali corretto per il prezzo dello strumento."""
+    def _get_price_decimals(self, symbol: str, broker_spec: dict[str, Any] | None = None) -> int:
+        """Restituisce il numero di decimali corretto per il prezzo dello strumento.
+
+        Se broker_spec fornisce 'digits', lo usa direttamente (dato esatto del broker).
+        Altrimenti usa fallback basato sul tipo di strumento.
+        """
+        if broker_spec:
+            digits = self._to_float(broker_spec.get("digits"))
+            if digits is not None and digits > 0:
+                return int(digits)
         sym = symbol.upper().replace("/", "").replace("_", "")
         if "JPY" in sym:
             return 3  # Es: 153.581
@@ -242,12 +250,20 @@ class AutoTrader:
             return 1  # Es: 42150.5
         return 5  # Forex standard: Es: 1.08542
 
-    def _round_price(self, symbol: str, price: float) -> float:
+    def _round_price(self, symbol: str, price: float, broker_spec: dict[str, Any] | None = None) -> float:
         """Arrotonda il prezzo al numero di decimali corretto per lo strumento."""
-        return round(price, self._get_price_decimals(symbol))
+        return round(price, self._get_price_decimals(symbol, broker_spec))
 
-    def _get_pip_size(self, symbol: str) -> float:
-        """Restituisce la dimensione di 1 pip per lo strumento."""
+    def _get_pip_size(self, symbol: str, broker_spec: dict[str, Any] | None = None) -> float:
+        """Restituisce la dimensione di 1 pip per lo strumento.
+
+        Se broker_spec fornisce 'pipSize', lo usa direttamente (dato esatto del broker).
+        Altrimenti usa fallback basato sul tipo di strumento.
+        """
+        if broker_spec:
+            pip_size = self._to_float(broker_spec.get("pipSize"))
+            if pip_size and pip_size > 0:
+                return pip_size
         sym = symbol.upper().replace("/", "").replace("_", "")
 
         # JPY pairs: 1 pip = 0.01
@@ -280,7 +296,7 @@ class AutoTrader:
         del broker per calcolare il pip value corretto.
         """
         sym = symbol.upper().replace("/", "").replace("_", "")
-        pip_size = self._get_pip_size(symbol)
+        pip_size = self._get_pip_size(symbol, broker_spec)
         sl_pips = sl_distance / pip_size
 
         # Se abbiamo le specifiche dal broker, usiamo tickValue per calcolo preciso
@@ -293,14 +309,42 @@ class AutoTrader:
                 # pip_value = tickValue * (pipSize / tickSize)
                 # Questo ci dà il valore in valuta conto di 1 pip per 1 lotto
                 pip_value = tick_value * (pip_size / tick_size)
-                self._log_analysis(symbol, "info", f"📊 Broker spec: tickValue={tick_value:.6g}, tickSize={tick_size:.6g}, contractSize={contract_size} → pip_value=${pip_value:.2f}/lotto")
+                self._log_analysis(symbol, "info", f"📊 Broker spec (ESATTO): tickValue={tick_value:.6g}, tickSize={tick_size:.6g}, pipSize={pip_size} → pip_value=${pip_value:.2f}/lotto")
                 return (sl_pips, pip_value)
             elif contract_size and contract_size > 0:
-                # Fallback matematico: se manca tickValue, per la maggior parte degli assett
-                # quotati in USD (Crypto, Metalli, Indici US), il valore in $ di 1 pip per lotto è:
-                # pip_size * contractSize
-                pip_value = pip_size * contract_size
-                self._log_analysis(symbol, "info", f"📊 Broker spec (Fallback Matematico): contractSize={contract_size}, pipSize={pip_size} → pip_value=${pip_value:.2f}/lotto (senza tickValue nativo)")
+                # Fallback: pip_size * contractSize dà il valore in VALUTA DI PROFITTO.
+                # Usiamo profitCurrency dal broker per sapere se serve conversione.
+                pip_value_quote = pip_size * contract_size
+                profit_currency = str(broker_spec.get("profitCurrency", "") or "").upper()
+
+                # Se il broker ci dice la profitCurrency, la usiamo per decidere
+                # se serve conversione. Altrimenti deduciamo dal nome del simbolo.
+                needs_conversion = False
+                if profit_currency and profit_currency != "USD":
+                    needs_conversion = True
+                elif not profit_currency:
+                    # Deduzione dal simbolo (fallback se profitCurrency non disponibile)
+                    sym_clean = symbol.upper().replace("/", "").replace("_", "").replace("-", "").replace("#", "").replace(".", "")
+                    if "JPY" in sym_clean and current_price > 1:
+                        needs_conversion = True
+                    elif len(sym_clean) == 6 and sym_clean[3:] != "USD" and not any(
+                        tag in sym_clean for tag in ["XAU", "XAG", "GOLD", "SILVER", "BTC", "ETH", "SOL", "BNB",
+                                                      "WTI", "BRENT", "OIL", "US30", "US500", "NAS100",
+                                                      "DE40", "UK100", "JP225", "FR40", "EU50"]
+                    ):
+                        needs_conversion = True
+
+                if needs_conversion and current_price > 0:
+                    pip_value = pip_value_quote / current_price
+                    self._log_analysis(symbol, "info",
+                        f"📊 Broker spec (contractSize + conversione {profit_currency or 'dedotta'}→USD): "
+                        f"contractSize={contract_size}, pipSize={pip_size}, "
+                        f"pip_value_quote={pip_value_quote:.2f}, price={current_price:.4f} → pip_value=${pip_value:.2f}/lotto")
+                else:
+                    pip_value = pip_value_quote
+                    self._log_analysis(symbol, "info",
+                        f"📊 Broker spec (contractSize, profitCurrency={profit_currency or 'USD'}): "
+                        f"contractSize={contract_size}, pipSize={pip_size} → pip_value=${pip_value:.2f}/lotto")
                 return (sl_pips, pip_value)
 
         # Fallback: valori stimati per tipo di strumento
@@ -590,10 +634,10 @@ class AutoTrader:
             self._to_float(spec.get("point"))
             or self._to_float(spec.get("pointSize"))
             or self._to_float(spec.get("tickSize"))
-            or (self._get_pip_size(symbol) / 10.0)
+            or (self._get_pip_size(symbol, broker_spec) / 10.0)
         )
         if point_size <= 0:
-            point_size = max(self._get_pip_size(symbol) / 10.0, 1e-8)
+            point_size = max(self._get_pip_size(symbol, broker_spec) / 10.0, 1e-8)
 
         stop_level_raw = max(
             (
@@ -646,13 +690,14 @@ class AutoTrader:
         min_distance: float,
         point_size: float,
         tick: Any | None = None,
+        broker_spec: dict[str, Any] | None = None,
     ) -> tuple[float, float, bool]:
         """Ensure SL/TP satisfy broker minimum stop distance constraints."""
         if min_distance <= 0:
             return (stop_loss, take_profit, False)
 
         adjusted = False
-        round_price = lambda value: self._round_price(symbol, value)
+        round_price = lambda value: self._round_price(symbol, value, broker_spec)
 
         distance = max(min_distance, point_size * 2)
         if direction == "LONG":
@@ -689,14 +734,15 @@ class AutoTrader:
         take_profit: float,
         min_distance: float,
         retry_index: int,
+        broker_spec: dict[str, Any] | None = None,
     ) -> tuple[float, float]:
         """
         Force-widen SL/TP after broker INVALID_STOPS rejection.
 
         Used when broker constraints are stricter than advertised in symbol spec.
         """
-        round_price = lambda value: self._round_price(symbol, value)
-        pip_size = max(self._get_pip_size(symbol), 1e-8)
+        round_price = lambda value: self._round_price(symbol, value, broker_spec)
+        pip_size = max(self._get_pip_size(symbol, broker_spec), 1e-8)
 
         # Aggressive widening floor for brokers which do not expose stopLevel/freezeLevel.
         fallback_floor = pip_size * (12 + (retry_index * 8))
@@ -1702,6 +1748,20 @@ class AutoTrader:
                 )
                 return
 
+            # ====== SPECIFICHE BROKER (fetch anticipato per usarlo in SL/TP rounding) ======
+            broker_spec = None
+            try:
+                if hasattr(self.broker, 'get_symbol_specification'):
+                    broker_spec = await self.broker.get_symbol_specification(symbol)
+                    if broker_spec:
+                        self._log_analysis(symbol, "info",
+                            f"📋 Specifiche broker: contractSize={broker_spec.get('contractSize')}, "
+                            f"tickValue={broker_spec.get('tickValue')}, tickSize={broker_spec.get('tickSize')}, "
+                            f"pipSize={broker_spec.get('pipSize')}, digits={broker_spec.get('digits')}, "
+                            f"profitCurrency={broker_spec.get('profitCurrency')}")
+            except Exception as spec_err:
+                self._log_analysis(symbol, "info", f"⚠️ Specifiche broker non disponibili: {spec_err}")
+
             # ====== VALIDAZIONE SL/TP rispetto alla direzione ======
             MIN_RR_RATIO = max(1.0, float(self.config.min_risk_reward_ratio))
             MAX_RR_RATIO = max(MIN_RR_RATIO, float(self.config.max_risk_reward_ratio))
@@ -1726,7 +1786,8 @@ class AutoTrader:
             max_sl_distance = current_price * (MAX_SL_PERCENT / 100)
 
             # Round SL/TP from AI to correct decimals for this instrument
-            _rp = lambda p: self._round_price(symbol, p)
+            # Usa digits dal broker se disponibile per arrotondamento esatto
+            _rp = lambda p: self._round_price(symbol, p, broker_spec)
             stop_loss = _rp(stop_loss)
             take_profit = _rp(take_profit)
 
@@ -1827,15 +1888,7 @@ class AutoTrader:
                 self._log_analysis(symbol, "error", f"❌ Trade annullato: distanza SL = 0 (prezzo={current_price}, SL={stop_loss})")
                 return
 
-            # Recupera specifiche simbolo dal broker per calcolo pip value preciso
-            broker_spec = None
-            try:
-                if hasattr(self.broker, 'get_symbol_specification'):
-                    broker_spec = await self.broker.get_symbol_specification(symbol)
-                    if broker_spec:
-                        self._log_analysis(symbol, "info", f"📋 Specifiche broker: contractSize={broker_spec.get('contractSize')}, tickValue={broker_spec.get('tickValue')}, tickSize={broker_spec.get('tickSize')}")
-            except Exception as spec_err:
-                self._log_analysis(symbol, "info", f"⚠️ Specifiche broker non disponibili: {spec_err}")
+            # broker_spec è già stato recuperato sopra (prima della validazione SL/TP)
 
             min_stop_distance, point_size = self._compute_broker_min_stop_distance(
                 symbol=symbol,
@@ -1852,6 +1905,7 @@ class AutoTrader:
                 min_distance=min_stop_distance,
                 point_size=point_size,
                 tick=tick,
+                broker_spec=broker_spec,
             )
             if broker_stop_adjusted:
                 self._log_analysis(
@@ -1877,20 +1931,38 @@ class AutoTrader:
 
             # Formula: Size = Rischio ($) / (SL pips × Valore pip per 1 lotto)
             lot_size = risk_amount / (sl_pips * pip_value)
-            lot_size = round(lot_size, 2)
 
+            # Usa minVolume/volumeStep dal broker se disponibili, altrimenti default
             MIN_LOT = 0.01
+            VOL_STEP = 0.01
+            MAX_LOT_BROKER = 50.0
+            if broker_spec:
+                broker_min = self._to_float(broker_spec.get("minVolume"))
+                broker_step = self._to_float(broker_spec.get("volumeStep"))
+                broker_max = self._to_float(broker_spec.get("maxVolume"))
+                if broker_min and broker_min > 0:
+                    MIN_LOT = broker_min
+                if broker_step and broker_step > 0:
+                    VOL_STEP = broker_step
+                if broker_max and broker_max > 0:
+                    MAX_LOT_BROKER = broker_max
+
+            # Arrotonda al volumeStep del broker
+            if VOL_STEP > 0:
+                lot_size = round(round(lot_size / VOL_STEP) * VOL_STEP, 8)
+            else:
+                lot_size = round(lot_size, 2)
 
             # Se la size calcolata è sotto il minimo, bisogna stringere lo SL
             if lot_size < MIN_LOT:
-                # SL massimo consentito con 0.01 lotti per non superare il rischio
+                # SL massimo consentito con MIN_LOT per non superare il rischio
                 max_sl_pips = risk_amount / (MIN_LOT * pip_value)
                 old_sl_pips = sl_pips
 
-                self._log_analysis(symbol, "info", f"⚠️ Size calcolata ({lot_size}) < minimo (0.01) — riduco SL da {old_sl_pips:.1f} a {max_sl_pips:.1f} pips")
+                self._log_analysis(symbol, "info", f"⚠️ Size calcolata ({lot_size}) < minimo ({MIN_LOT}) — riduco SL da {old_sl_pips:.1f} a {max_sl_pips:.1f} pips")
 
                 # Ricalcola SL più stretto
-                pip_size = self._get_pip_size(symbol)
+                pip_size = self._get_pip_size(symbol, broker_spec)
                 new_sl_distance = max_sl_pips * pip_size
 
                 if direction == "LONG":
@@ -1909,11 +1981,9 @@ class AutoTrader:
                 lot_size = max(MIN_LOT, lot_size)
 
             # ====== CONTROLLO SICUREZZA: Limita lot size massima ======
-            # Se il pip_value calcolato è sbagliato (es. tickValue non disponibile dal broker),
-            # la size potrebbe essere assurdamente alta. Limitiamo per sicurezza.
-            MAX_LOT_SIZE = 5.0  # Max 5 lotti per trade (sicurezza)
+            MAX_LOT_SIZE = min(5.0, MAX_LOT_BROKER)
             if lot_size > MAX_LOT_SIZE:
-                self._log_analysis(symbol, "error", f"⚠️ Size calcolata ({lot_size}) troppo alta! Limitata a {MAX_LOT_SIZE} lotti (possibile errore pip_value)")
+                self._log_analysis(symbol, "error", f"⚠️ Size calcolata ({lot_size}) troppo alta! Limitata a {MAX_LOT_SIZE} lotti")
                 lot_size = MAX_LOT_SIZE
 
             # ====== CONTROLLO MARGINE: limita size in base al margine disponibile ======
@@ -2029,6 +2099,7 @@ class AutoTrader:
                         min_distance=min_stop_distance,
                         point_size=point_size,
                         tick=tick,
+                        broker_spec=broker_spec,
                     )
 
                     if not changed:
@@ -2042,6 +2113,7 @@ class AutoTrader:
                             take_profit=take_profit,
                             min_distance=min_stop_distance,
                             retry_index=invalid_stops_retries,
+                            broker_spec=broker_spec,
                         )
                         changed = (prev_sl != stop_loss) or (prev_tp != take_profit)
 

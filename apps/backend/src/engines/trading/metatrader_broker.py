@@ -2009,7 +2009,18 @@ class MetaTraderBroker(BaseBroker):
                     if has_order and not is_filled and string_code not in SUCCESS_CODES:
                         print(f"[MetaTrader] WARNING: Unknown stringCode '{string_code}' (numericCode={numeric_code}) but order exists - treating as success")
 
-                    order_status = OrderStatus.FILLED if is_filled else (OrderStatus.PENDING if has_order else OrderStatus.REJECTED)
+                    # For MARKET orders, a success code (TRADE_RETCODE_DONE)
+                    # means the order was executed even if positionId is missing
+                    # from the response (some brokers like XM don't return it).
+                    _is_success = string_code in SUCCESS_CODES or (numeric_code in SUCCESS_NUMERIC if numeric_code else False)
+                    if is_filled:
+                        order_status = OrderStatus.FILLED
+                    elif _is_success and order.order_type == OrderType.MARKET:
+                        order_status = OrderStatus.FILLED
+                    elif has_order:
+                        order_status = OrderStatus.PENDING
+                    else:
+                        order_status = OrderStatus.REJECTED
                     print(f"[MetaTrader] Order {order_status.value} | stringCode: {string_code} | orderId: {order_id}")
 
                     return OrderResult(
