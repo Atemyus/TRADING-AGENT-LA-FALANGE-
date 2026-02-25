@@ -296,11 +296,41 @@ class AutoTrader:
                 self._log_analysis(symbol, "info", f"📊 Broker spec: tickValue={tick_value:.6g}, tickSize={tick_size:.6g}, contractSize={contract_size} → pip_value=${pip_value:.2f}/lotto")
                 return (sl_pips, pip_value)
             elif contract_size and contract_size > 0:
-                # Fallback matematico: se manca tickValue, per la maggior parte degli assett
-                # quotati in USD (Crypto, Metalli, Indici US), il valore in $ di 1 pip per lotto è:
-                # pip_size * contractSize
-                pip_value = pip_size * contract_size
-                self._log_analysis(symbol, "info", f"📊 Broker spec (Fallback Matematico): contractSize={contract_size}, pipSize={pip_size} → pip_value=${pip_value:.2f}/lotto (senza tickValue nativo)")
+                # Fallback matematico: pip_size * contractSize dà il valore in
+                # VALUTA DI QUOTAZIONE.  Per strumenti quotati in USD (EURUSD,
+                # GOLD, Crypto, Indici US) il risultato è già in $.
+                # Per coppie con quote != USD (es. USDJPY, EURJPY) bisogna
+                # convertire dividendo per il prezzo corrente.
+                pip_value_quote = pip_size * contract_size
+                sym_clean = symbol.upper().replace("/", "").replace("_", "").replace("-", "").replace("#", "").replace(".", "")
+
+                # Determina se la valuta di quotazione NON è USD.
+                # Forex XXX/YYY: quote = ultimi 3 caratteri (solo per 6-char forex).
+                # Per coppie JPY (USDJPY, EURJPY, GBPJPY…) il valore è in JPY.
+                needs_conversion = False
+                if "JPY" in sym_clean and current_price > 1:
+                    # Tutte le coppie JPY: valore pip in JPY → dividere per prezzo
+                    needs_conversion = True
+                elif len(sym_clean) == 6 and sym_clean[3:] != "USD" and not any(
+                    tag in sym_clean for tag in ["XAU", "XAG", "GOLD", "SILVER", "BTC", "ETH", "SOL", "BNB",
+                                                  "WTI", "BRENT", "OIL", "US30", "US500", "NAS100",
+                                                  "DE40", "UK100", "JP225", "FR40", "EU50"]
+                ):
+                    # Forex generiche con quote != USD (es. EURGBP, AUDNZD)
+                    # Approssimazione: pip_value_quote / prezzo
+                    needs_conversion = True
+
+                if needs_conversion and current_price > 0:
+                    pip_value = pip_value_quote / current_price
+                    self._log_analysis(symbol, "info",
+                        f"📊 Broker spec (Fallback Matematico + conversione): contractSize={contract_size}, "
+                        f"pipSize={pip_size}, pip_value_quote={pip_value_quote:.2f}, "
+                        f"price={current_price:.4f} → pip_value=${pip_value:.2f}/lotto")
+                else:
+                    pip_value = pip_value_quote
+                    self._log_analysis(symbol, "info",
+                        f"📊 Broker spec (Fallback Matematico): contractSize={contract_size}, "
+                        f"pipSize={pip_size} → pip_value=${pip_value:.2f}/lotto (senza tickValue nativo)")
                 return (sl_pips, pip_value)
 
         # Fallback: valori stimati per tipo di strumento
