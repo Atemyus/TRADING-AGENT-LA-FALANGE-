@@ -2189,20 +2189,22 @@ class AutoTrader:
                     else:
                         self._log_analysis(symbol, "info", f"Nota broker su ordine eseguito: {broker_warning}")
 
-                # Regola ferrea: Break Even innescato SEMPRE a RR 1:1 (distanza SL dall'entry)
-                sl_risk_distance = abs(fill_price - stop_loss)
-                if direction == "LONG":
-                    be_trigger = _rp(fill_price + sl_risk_distance)
+                # Il Break Even è ora deciso dinamicamente dall'AI tramite il consenso
+                be_trigger = self._to_float(consensus.get("break_even_trigger"))
+                trailing_pips = self._to_float(consensus.get("trailing_stop_pips"))
+
+                if be_trigger:
+                    self._log_analysis(
+                        symbol,
+                        "info",
+                        f"Break Even dinamico (impostato dall'AI) a {be_trigger}.",
+                    )
                 else:
-                    be_trigger = _rp(fill_price - sl_risk_distance)
-
-                trailing_pips = consensus.get("trailing_stop_pips")
-
-                self._log_analysis(
-                    symbol,
-                    "info",
-                    f"Break Even (RR 1:1) impostato automaticamente a {be_trigger}.",
-                )
+                    self._log_analysis(
+                        symbol,
+                        "info",
+                        "Nessun Break Even richiesto dall'AI per questo trade.",
+                    )
 
                 trade = TradeRecord(
                     id=order_result.order_id,
