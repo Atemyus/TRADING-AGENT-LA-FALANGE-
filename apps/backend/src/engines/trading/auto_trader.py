@@ -230,6 +230,8 @@ class AutoTrader:
             return 3  # Es: 153.581
         if "XAU" in sym or "GOLD" in sym:
             return 2  # Es: 2650.50
+        if any(crypto in sym for crypto in ["BTC", "ETH", "SOL", "BNB"]):
+            return 2  # Crypto majors
         if any(idx in sym for idx in ["US30", "US500", "NAS100", "DE40", "UK100", "JP225", "FR40", "EU50"]):
             return 1  # Es: 42150.5
         return 5  # Forex standard: Es: 1.08542
@@ -254,6 +256,9 @@ class AutoTrader:
         # Indici: 1 pip = 1.0 punto
         if any(idx in sym for idx in ["US30", "US500", "NAS100", "DE40", "UK100", "JP225", "FR40", "EU50"]):
             return 1.0
+        # Crypto: tipicamente 1 punto o 0.01
+        if any(crypto in sym for crypto in ["BTC", "ETH", "SOL", "BNB"]):
+            return 1.0
         # Petrolio: 1 pip = 0.01
         if any(oil in sym for oil in ["WTI", "BRENT", "OIL", "USOIL", "UKOIL"]):
             return 0.01
@@ -274,15 +279,22 @@ class AutoTrader:
 
         # Se abbiamo le specifiche dal broker, usiamo tickValue per calcolo preciso
         if broker_spec:
-            tick_value = broker_spec.get("tickValue")
-            tick_size = broker_spec.get("tickSize")
-            contract_size = broker_spec.get("contractSize")
+            tick_value = self._to_float(broker_spec.get("tickValue"))
+            tick_size = self._to_float(broker_spec.get("tickSize"))
+            contract_size = self._to_float(broker_spec.get("contractSize"))
 
             if tick_value and tick_size and tick_size > 0:
                 # pip_value = tickValue * (pipSize / tickSize)
-                # Questo ci dà il valore di 1 pip per 1 lotto
+                # Questo ci dà il valore in valuta conto di 1 pip per 1 lotto
                 pip_value = tick_value * (pip_size / tick_size)
-                self._log_analysis(symbol, "info", f"📊 Broker spec: tickValue={tick_value}, tickSize={tick_size}, contractSize={contract_size} → pip_value=${pip_value:.2f}/lotto")
+                self._log_analysis(symbol, "info", f"📊 Broker spec: tickValue={tick_value:.6g}, tickSize={tick_size:.6g}, contractSize={contract_size} → pip_value=${pip_value:.2f}/lotto")
+                return (sl_pips, pip_value)
+            elif contract_size and contract_size > 0:
+                # Fallback matematico: se manca tickValue, per la maggior parte degli assett 
+                # quotati in USD (Crypto, Metalli, Indici US), il valore in $ di 1 pip per lotto è:
+                # pip_size * contractSize
+                pip_value = pip_size * contract_size
+                self._log_analysis(symbol, "info", f"📊 Broker spec (Fallback Matematico): contractSize={contract_size}, pipSize={pip_size} → pip_value=${pip_value:.2f}/lotto (senza tickValue nativo)")
                 return (sl_pips, pip_value)
 
         # Fallback: valori stimati per tipo di strumento
