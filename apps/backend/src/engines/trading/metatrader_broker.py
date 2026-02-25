@@ -260,6 +260,9 @@ class MetaTraderBroker(BaseBroker):
         self._broker_symbol_meta: dict[str, dict[str, Any]] = {}  # Raw symbol metadata from MetaApi
         self._broker_token_map: dict[str, str] = {}  # token -> unique broker symbol
         self._broker_token_collisions: set[str] = set()
+        self._discovered_broker_suffix: str = ""  # Auto-detected broker suffix (e.g. "#", ".", ".pro")
+        self._discovered_broker_prefix: str = ""  # Auto-detected broker prefix (e.g. "m", ".")
+        self._broker_affix_confidence: float = 0.0  # 0.0-1.0 confidence of detection
         self._alias_lookup_map: dict[str, str] = self._build_alias_lookup_map()
         self._client_api_url: str | None = None  # Set during connect based on region
 
@@ -495,6 +498,131 @@ class MetaTraderBroker(BaseBroker):
                 if token and token not in mapping:
                     mapping[token] = canonical
         return mapping
+
+    def _detect_broker_affix(self) -> None:
+        """
+        Analyse successfully resolved symbol pairs to discover the dominant
+        suffix/prefix pattern used by this broker.
+
+        For example, if most resolved pairs look like:
+            EURUSD -> EURUSD#   => suffix "#"
+            GOLD   -> GOLD#     => suffix "#"
+        we store '#' as _discovered_broker_suffix so that future unresolved
+        symbols can be tried with the same suffix automatically.
+        """
+        if not self._symbol_map or not self._broker_symbols:
+            return
+
+        broker_symbols_upper: set[str] = {s.upper() for s in self._broker_symbols}
+
+        suffix_counts: dict[str, int] = {}
+        prefix_counts: dict[str, int] = {}
+        total_pairs = 0
+
+        for canonical, broker_sym in self._symbol_map.items():
+            # Build the "base" form: canonical without underscores
+            base = canonical.replace("_", "").upper()
+            broker_upper = broker_sym.upper()
+
+            # Also try known alias bases (first alias = plain form)
+            aliases = self.SYMBOL_ALIASES.get(canonical, [])
+            bases_to_check = [base]
+            if aliases:
+                bases_to_check.append(aliases[0].upper())
+
+            matched_base: str | None = None
+            for b in bases_to_check:
+                if broker_upper.endswith(b):
+                    # Potential prefix
+                    pfx = broker_upper[: len(broker_upper) - len(b)]
+                    if pfx == "" or len(pfx) <= 5:
+                        matched_base = b
+                        break
+                if broker_upper.startswith(b):
+                    matched_base = b
+                    break
+
+            if not matched_base:
+                continue
+
+            total_pairs += 1
+
+            if broker_upper.startswith(matched_base):
+                sfx = broker_sym[len(matched_base):]  # Preserve original case
+                suffix_counts[sfx] = suffix_counts.get(sfx, 0) + 1
+            elif broker_upper.endswith(matched_base):
+                pfx = broker_sym[: len(broker_upper) - len(matched_base)]
+                prefix_counts[pfx] = prefix_counts.get(pfx, 0) + 1
+
+        if total_pairs < 3:
+            return
+
+        # Find dominant suffix (most common non-empty suffix)
+        best_suffix = ""
+        best_suffix_count = 0
+        for sfx, count in suffix_counts.items():
+            if sfx and count > best_suffix_count:
+                best_suffix = sfx
+                best_suffix_count = count
+
+        # Find dominant prefix (most common non-empty prefix)
+        best_prefix = ""
+        best_prefix_count = 0
+        for pfx, count in prefix_counts.items():
+            if pfx and count > best_prefix_count:
+                best_prefix = pfx
+                best_prefix_count = count
+
+        # Empty suffix/prefix (no affix) is also a valid "pattern"
+        empty_suffix_count = suffix_counts.get("", 0) + prefix_counts.get("", 0)
+
+        # Use the dominant non-empty affix if it covers >= 40% of resolved pairs
+        # and appears in at least 3 symbols
+        if best_suffix_count >= 3 and (best_suffix_count / total_pairs) >= 0.4:
+            self._discovered_broker_suffix = best_suffix
+            self._broker_affix_confidence = best_suffix_count / total_pairs
+        elif best_prefix_count >= 3 and (best_prefix_count / total_pairs) >= 0.4:
+            self._discovered_broker_prefix = best_prefix
+            self._broker_affix_confidence = best_prefix_count / total_pairs
+
+        if self._discovered_broker_suffix or self._discovered_broker_prefix:
+            affix_desc = (
+                f"suffix='{self._discovered_broker_suffix}'"
+                if self._discovered_broker_suffix
+                else f"prefix='{self._discovered_broker_prefix}'"
+            )
+            print(
+                f"[MetaTrader] Broker affix auto-detected: {affix_desc} "
+                f"(confidence={self._broker_affix_confidence:.0%}, "
+                f"matched={best_suffix_count or best_prefix_count}/{total_pairs} pairs)"
+            )
+
+    def _apply_discovered_affix(self, base_symbol: str) -> list[str]:
+        """
+        Generate candidate symbols by applying the auto-discovered broker affix.
+        Returns a list of candidates to try (may be empty if no affix detected).
+        """
+        if not base_symbol:
+            return []
+
+        candidates: list[str] = []
+        if self._discovered_broker_suffix:
+            candidate = f"{base_symbol}{self._discovered_broker_suffix}"
+            candidates.append(candidate)
+            # Also try alias bases + suffix
+            lookup = self._symbol_lookup_key(base_symbol)
+            aliases = self.SYMBOL_ALIASES.get(lookup, [])
+            for alias in aliases[:5]:
+                candidates.append(f"{alias}{self._discovered_broker_suffix}")
+        elif self._discovered_broker_prefix:
+            candidate = f"{self._discovered_broker_prefix}{base_symbol}"
+            candidates.append(candidate)
+            lookup = self._symbol_lookup_key(base_symbol)
+            aliases = self.SYMBOL_ALIASES.get(lookup, [])
+            for alias in aliases[:5]:
+                candidates.append(f"{self._discovered_broker_prefix}{alias}")
+
+        return candidates
 
     def _symbol_lookup_key(self, symbol: str) -> str:
         raw = (symbol or "").replace("/", "_").strip().upper()
@@ -1126,6 +1254,17 @@ class MetaTraderBroker(BaseBroker):
                 seen.add(alias)
                 ordered.append(alias)
 
+        # Append candidates generated from auto-discovered broker affix.
+        # This helps resolve symbols not explicitly listed in SYMBOL_ALIASES
+        # (e.g. exotic pairs on brokers that append '#', '.pro', etc.).
+        if self._broker_affix_confidence > 0:
+            base_fallback = lookup.replace("_", "")
+            affix_candidates = self._apply_discovered_affix(base_fallback)
+            for candidate in affix_candidates:
+                if candidate and candidate not in seen:
+                    seen.add(candidate)
+                    ordered.append(candidate)
+
         return ordered
 
     def _is_trade_mode_compatible(self, trade_mode: Any, side: OrderSide | None = None) -> bool:
@@ -1357,6 +1496,22 @@ class MetaTraderBroker(BaseBroker):
             return resolved
 
         fallback = lookup.replace("_", "")
+
+        # Try auto-discovered broker affix before giving up
+        if self._broker_affix_confidence > 0 and self._broker_symbols:
+            broker_symbols_upper = {s.upper() for s in self._broker_symbols}
+            affix_candidates = self._apply_discovered_affix(fallback)
+            for candidate in affix_candidates:
+                if candidate.upper() in broker_symbols_upper:
+                    # Find the original-cased broker symbol
+                    for bs in self._broker_symbols:
+                        if bs.upper() == candidate.upper():
+                            self._symbol_map[lookup] = bs
+                            print(
+                                f"[MetaTrader] Affix autodiscovery resolved '{lookup}' -> '{bs}'"
+                            )
+                            return bs
+
         if lookup not in self._symbol_map:
             aliases = self.SYMBOL_ALIASES.get(lookup, [])
             print(f"[MetaTrader] WARNING: Could not resolve symbol '{lookup}' to broker format")
@@ -1413,7 +1568,7 @@ class MetaTraderBroker(BaseBroker):
             else:
                 print("[MetaTrader] WARNING: No indices found on broker!")
 
-            # Pre-map common symbols
+            # Pre-map common symbols (first pass)
             mapped_count = 0
             for our_symbol in self.SYMBOL_ALIASES.keys():
                 resolved = self._resolve_symbol(our_symbol)
@@ -1421,6 +1576,34 @@ class MetaTraderBroker(BaseBroker):
                     mapped_count += 1
 
             print(f"[MetaTrader] Successfully mapped {mapped_count}/{len(self.SYMBOL_ALIASES)} symbols to broker format")
+
+            # Auto-detect broker affix pattern from successful mappings
+            self._detect_broker_affix()
+
+            # Second pass: retry unmapped symbols using discovered affix
+            if self._discovered_broker_suffix or self._discovered_broker_prefix:
+                broker_symbols_upper = {s.upper() for s in self._broker_symbols}
+                remapped = 0
+                for our_symbol in self.SYMBOL_ALIASES.keys():
+                    existing = self._symbol_map.get(our_symbol)
+                    # If existing mapping is just the plain fallback, try with affix
+                    if existing and existing == our_symbol.replace('_', ''):
+                        affix_candidates = self._apply_discovered_affix(existing)
+                        for candidate in affix_candidates:
+                            if candidate.upper() in broker_symbols_upper:
+                                # Find the original-cased broker symbol
+                                for bs in self._broker_symbols:
+                                    if bs.upper() == candidate.upper():
+                                        self._symbol_map[our_symbol] = bs
+                                        remapped += 1
+                                        break
+                                break
+                if remapped > 0:
+                    mapped_count += remapped
+                    print(
+                        f"[MetaTrader] Affix autodiscovery resolved {remapped} additional symbols "
+                        f"(total: {mapped_count}/{len(self.SYMBOL_ALIASES)})"
+                    )
 
         except Exception as e:
             print(f"Warning: Could not build symbol map: {e}")
