@@ -2482,7 +2482,8 @@ class MetaTraderBroker(BaseBroker):
                     request_attempts += 1
                     price_data = await self._request(
                         "GET",
-                        f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(candidate)}/current-price?keepSubscription=true",
+                        f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(candidate)}/current-price",
+                        params={"keepSubscription": "true"}
                     )
 
                     try:
@@ -2513,6 +2514,51 @@ class MetaTraderBroker(BaseBroker):
                     self._set_cache(cache_key, tick, self.PRICES_CACHE_TTL)
                     return tick
                 except Exception as exc:
+                    # 404 (NotFoundError) indicates the symbol is not in Market Watch.
+                    # The keepSubscription=true query param should handle this, but for some
+                    # brokers (like XM with GOLD#), it fails silently or requires an explicit subscribe first.
+                    exc_str = str(exc)
+                    if "NotFoundError" in exc_str and "symbol price not found" in exc_str:
+                        try:
+                            # Attempt explicit subscription before giving up on this candidate
+                            self._log_analysis(symbol, "info", f"Prezzo non trovato per {candidate}, forzo iscrizione esplicita...")
+                            await self._request(
+                                "POST",
+                                f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(candidate)}/subscribe"
+                            )
+                            # Wait a moment for the subscription to propagate in MT5
+                            await asyncio.sleep(0.5)
+                            
+                            # Retry fetching the price
+                            price_data = await self._request(
+                                "GET",
+                                f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(candidate)}/current-price"
+                            )
+                            
+                            try:
+                                bid = float(price_data.get("bid", 0) or 0)
+                                ask = float(price_data.get("ask", 0) or 0)
+                            except Exception:
+                                bid = 0.0
+                                ask = 0.0
+
+                            if self._is_plausible_price_for_lookup(lookup, bid, ask):
+                                if candidate != broker_symbol:
+                                    print(f"[MetaTrader] Price fallback resolved {lookup} -> {candidate} (dopo iscrizione forzata)")
+                                    self._symbol_map[lookup] = candidate
+
+                                tick = Tick(
+                                    symbol=symbol,
+                                    bid=Decimal(str(price_data.get("bid", 0))),
+                                    ask=Decimal(str(price_data.get("ask", 0))),
+                                    timestamp=datetime.now(),
+                                )
+                                self._set_cache(cache_key, tick, self.PRICES_CACHE_TTL)
+                                return tick
+                                
+                        except Exception as sub_exc:
+                            print(f"[MetaTrader] Iscrizione forzata fallita per {candidate}: {sub_exc}")
+
                     last_error = exc
                     if request_attempts == 1 and not self._is_symbol_lookup_error(str(exc)):
                         # If first candidate failed for non-symbol reasons, don't spam alternate tries.
