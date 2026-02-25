@@ -2170,23 +2170,20 @@ class AutoTrader:
                     else:
                         self._log_analysis(symbol, "info", f"Nota broker su ordine eseguito: {broker_warning}")
 
-                # Advanced management is AI-driven: keep BE/trailing optional.
-                be_trigger = consensus.get("break_even_trigger")
+                # Regola ferrea: Break Even innescato SEMPRE a RR 1:1 (distanza SL dall'entry)
+                sl_risk_distance = abs(fill_price - stop_loss)
+                if direction == "LONG":
+                    be_trigger = _rp(fill_price + sl_risk_distance)
+                else:
+                    be_trigger = _rp(fill_price - sl_risk_distance)
+
                 trailing_pips = consensus.get("trailing_stop_pips")
-                if be_trigger is None and trailing_pips is not None:
-                    # Compatibility fallback: if trailing is set but BE is missing,
-                    # arm BE at 50% TP distance so trailing can activate.
-                    tp_distance = abs(take_profit - fill_price)
-                    if tp_distance > 0:
-                        if direction == "LONG":
-                            be_trigger = _rp(fill_price + (tp_distance * 0.5))
-                        else:
-                            be_trigger = _rp(fill_price - (tp_distance * 0.5))
-                        self._log_analysis(
-                            symbol,
-                            "info",
-                            f"Break Even derivato automaticamente a {be_trigger} per supportare trailing stop.",
-                        )
+
+                self._log_analysis(
+                    symbol,
+                    "info",
+                    f"Break Even (RR 1:1) impostato automaticamente a {be_trigger}.",
+                )
 
                 trade = TradeRecord(
                     id=order_result.order_id,
@@ -2390,8 +2387,8 @@ class AutoTrader:
                     timeframes_analyzed=consensus.get("timeframes", ["15"]),
                     models_agreed=consensus["models_agree"],
                     total_models=consensus["total_models"],
-                    # Advanced trade management
-                    break_even_trigger=consensus.get("break_even_trigger"),
+                    # Advanced trade management - Configurato a RR 1:1
+                    break_even_trigger=fill_price + abs(fill_price - consensus["stop_loss"]) if consensus["direction"] == "LONG" else fill_price - abs(fill_price - consensus["stop_loss"]),
                     trailing_stop_pips=consensus.get("trailing_stop_pips"),
                     partial_tp_percent=consensus.get("partial_tp_percent"),
                     initial_stop_loss=consensus["stop_loss"],
@@ -2520,6 +2517,7 @@ class AutoTrader:
                     timeframes_analyzed=list(result.timeframe_analyses.keys()),
                     models_agreed=result.total_models_used,
                     total_models=result.total_models_used,
+                    break_even_trigger=fill_price + abs(fill_price - result.stop_loss) if result.final_direction == "LONG" else fill_price - abs(fill_price - result.stop_loss),
                     initial_stop_loss=result.stop_loss,
                     extreme_price=fill_price,
                 )
