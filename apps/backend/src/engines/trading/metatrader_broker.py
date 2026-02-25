@@ -2482,7 +2482,7 @@ class MetaTraderBroker(BaseBroker):
                     request_attempts += 1
                     price_data = await self._request(
                         "GET",
-                        f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(candidate)}/current-price",
+                        f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(candidate)}/current-price?keepSubscription=true",
                     )
 
                     try:
