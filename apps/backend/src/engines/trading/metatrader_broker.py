@@ -2579,7 +2579,7 @@ class MetaTraderBroker(BaseBroker):
                 payload = await self._request(
                     "GET",
                     f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(candidate)}/current-price",
-                    params={"keepSubscription": True},
+                    params={"keepSubscription": "true"},
                 )
                 return payload
             except Exception as exc:
@@ -2587,7 +2587,36 @@ class MetaTraderBroker(BaseBroker):
                 if self._is_symbol_lookup_error(str(exc)) and retry_index < 1:
                     await asyncio.sleep(0.35)
                     continue
-                raise
+
+        # Some brokers expose symbols but require an explicit market-data subscription
+        # before current-price returns a quote.
+        lookup_error = self._is_symbol_lookup_error(str(last_error))
+        if lookup_error:
+            subscribed = False
+            subscribe_endpoints = [
+                f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(candidate)}/subscribe",
+                f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(candidate)}/subscription",
+            ]
+            for endpoint in subscribe_endpoints:
+                try:
+                    await self._request("POST", endpoint)
+                    subscribed = True
+                    break
+                except Exception:
+                    continue
+
+            if subscribed:
+                for wait_seconds in (0.8, 1.6, 3.0):
+                    try:
+                        await asyncio.sleep(wait_seconds)
+                        payload = await self._request(
+                            "GET",
+                            f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(candidate)}/current-price",
+                            params={"keepSubscription": "true"},
+                        )
+                        return payload
+                    except Exception as exc:
+                        last_error = exc
 
         # Defensive fallback (loop always returns or raises).
         raise last_error or Exception("Unknown price retrieval error")
@@ -2727,7 +2756,8 @@ class MetaTraderBroker(BaseBroker):
 
             if last_error:
                 detail = f"{type(last_error).__name__}: {last_error}"
-                tried = ", ".join(attempted_candidates[:candidate_limit]) or "<none>"
+                unique_attempts = self._merge_symbol_candidates(attempted_candidates)
+                tried = ", ".join(unique_attempts[:candidate_limit]) or "<none>"
                 related = self._match_broker_symbols_by_lookup(lookup, limit=8)
                 related_text = ", ".join(related) if related else "<none>"
                 raise Exception(
