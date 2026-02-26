@@ -101,8 +101,8 @@ class MetaTraderBroker(BaseBroker):
         'USD_PLN': ['USDPLN', 'USDPLNm', 'USDPLN.', 'USDPLN-ECN'],
 
         # ============ METALS ============
-        'XAU_USD': ['XAUUSD', 'XAUUSDm', 'GOLD', 'GOLDm', 'GOLD.', 'XAUUSD.', 'XAUUSD-ECN',
-                     'XAUUSD+', 'GOLD+', 'XAUUSD#', 'GOLD#'],
+        'XAU_USD': ['XAUUSD', 'XAUUSD+', 'XAUUSDm', 'XAUUSDm+', 'GOLD', 'GOLDm', 'GOLD.', 'XAUUSD.', 'XAUUSD-ECN',
+                     'GOLD+', 'XAUUSD#', 'GOLD#'],
         'XAG_USD': ['XAGUSD', 'XAGUSDm', 'SILVER', 'SILVERm', 'SILVER.', 'XAGUSD.',
                      'XAGUSD+', 'SILVER+', 'XAGUSD#', 'SILVER#'],
         'XPT_USD': ['XPTUSD', 'XPTUSDm', 'PLATINUM', 'XPTUSD.', 'PLATINUMm',
@@ -1643,6 +1643,9 @@ class MetaTraderBroker(BaseBroker):
                         pass  # Non-critical, symbol may already be subscribed
                 if subscribed > 0:
                     print(f"[MetaTrader] Pre-subscribed {subscribed}/{len(symbols_to_subscribe)} critical symbols to Market Watch")
+                    # Give broker terminal time to populate Market Watch
+                    # before the first price request arrives.
+                    await asyncio.sleep(3)
 
         except Exception as e:
             print(f"Warning: Could not build symbol map: {e}")
@@ -2769,18 +2772,21 @@ class MetaTraderBroker(BaseBroker):
                     exc_str = str(exc)
                     if "NotFoundError" in exc_str and "symbol price not found" in exc_str:
                         # Retry with explicit subscribe + progressive backoff.
-                        # Some MT5 brokers take 2-5 seconds to populate Market Watch
-                        # after a symbol subscription request.
-                        subscribe_waits = [1.0, 2.0, 4.0]
-                        price_recovered = False
+                        # Some MT5 brokers take 5-15 seconds to populate Market Watch
+                        # after a symbol subscription request.  Subscribe on EVERY
+                        # attempt because the first POST may silently fail.
+                        subscribe_waits = [2.0, 5.0, 10.0]
                         for sub_attempt, wait_time in enumerate(subscribe_waits):
                             try:
-                                if sub_attempt == 0:
-                                    print(f"[MetaTrader] Price not found for {candidate}, subscribing (attempt {sub_attempt + 1}/{len(subscribe_waits)})...")
+                                print(f"[MetaTrader] Price not found for {candidate}, subscribing (attempt {sub_attempt + 1}/{len(subscribe_waits)}, wait {wait_time}s)...")
+                                try:
                                     await self._request(
                                         "POST",
                                         f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(candidate)}/subscribe"
                                     )
+                                except Exception as subscribe_exc:
+                                    print(f"[MetaTrader] Subscribe POST failed for {candidate}: {subscribe_exc}")
+                                    # Continue anyway — maybe a previous subscribe is still propagating
 
                                 await asyncio.sleep(wait_time)
 
@@ -2817,12 +2823,30 @@ class MetaTraderBroker(BaseBroker):
                             except Exception as sub_exc:
                                 if sub_attempt == len(subscribe_waits) - 1:
                                     print(f"[MetaTrader] Subscribe+retry failed for {candidate} after {len(subscribe_waits)} attempts: {sub_exc}")
-                                # else: silently retry with longer wait
+                                # else: retry with longer wait and fresh subscribe
 
                     last_error = exc
                     if request_attempts == 1 and not self._is_symbol_lookup_error(str(exc)):
                         # If first candidate failed for non-symbol reasons, don't spam alternate tries.
                         break
+
+                    # After the first candidate exhausts subscribe+retry, check if the
+                    # terminal is still connected.  If it disconnected mid-session,
+                    # refresh routing before burning through more candidates.
+                    if request_attempts == 1 and "NotFoundError" in str(exc):
+                        try:
+                            still_connected = await self._refresh_metaapi_routing(
+                                wait_for_connected=True,
+                                max_wait_checks=3,
+                                wait_seconds=5,
+                            )
+                            if still_connected:
+                                print("[MetaTrader] Terminal reconnected, retrying symbol candidates...")
+                            else:
+                                print("[MetaTrader] Terminal NOT connected — skipping remaining candidates")
+                                break
+                        except Exception:
+                            pass
 
             if skipped_or_rejected and last_error is None:
                 detail = ", ".join(skipped_or_rejected[:8])
@@ -2834,9 +2858,48 @@ class MetaTraderBroker(BaseBroker):
                 )
 
             if last_error:
+                # ---- FALLBACK: try to derive price from last 1-minute candle ----
+                # This works when the REST /current-price endpoint returns 404 but
+                # the historical-market-data endpoint (which uses a different
+                # MetaApi backend) still has data.
+                best_candidate = self._symbol_map.get(lookup) or broker_symbol
+                related = self._match_broker_symbols_by_lookup(lookup, limit=8)
+                candle_candidates = [best_candidate] + [r for r in related if r != best_candidate]
+                for candle_sym in candle_candidates[:3]:
+                    try:
+                        print(f"[MetaTrader] Attempting candle-based price fallback for {candle_sym}...")
+                        candles = await self._request(
+                            "GET",
+                            f"/users/current/accounts/{self.account_id}/historical-market-data/symbols/{self._encode_symbol_path(candle_sym)}/timeframes/1m/candles",
+                            params={"limit": 1},
+                        )
+                        if candles and isinstance(candles, list) and len(candles) > 0:
+                            last_candle = candles[-1]
+                            c_close = float(last_candle.get("close", 0) or 0)
+                            c_open = float(last_candle.get("open", 0) or 0)
+                            c_high = float(last_candle.get("high", 0) or 0)
+                            c_low = float(last_candle.get("low", 0) or 0)
+                            if c_close > 0:
+                                # Use close as mid, simulate spread from high-low
+                                spread = max((c_high - c_low) * 0.1, c_close * 0.0001)
+                                synth_bid = c_close - spread / 2
+                                synth_ask = c_close + spread / 2
+                                if self._is_plausible_price_for_lookup(lookup, synth_bid, synth_ask):
+                                    print(f"[MetaTrader] Candle fallback SUCCESS for {lookup} -> {candle_sym} (close={c_close})")
+                                    self._symbol_map[lookup] = candle_sym
+                                    tick = Tick(
+                                        symbol=symbol,
+                                        bid=Decimal(str(round(synth_bid, 5))),
+                                        ask=Decimal(str(round(synth_ask, 5))),
+                                        timestamp=datetime.now(),
+                                    )
+                                    self._set_cache(cache_key, tick, self.PRICES_CACHE_TTL)
+                                    return tick
+                    except Exception as candle_exc:
+                        print(f"[MetaTrader] Candle fallback failed for {candle_sym}: {candle_exc}")
+
                 detail = f"{type(last_error).__name__}: {last_error}"
                 tried = ", ".join(attempted_candidates[:12]) or "<none>"
-                related = self._match_broker_symbols_by_lookup(lookup, limit=8)
                 related_text = ", ".join(related) if related else "<none>"
                 raise Exception(
                     f"{detail} | candidates tried: {tried} | broker related symbols: {related_text}"
