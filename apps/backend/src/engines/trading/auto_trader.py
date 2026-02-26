@@ -15,6 +15,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
+from decimal import Decimal
 from enum import Enum
 from typing import Any
 
@@ -54,6 +55,7 @@ from src.services.economic_calendar_service import (
     NewsFilterConfig,
     get_economic_calendar_service,
 )
+from src.services.market_data_service import get_market_data_service
 
 
 class BotStatus(str, Enum):
@@ -1534,6 +1536,71 @@ class AutoTrader:
             self._log_analysis(symbol, "info", f"Check tradabilita saltato: {exc}")
             return True, ""
 
+    def _is_price_lookup_failure(self, error: Exception | str) -> bool:
+        text = str(error or "").lower()
+        markers = (
+            "failed to get price",
+            "symbol price not found",
+            "specified symbol price not found",
+            "symbol candle not found",
+            "specified symbol candle not found",
+            "notfounderror",
+            "no prices for symbol",
+            "not subscribed",
+        )
+        return any(marker in text for marker in markers)
+
+    async def _get_tick_with_external_fallback(self, symbol: str):
+        """
+        Try broker live tick first; if symbol quote is missing on MetaApi,
+        fallback to market-data snapshot so execution sizing can continue.
+        """
+        if not self.broker:
+            raise Exception("broker non inizializzato")
+
+        try:
+            return await self.broker.get_current_price(symbol)
+        except Exception as broker_exc:
+            if not self._is_price_lookup_failure(broker_exc):
+                raise
+
+            external_exc: Exception | None = None
+            try:
+                market_data_service = get_market_data_service()
+                external_price = await market_data_service.get_current_price(symbol)
+                price = float(external_price)
+                if price <= 0:
+                    raise Exception(f"prezzo esterno non valido ({external_price})")
+
+                # Build a synthetic tight spread tick for risk checks.
+                spread = max(price * 0.00005, 0.01)
+                bid = max(0.0000001, price - (spread / 2))
+                ask = max(bid, price + (spread / 2))
+
+                from src.engines.trading.base_broker import Tick
+
+                tick = Tick(
+                    symbol=symbol,
+                    bid=Decimal(str(bid)),
+                    ask=Decimal(str(ask)),
+                    timestamp=datetime.utcnow(),
+                )
+                self._log_analysis(
+                    symbol,
+                    "info",
+                    (
+                        "Prezzo broker non disponibile; uso fallback esterno per sizing/check "
+                        f"(broker error: {broker_exc})"
+                    ),
+                )
+                return tick
+            except Exception as ext_exc:
+                external_exc = ext_exc
+
+            raise Exception(
+                f"Prezzo broker non disponibile ({broker_exc}) e fallback esterno fallito ({external_exc})"
+            )
+
     async def _analyze_and_trade(self):
         """Analyze all symbols and execute trades if conditions met."""
         # First manage existing positions (BE, Trailing Stop)
@@ -1754,7 +1821,7 @@ class AutoTrader:
 
             # Get current price
             self._log_analysis(symbol, "info", f"Recupero prezzo corrente per {symbol}...")
-            tick = await self.broker.get_current_price(symbol)
+            tick = await self._get_tick_with_external_fallback(symbol)
             current_price = float(tick.mid)
             self._log_analysis(symbol, "info", f"Prezzo corrente: {current_price}")
 
@@ -2509,7 +2576,7 @@ class AutoTrader:
                 return
 
             # Get current price
-            tick = await self.broker.get_current_price(symbol)
+            tick = await self._get_tick_with_external_fallback(symbol)
             current_price = float(tick.mid)
             price_ok, price_reason = self._validate_price_plausibility(symbol, tick)
             if not price_ok:
@@ -2653,7 +2720,7 @@ class AutoTrader:
                 return
 
             # Get current price
-            tick = await self.broker.get_current_price(result.symbol)
+            tick = await self._get_tick_with_external_fallback(result.symbol)
             current_price = float(tick.mid)
 
             # Calculate position size
