@@ -1344,6 +1344,13 @@ class AutoTrader:
         pair = self._split_pair_symbol(symbol)
         if pair:
             base, quote = pair
+            if base in {"XAU", "GOLD"}:
+                return (100.0, 100000.0)
+            if base in {"XAG", "SILVER"}:
+                return (1.0, 10000.0)
+            if base in {"XPT", "XPD"}:
+                return (50.0, 100000.0)
+
             if len(base) == 3 and len(quote) == 3:
                 high_quote = {"JPY", "HUF", "CLP", "IDR", "KRW"}
                 medium_quote = {
@@ -1355,13 +1362,6 @@ class AutoTrader:
                 if quote in medium_quote:
                     return (0.02, 500.0)
                 return (0.02, 10.0)
-
-            if base in {"XAU", "GOLD"}:
-                return (100.0, 100000.0)
-            if base in {"XAG", "SILVER"}:
-                return (1.0, 10000.0)
-            if base in {"XPT", "XPD"}:
-                return (50.0, 100000.0)
 
         canon = self._canonical_symbol(symbol)
         if any(token in canon for token in ("US30", "US500", "NAS100", "DE40", "GER40", "DAX", "FTSE", "JP225", "FR40", "EU50")):
@@ -1393,7 +1393,8 @@ class AutoTrader:
             return (False, f"spread anomalo ({spread_ratio * 100:.2f}%)")
 
         pair = self._split_pair_symbol(symbol)
-        if pair and len(pair[0]) == 3 and len(pair[1]) == 3 and spread_ratio > 0.05:
+        is_metal_pair = bool(pair and pair[0] in {"XAU", "XAG", "XPT", "XPD", "GOLD", "SILVER"})
+        if pair and len(pair[0]) == 3 and len(pair[1]) == 3 and not is_metal_pair and spread_ratio > 0.05:
             return (False, f"spread forex anomalo ({spread_ratio * 100:.2f}%)")
 
         key = self._normalize_symbol(symbol).upper()
@@ -1405,7 +1406,7 @@ class AutoTrader:
             if prev_mid > 0 and age <= 3600:
                 jump_ratio = max(mid / prev_mid, prev_mid / mid)
                 jump_limit = 6.0
-                if pair and len(pair[0]) == 3 and len(pair[1]) == 3:
+                if pair and len(pair[0]) == 3 and len(pair[1]) == 3 and not is_metal_pair:
                     jump_limit = 3.0
                 if jump_ratio > jump_limit:
                     return (
