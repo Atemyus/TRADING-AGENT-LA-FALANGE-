@@ -1206,6 +1206,8 @@ class MetaTraderBroker(BaseBroker):
             "no prices for symbol",
             "specified symbol price not found",
             "price not found",
+            "symbol is not defined",
+            "symbol is not available",
             "failed to resolve symbol",
             "not subscribed",
             "could not find path",
@@ -2573,6 +2575,45 @@ class MetaTraderBroker(BaseBroker):
         Retries short-lived lookup misses once to give MetaApi subscription time
         to initialize for the requested symbol.
         """
+        def _normalize_payload(raw_payload: Any) -> dict[str, Any] | None:
+            if not isinstance(raw_payload, dict):
+                return None
+
+            payload = dict(raw_payload)
+            try:
+                bid = float(payload.get("bid", 0) or 0)
+            except Exception:
+                bid = 0.0
+            try:
+                ask = float(payload.get("ask", 0) or 0)
+            except Exception:
+                ask = 0.0
+            try:
+                last = float(payload.get("last", 0) or 0)
+            except Exception:
+                last = 0.0
+            try:
+                close = float(payload.get("close", 0) or 0)
+            except Exception:
+                close = 0.0
+
+            fallback_price = last if last > 0 else close
+            if bid <= 0 and ask > 0:
+                bid = ask
+            if ask <= 0 and bid > 0:
+                ask = bid
+            if bid <= 0 and fallback_price > 0:
+                bid = fallback_price
+            if ask <= 0 and fallback_price > 0:
+                ask = fallback_price
+
+            if bid <= 0 or ask <= 0:
+                return None
+
+            payload["bid"] = bid
+            payload["ask"] = ask
+            return payload
+
         last_error: Exception | None = None
         for retry_index in range(2):
             try:
@@ -2581,42 +2622,41 @@ class MetaTraderBroker(BaseBroker):
                     f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(candidate)}/current-price",
                     params={"keepSubscription": "true"},
                 )
-                return payload
+                normalized = _normalize_payload(payload)
+                if normalized:
+                    return normalized
+                last_error = Exception(f"Invalid current-price payload for {candidate}: {payload}")
             except Exception as exc:
                 last_error = exc
                 if self._is_symbol_lookup_error(str(exc)) and retry_index < 1:
                     await asyncio.sleep(0.35)
                     continue
 
-        # Some brokers expose symbols but require an explicit market-data subscription
-        # before current-price returns a quote.
-        lookup_error = self._is_symbol_lookup_error(str(last_error))
-        if lookup_error:
-            subscribed = False
-            subscribe_endpoints = [
-                f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(candidate)}/subscribe",
-                f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(candidate)}/subscription",
-            ]
-            for endpoint in subscribe_endpoints:
+        # Some brokers return 404 on current-price while current-tick/current-candle
+        # still provide valid quotes for the same symbol.
+        fallback_endpoints = (
+            f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(candidate)}/current-tick",
+            f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(candidate)}/current-candles/1m",
+        )
+        for endpoint in fallback_endpoints:
+            for retry_index in range(2):
                 try:
-                    await self._request("POST", endpoint)
-                    subscribed = True
+                    payload = await self._request(
+                        "GET",
+                        endpoint,
+                        params={"keepSubscription": "true"},
+                    )
+                    normalized = _normalize_payload(payload)
+                    if normalized:
+                        print(f"[MetaTrader] Price fallback endpoint used for {candidate}: {endpoint}")
+                        return normalized
+                    last_error = Exception(f"Invalid payload for {candidate} via {endpoint}: {payload}")
+                except Exception as exc:
+                    last_error = exc
+                    if self._is_symbol_lookup_error(str(exc)) and retry_index < 1:
+                        await asyncio.sleep(0.35)
+                        continue
                     break
-                except Exception:
-                    continue
-
-            if subscribed:
-                for wait_seconds in (0.8, 1.6, 3.0):
-                    try:
-                        await asyncio.sleep(wait_seconds)
-                        payload = await self._request(
-                            "GET",
-                            f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(candidate)}/current-price",
-                            params={"keepSubscription": "true"},
-                        )
-                        return payload
-                    except Exception as exc:
-                        last_error = exc
 
         # Defensive fallback (loop always returns or raises).
         raise last_error or Exception("Unknown price retrieval error")
