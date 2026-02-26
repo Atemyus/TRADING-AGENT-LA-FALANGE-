@@ -101,16 +101,11 @@ class MetaTraderBroker(BaseBroker):
         'USD_PLN': ['USDPLN', 'USDPLNm', 'USDPLN.', 'USDPLN-ECN'],
 
         # ============ METALS ============
-        'XAU_USD': ['XAUUSD', 'XAUUSDm', 'GOLD', 'GOLDm', 'GOLD.', 'XAUUSD.', 'XAUUSD-ECN',
-                     'XAUUSD+', 'GOLD+', 'XAUUSD#', 'GOLD#'],
-        'XAG_USD': ['XAGUSD', 'XAGUSDm', 'SILVER', 'SILVERm', 'SILVER.', 'XAGUSD.',
-                     'XAGUSD+', 'SILVER+', 'XAGUSD#', 'SILVER#'],
-        'XPT_USD': ['XPTUSD', 'XPTUSDm', 'PLATINUM', 'XPTUSD.', 'PLATINUMm',
-                     'XPTUSD+', 'XPTUSD#'],
-        'XPD_USD': ['XPDUSD', 'XPDUSDm', 'PALLADIUM', 'XPDUSD.', 'PALLADIUMm',
-                     'XPDUSD+', 'XPDUSD#'],
-        'XCU_USD': ['XCUUSD', 'COPPER', 'COPPERm', 'COPPER.', 'HG', 'HGm',
-                     'XCUUSD+', 'COPPER+'],
+        'XAU_USD': ['XAUUSD', 'XAUUSDm', 'GOLD', 'GOLDm', 'GOLD.', 'XAUUSD.', 'XAUUSD-ECN'],
+        'XAG_USD': ['XAGUSD', 'XAGUSDm', 'SILVER', 'SILVERm', 'SILVER.', 'XAGUSD.'],
+        'XPT_USD': ['XPTUSD', 'XPTUSDm', 'PLATINUM', 'XPTUSD.', 'PLATINUMm'],
+        'XPD_USD': ['XPDUSD', 'XPDUSDm', 'PALLADIUM', 'XPDUSD.', 'PALLADIUMm'],
+        'XCU_USD': ['XCUUSD', 'COPPER', 'COPPERm', 'COPPER.', 'HG', 'HGm'],
 
         # ============ ENERGY / OIL ============
         'WTI_USD': ['USOUSD', 'USOUSDm', 'WTIUSD', 'WTI', 'USOIL', 'USOILm', 'XTIUSD', 'CL', 'CLm'],
@@ -265,9 +260,6 @@ class MetaTraderBroker(BaseBroker):
         self._broker_symbol_meta: dict[str, dict[str, Any]] = {}  # Raw symbol metadata from MetaApi
         self._broker_token_map: dict[str, str] = {}  # token -> unique broker symbol
         self._broker_token_collisions: set[str] = set()
-        self._discovered_broker_suffix: str = ""  # Auto-detected broker suffix (e.g. "#", ".", ".pro")
-        self._discovered_broker_prefix: str = ""  # Auto-detected broker prefix (e.g. "m", ".")
-        self._broker_affix_confidence: float = 0.0  # 0.0-1.0 confidence of detection
         self._alias_lookup_map: dict[str, str] = self._build_alias_lookup_map()
         self._client_api_url: str | None = None  # Set during connect based on region
 
@@ -504,131 +496,6 @@ class MetaTraderBroker(BaseBroker):
                     mapping[token] = canonical
         return mapping
 
-    def _detect_broker_affix(self) -> None:
-        """
-        Analyse successfully resolved symbol pairs to discover the dominant
-        suffix/prefix pattern used by this broker.
-
-        For example, if most resolved pairs look like:
-            EURUSD -> EURUSD#   => suffix "#"
-            GOLD   -> GOLD#     => suffix "#"
-        we store '#' as _discovered_broker_suffix so that future unresolved
-        symbols can be tried with the same suffix automatically.
-        """
-        if not self._symbol_map or not self._broker_symbols:
-            return
-
-        broker_symbols_upper: set[str] = {s.upper() for s in self._broker_symbols}
-
-        suffix_counts: dict[str, int] = {}
-        prefix_counts: dict[str, int] = {}
-        total_pairs = 0
-
-        for canonical, broker_sym in self._symbol_map.items():
-            # Build the "base" form: canonical without underscores
-            base = canonical.replace("_", "").upper()
-            broker_upper = broker_sym.upper()
-
-            # Also try known alias bases (first alias = plain form)
-            aliases = self.SYMBOL_ALIASES.get(canonical, [])
-            bases_to_check = [base]
-            if aliases:
-                bases_to_check.append(aliases[0].upper())
-
-            matched_base: str | None = None
-            for b in bases_to_check:
-                if broker_upper.endswith(b):
-                    # Potential prefix
-                    pfx = broker_upper[: len(broker_upper) - len(b)]
-                    if pfx == "" or len(pfx) <= 5:
-                        matched_base = b
-                        break
-                if broker_upper.startswith(b):
-                    matched_base = b
-                    break
-
-            if not matched_base:
-                continue
-
-            total_pairs += 1
-
-            if broker_upper.startswith(matched_base):
-                sfx = broker_sym[len(matched_base):]  # Preserve original case
-                suffix_counts[sfx] = suffix_counts.get(sfx, 0) + 1
-            elif broker_upper.endswith(matched_base):
-                pfx = broker_sym[: len(broker_upper) - len(matched_base)]
-                prefix_counts[pfx] = prefix_counts.get(pfx, 0) + 1
-
-        if total_pairs < 3:
-            return
-
-        # Find dominant suffix (most common non-empty suffix)
-        best_suffix = ""
-        best_suffix_count = 0
-        for sfx, count in suffix_counts.items():
-            if sfx and count > best_suffix_count:
-                best_suffix = sfx
-                best_suffix_count = count
-
-        # Find dominant prefix (most common non-empty prefix)
-        best_prefix = ""
-        best_prefix_count = 0
-        for pfx, count in prefix_counts.items():
-            if pfx and count > best_prefix_count:
-                best_prefix = pfx
-                best_prefix_count = count
-
-        # Empty suffix/prefix (no affix) is also a valid "pattern"
-        empty_suffix_count = suffix_counts.get("", 0) + prefix_counts.get("", 0)
-
-        # Use the dominant non-empty affix if it covers >= 40% of resolved pairs
-        # and appears in at least 3 symbols
-        if best_suffix_count >= 3 and (best_suffix_count / total_pairs) >= 0.4:
-            self._discovered_broker_suffix = best_suffix
-            self._broker_affix_confidence = best_suffix_count / total_pairs
-        elif best_prefix_count >= 3 and (best_prefix_count / total_pairs) >= 0.4:
-            self._discovered_broker_prefix = best_prefix
-            self._broker_affix_confidence = best_prefix_count / total_pairs
-
-        if self._discovered_broker_suffix or self._discovered_broker_prefix:
-            affix_desc = (
-                f"suffix='{self._discovered_broker_suffix}'"
-                if self._discovered_broker_suffix
-                else f"prefix='{self._discovered_broker_prefix}'"
-            )
-            print(
-                f"[MetaTrader] Broker affix auto-detected: {affix_desc} "
-                f"(confidence={self._broker_affix_confidence:.0%}, "
-                f"matched={best_suffix_count or best_prefix_count}/{total_pairs} pairs)"
-            )
-
-    def _apply_discovered_affix(self, base_symbol: str) -> list[str]:
-        """
-        Generate candidate symbols by applying the auto-discovered broker affix.
-        Returns a list of candidates to try (may be empty if no affix detected).
-        """
-        if not base_symbol:
-            return []
-
-        candidates: list[str] = []
-        if self._discovered_broker_suffix:
-            candidate = f"{base_symbol}{self._discovered_broker_suffix}"
-            candidates.append(candidate)
-            # Also try alias bases + suffix
-            lookup = self._symbol_lookup_key(base_symbol)
-            aliases = self.SYMBOL_ALIASES.get(lookup, [])
-            for alias in aliases[:5]:
-                candidates.append(f"{alias}{self._discovered_broker_suffix}")
-        elif self._discovered_broker_prefix:
-            candidate = f"{self._discovered_broker_prefix}{base_symbol}"
-            candidates.append(candidate)
-            lookup = self._symbol_lookup_key(base_symbol)
-            aliases = self.SYMBOL_ALIASES.get(lookup, [])
-            for alias in aliases[:5]:
-                candidates.append(f"{self._discovered_broker_prefix}{alias}")
-
-        return candidates
-
     def _symbol_lookup_key(self, symbol: str) -> str:
         raw = (symbol or "").replace("/", "_").strip().upper()
         if not raw:
@@ -732,17 +599,10 @@ class MetaTraderBroker(BaseBroker):
                 continue
 
             variants = [base]
-            # '#' suffix (XM style)
             if base.endswith("#"):
                 variants.append(base[:-1])
             else:
                 variants.append(f"{base}#")
-
-            # '+' suffix (some brokers use + instead of #)
-            if base.endswith("+"):
-                variants.append(base[:-1])
-            else:
-                variants.append(f"{base}+")
 
             # Common dotted forms used by some brokers.
             if not base.endswith("."):
@@ -753,17 +613,43 @@ class MetaTraderBroker(BaseBroker):
             for variant in variants:
                 if not variant:
                     continue
-                # Use the actual string (uppercased) for dedup, NOT the normalized
-                # token.  _normalize_symbol_token strips '#' and '.', which makes
-                # "GOLD" and "GOLD#" look identical even though they are distinct
-                # broker symbols (e.g. XM uses "GOLD" while the symbol list may
-                # report "GOLD#").
-                key = variant.strip().upper()
-                if key and key not in seen:
-                    seen.add(key)
+                token = self._normalize_symbol_token(variant)
+                if token and token not in seen:
+                    seen.add(token)
                     expanded.append(variant)
 
         return expanded
+
+    def _merge_symbol_candidates(self, *groups: list[str]) -> list[str]:
+        """Merge symbol candidates preserving order and token-level uniqueness."""
+        ordered: list[str] = []
+        seen_tokens: set[str] = set()
+
+        for group in groups:
+            for candidate in group:
+                value = str(candidate or "").strip()
+                if not value:
+                    continue
+                token = self._normalize_symbol_token(value)
+                if not token or token in seen_tokens:
+                    continue
+                seen_tokens.add(token)
+                ordered.append(value)
+
+        return ordered
+
+    def _price_candidate_limit(self, lookup: str) -> int:
+        """Allow a slightly wider search window for metals."""
+        if self._is_metal_lookup(lookup):
+            return 18
+        return 12
+
+    def _build_price_candidates(self, lookup: str, broker_symbol: str) -> list[str]:
+        """Build deterministic candidate list used by live price retrieval."""
+        primary = self._get_symbol_candidates(lookup) or [broker_symbol]
+        related = self._match_broker_symbols_by_lookup(lookup, limit=20)
+        merged = self._merge_symbol_candidates([broker_symbol], primary, related)
+        return merged or [broker_symbol]
 
     def _lookup_probe_tokens(self, lookup: str) -> list[str]:
         """
@@ -890,6 +776,29 @@ class MetaTraderBroker(BaseBroker):
         has_text_marker = bool(text_marker and (text_marker in token or text_marker in meta_blob))
         if not has_primary_code and not has_text_marker:
             return False
+
+        pair = self._split_forex_lookup(lookup)
+        expected_quote = pair[1] if pair else ""
+        if expected_quote and has_primary_code and code_marker:
+            # Keep XAU_USD routed to USD-quoted instruments (reject XAUAUD/XAUEUR...).
+            quote_match = re.search(rf"{re.escape(code_marker)}([A-Z]{{3}})", token)
+            if quote_match and quote_match.group(1) != expected_quote:
+                return False
+
+        if expected_quote and has_text_marker and not has_primary_code:
+            quote_hint = self._extract_spec_currency(
+                meta,
+                (
+                    "currencyProfit",
+                    "currencyQuote",
+                    "quoteCurrency",
+                    "profitCurrency",
+                    "counterCurrency",
+                    "currencyCounter",
+                ),
+            )
+            if quote_hint and quote_hint != expected_quote:
+                return False
 
         # If candidate only matches textual marker (e.g., GOLD), keep only
         # contract-style names and reject company-like long prefixes/suffixes.
@@ -1126,7 +1035,7 @@ class MetaTraderBroker(BaseBroker):
             return 0
 
         adjustment = 0
-        if any(marker in upper for marker in ("CASH", "SPOT", ".CASH", "_CASH", "#", "+")):
+        if any(marker in upper for marker in ("CASH", "SPOT", ".CASH", "_CASH", "#")):
             adjustment += 80
         if any(marker in upper for marker in ("FUT", "FUTURE", "CONTRACT", "ROLL")):
             adjustment -= 120
@@ -1184,12 +1093,12 @@ class MetaTraderBroker(BaseBroker):
             raw_candidates = [lookup.replace("_", ""), *self.SYMBOL_ALIASES.get(lookup, [])]
             raw_candidates = self._with_common_symbol_suffix_variants(raw_candidates)
             ordered_fallback: list[str] = []
-            seen_keys: set[str] = set()
+            seen_tokens: set[str] = set()
             for candidate in raw_candidates:
-                key = candidate.strip().upper()
-                if not key or key in seen_keys:
+                normalized = self._normalize_symbol_token(candidate)
+                if not normalized or normalized in seen_tokens:
                     continue
-                seen_keys.add(key)
+                seen_tokens.add(normalized)
                 ordered_fallback.append(candidate)
             return ordered_fallback or [lookup.replace("_", "")]
 
@@ -1215,14 +1124,14 @@ class MetaTraderBroker(BaseBroker):
             ]
             raw_candidates = self._with_common_symbol_suffix_variants(raw_candidates)
             ordered_fallback: list[str] = []
-            seen_keys: set[str] = set()
+            seen_tokens: set[str] = set()
             for candidate in raw_candidates:
                 if not candidate:
                     continue
-                key = candidate.strip().upper()
-                if not key or key in seen_keys:
+                normalized = self._normalize_symbol_token(candidate)
+                if not normalized or normalized in seen_tokens:
                     continue
-                seen_keys.add(key)
+                seen_tokens.add(normalized)
                 ordered_fallback.append(candidate)
             return ordered_fallback
 
@@ -1254,28 +1163,6 @@ class MetaTraderBroker(BaseBroker):
                     f"[MetaTrader] Ignoring stale mapped symbol {mapped} for {lookup} "
                     f"(mappedScore={mapped_score}, bestScore={top_score})"
                 )
-
-        # Append raw SYMBOL_ALIASES as lower-priority fallbacks.
-        # The scoring path above only returns symbols found in the broker's
-        # symbol list.  Some brokers (e.g. XM) report "GOLD#" in their list
-        # while the actual tradeable symbol is "GOLD" (without '#').  By
-        # appending the canonical alias entries we ensure both forms are tried.
-        alias_fallbacks = [lookup.replace("_", ""), *self.SYMBOL_ALIASES.get(lookup, [])]
-        for alias in alias_fallbacks:
-            if alias and alias not in seen:
-                seen.add(alias)
-                ordered.append(alias)
-
-        # Append candidates generated from auto-discovered broker affix.
-        # This helps resolve symbols not explicitly listed in SYMBOL_ALIASES
-        # (e.g. exotic pairs on brokers that append '#', '.pro', etc.).
-        if self._broker_affix_confidence > 0:
-            base_fallback = lookup.replace("_", "")
-            affix_candidates = self._apply_discovered_affix(base_fallback)
-            for candidate in affix_candidates:
-                if candidate and candidate not in seen:
-                    seen.add(candidate)
-                    ordered.append(candidate)
 
         return ordered
 
@@ -1317,9 +1204,13 @@ class MetaTraderBroker(BaseBroker):
             "unknown symbol",
             "symbol does not exist",
             "no prices for symbol",
+            "specified symbol price not found",
+            "price not found",
             "failed to resolve symbol",
             "not subscribed",
             "could not find path",
+            "not synchronized",
+            "notsynchronizederror",
             "notfounderror",
             "/symbols/",
             ". not found",
@@ -1508,22 +1399,6 @@ class MetaTraderBroker(BaseBroker):
             return resolved
 
         fallback = lookup.replace("_", "")
-
-        # Try auto-discovered broker affix before giving up
-        if self._broker_affix_confidence > 0 and self._broker_symbols:
-            broker_symbols_upper = {s.upper() for s in self._broker_symbols}
-            affix_candidates = self._apply_discovered_affix(fallback)
-            for candidate in affix_candidates:
-                if candidate.upper() in broker_symbols_upper:
-                    # Find the original-cased broker symbol
-                    for bs in self._broker_symbols:
-                        if bs.upper() == candidate.upper():
-                            self._symbol_map[lookup] = bs
-                            print(
-                                f"[MetaTrader] Affix autodiscovery resolved '{lookup}' -> '{bs}'"
-                            )
-                            return bs
-
         if lookup not in self._symbol_map:
             aliases = self.SYMBOL_ALIASES.get(lookup, [])
             print(f"[MetaTrader] WARNING: Could not resolve symbol '{lookup}' to broker format")
@@ -1580,7 +1455,7 @@ class MetaTraderBroker(BaseBroker):
             else:
                 print("[MetaTrader] WARNING: No indices found on broker!")
 
-            # Pre-map common symbols (first pass)
+            # Pre-map common symbols
             mapped_count = 0
             for our_symbol in self.SYMBOL_ALIASES.keys():
                 resolved = self._resolve_symbol(our_symbol)
@@ -1588,61 +1463,6 @@ class MetaTraderBroker(BaseBroker):
                     mapped_count += 1
 
             print(f"[MetaTrader] Successfully mapped {mapped_count}/{len(self.SYMBOL_ALIASES)} symbols to broker format")
-
-            # Auto-detect broker affix pattern from successful mappings
-            self._detect_broker_affix()
-
-            # Second pass: retry unmapped symbols using discovered affix
-            if self._discovered_broker_suffix or self._discovered_broker_prefix:
-                broker_symbols_upper = {s.upper() for s in self._broker_symbols}
-                remapped = 0
-                for our_symbol in self.SYMBOL_ALIASES.keys():
-                    existing = self._symbol_map.get(our_symbol)
-                    # If existing mapping is just the plain fallback, try with affix
-                    if existing and existing == our_symbol.replace('_', ''):
-                        affix_candidates = self._apply_discovered_affix(existing)
-                        for candidate in affix_candidates:
-                            if candidate.upper() in broker_symbols_upper:
-                                # Find the original-cased broker symbol
-                                for bs in self._broker_symbols:
-                                    if bs.upper() == candidate.upper():
-                                        self._symbol_map[our_symbol] = bs
-                                        remapped += 1
-                                        break
-                                break
-                if remapped > 0:
-                    mapped_count += remapped
-                    print(
-                        f"[MetaTrader] Affix autodiscovery resolved {remapped} additional symbols "
-                        f"(total: {mapped_count}/{len(self.SYMBOL_ALIASES)})"
-                    )
-
-            # Pre-subscribe critical symbols (metals, indices) so they're in
-            # Market Watch when the first price request arrives.  Some MT5
-            # brokers only return prices for symbols already in Market Watch.
-            critical_keys = [
-                "XAU_USD", "XAG_USD", "US30", "US500", "NAS100",
-                "DE40", "UK100", "JP225", "EUR_USD", "GBP_USD",
-            ]
-            symbols_to_subscribe: list[str] = []
-            for key in critical_keys:
-                resolved = self._symbol_map.get(key)
-                if resolved:
-                    symbols_to_subscribe.append(resolved)
-
-            if symbols_to_subscribe:
-                subscribed = 0
-                for broker_sym in symbols_to_subscribe:
-                    try:
-                        await self._request(
-                            "POST",
-                            f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(broker_sym)}/subscribe"
-                        )
-                        subscribed += 1
-                    except Exception:
-                        pass  # Non-critical, symbol may already be subscribed
-                if subscribed > 0:
-                    print(f"[MetaTrader] Pre-subscribed {subscribed}/{len(symbols_to_subscribe)} critical symbols to Market Watch")
 
         except Exception as e:
             print(f"Warning: Could not build symbol map: {e}")
@@ -2231,18 +2051,7 @@ class MetaTraderBroker(BaseBroker):
                     if has_order and not is_filled and string_code not in SUCCESS_CODES:
                         print(f"[MetaTrader] WARNING: Unknown stringCode '{string_code}' (numericCode={numeric_code}) but order exists - treating as success")
 
-                    # For MARKET orders, a success code (TRADE_RETCODE_DONE)
-                    # means the order was executed even if positionId is missing
-                    # from the response (some brokers like XM don't return it).
-                    _is_success = string_code in SUCCESS_CODES or (numeric_code in SUCCESS_NUMERIC if numeric_code else False)
-                    if is_filled:
-                        order_status = OrderStatus.FILLED
-                    elif _is_success and order.order_type == OrderType.MARKET:
-                        order_status = OrderStatus.FILLED
-                    elif has_order:
-                        order_status = OrderStatus.PENDING
-                    else:
-                        order_status = OrderStatus.REJECTED
+                    order_status = OrderStatus.FILLED if is_filled else (OrderStatus.PENDING if has_order else OrderStatus.REJECTED)
                     print(f"[MetaTrader] Order {order_status.value} | stringCode: {string_code} | orderId: {order_id}")
 
                     return OrderResult(
@@ -2271,9 +2080,105 @@ class MetaTraderBroker(BaseBroker):
 
                 last_reject_reason = reject_reason
 
-                # The old fallback logic that stripped SL/TP has been removed to strictly enforce
-                # SL/TP on all orders as requested by the user. If INVALID_STOPS occurs,
-                # the error will bubble up to auto_trader.py which will expand the stops and retry.
+                invalid_stops_reject = self._is_invalid_stops_rejection(string_code, reject_reason)
+                has_protection_in_payload = ("stopLoss" in payload) or ("takeProfit" in payload)
+                if (
+                    invalid_stops_reject
+                    and order.order_type == OrderType.MARKET
+                    and has_protection_in_payload
+                ):
+                    fallback_payload = dict(payload)
+                    fallback_payload.pop("stopLoss", None)
+                    fallback_payload.pop("takeProfit", None)
+
+                    print(
+                        f"[MetaTrader] INVALID_STOPS on {broker_symbol}. "
+                        "Retrying market order without SL/TP and applying protection after fill..."
+                    )
+                    try:
+                        fallback_result = await self._request(
+                            "POST",
+                            f"/users/current/accounts/{self.account_id}/trade",
+                            json=fallback_payload,
+                        )
+                        print(f"[MetaTrader] Fallback order response (no SL/TP): {fallback_result}")
+
+                        (
+                            fb_order_id,
+                            fb_is_filled,
+                            fb_string_code,
+                            fb_numeric_code,
+                            fb_error_msg,
+                            fb_accepted,
+                            fb_has_order,
+                        ) = _parse_trade_response(fallback_result)
+
+                        if fb_accepted:
+                            order_status = OrderStatus.FILLED if fb_is_filled else (OrderStatus.PENDING if fb_has_order else OrderStatus.REJECTED)
+                            protection_warning = None
+                            requested_sl = float(order.stop_loss) if order.stop_loss is not None else None
+                            requested_tp = float(order.take_profit) if order.take_profit is not None else None
+
+                            if fb_is_filled and (requested_sl is not None or requested_tp is not None):
+                                position_id = str(fallback_result.get("positionId", "") or "")
+                                if position_id:
+                                    protected = await self._modify_position_by_id(
+                                        position_id=position_id,
+                                        stop_loss=requested_sl,
+                                        take_profit=requested_tp,
+                                    )
+                                    if not protected:
+                                        protection_warning = (
+                                            "PROTECTION_NOT_SET: posizione aperta senza SL/TP; "
+                                            "impostazione post-fill fallita"
+                                        )
+                                else:
+                                    protection_warning = (
+                                        "PROTECTION_NOT_SET: posizione aperta ma positionId assente, "
+                                        "impossibile applicare SL/TP post-fill"
+                                    )
+
+                            print(
+                                f"[MetaTrader] Fallback order {order_status.value} | "
+                                f"stringCode: {fb_string_code} | orderId: {fb_order_id}"
+                            )
+                            return OrderResult(
+                                order_id=fb_order_id,
+                                symbol=order.symbol,
+                                side=order.side,
+                                order_type=order.order_type,
+                                status=order_status,
+                                size=order.size,
+                                filled_size=Decimal(str(volume)),
+                                price=order.price,
+                                average_fill_price=Decimal(str(fallback_result.get("openPrice", 0))) if fallback_result.get("openPrice") else None,
+                                commission=Decimal(str(fallback_result.get("commission", 0))),
+                                error_message=protection_warning,
+                            )
+
+                        fb_known_error = MT5_ERROR_MESSAGES.get(fb_string_code)
+                        if fb_known_error:
+                            fb_reject_reason = f"{fb_known_error} [{fb_string_code}]"
+                        elif fb_error_msg:
+                            fb_reject_reason = f"{fb_error_msg} [{fb_string_code or f'code={fb_numeric_code}'}]"
+                        elif fb_string_code:
+                            fb_reject_reason = f"Broker: {fb_string_code} (numericCode={fb_numeric_code})"
+                        else:
+                            fb_reject_reason = f"Fallback senza SL/TP rifiutato - full response: {fallback_result}"
+
+                        last_reject_reason = (
+                            f"{reject_reason} | fallback senza SL/TP: {fb_reject_reason}"
+                        )
+                        if fb_string_code in RETRYABLE_CODES and attempt < MAX_RETRIES - 1:
+                            wait_secs = 2
+                            print(
+                                f"[MetaTrader] Retryable fallback error ({fb_string_code}), "
+                                f"trying different filling in {wait_secs}s..."
+                            )
+                            await asyncio.sleep(wait_secs)
+                            continue
+                    except Exception as fallback_exc:
+                        print(f"[MetaTrader] Fallback order without SL/TP failed: {fallback_exc}")
 
                 # If retryable and not last attempt, wait and retry with different filling
                 if string_code in RETRYABLE_CODES and attempt < MAX_RETRIES - 1:
@@ -2662,6 +2567,31 @@ class MetaTraderBroker(BaseBroker):
 
         return instruments
 
+    async def _fetch_current_price_payload(self, candidate: str) -> dict[str, Any]:
+        """
+        Fetch live price payload for one broker symbol.
+        Retries short-lived lookup misses once to give MetaApi subscription time
+        to initialize for the requested symbol.
+        """
+        last_error: Exception | None = None
+        for retry_index in range(2):
+            try:
+                payload = await self._request(
+                    "GET",
+                    f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(candidate)}/current-price",
+                    params={"keepSubscription": True},
+                )
+                return payload
+            except Exception as exc:
+                last_error = exc
+                if self._is_symbol_lookup_error(str(exc)) and retry_index < 1:
+                    await asyncio.sleep(0.35)
+                    continue
+                raise
+
+        # Defensive fallback (loop always returns or raises).
+        raise last_error or Exception("Unknown price retrieval error")
+
     async def get_current_price(self, symbol: str) -> Tick:
         """Get current bid/ask price for symbol with caching."""
         if not self._connected:
@@ -2687,142 +2617,104 @@ class MetaTraderBroker(BaseBroker):
             raise RateLimitError(f"Rate limited and no cached price for {symbol}")
 
         try:
-            candidates = self._get_symbol_candidates(lookup) or [broker_symbol]
-            if broker_symbol in candidates:
-                candidates = [broker_symbol, *[c for c in candidates if c != broker_symbol]]
-            else:
-                candidates = [broker_symbol, *candidates]
-
             last_error: Exception | None = None
             skipped_or_rejected: list[str] = []
             attempted_candidates: list[str] = []
-            request_attempts = 0
-            for candidate in candidates[:12]:
-                attempted_candidates.append(candidate)
-                if self._is_forex_lookup(lookup) and not self._is_forex_candidate_compatible(lookup, candidate):
-                    skipped_or_rejected.append(f"{candidate}(FOREX_MISMATCH)")
-                    continue
-                if self._is_metal_lookup(lookup) and not self._is_metal_candidate_compatible(lookup, candidate):
-                    skipped_or_rejected.append(f"{candidate}(METAL_MISMATCH)")
-                    continue
+            attempted_tokens: set[str] = set()
+            refreshed_inventory = False
+            stop_on_non_symbol_error = False
+            candidate_limit = self._price_candidate_limit(lookup)
 
-                if self._is_forex_lookup(lookup):
-                    meta = self._broker_symbol_meta.get(candidate, {})
-                    if meta and not self._is_forex_spec_compatible(lookup, meta):
-                        skipped_or_rejected.append(f"{candidate}(FOREX_SPEC_MISMATCH)")
+            while True:
+                candidates = self._build_price_candidates(lookup, broker_symbol)
+                for candidate in candidates[:candidate_limit]:
+                    candidate_token = self._normalize_symbol_token(candidate)
+                    if not candidate_token or candidate_token in attempted_tokens:
                         continue
 
-                    # If symbol list metadata does not expose currency fields, verify once via specification cache.
-                    has_currency_hint = bool(
-                        self._extract_spec_currency(meta, ("currencyBase", "baseCurrency", "currencyBaseCode"))
-                        or self._extract_spec_currency(meta, ("currencyProfit", "quoteCurrency", "currencyQuote"))
-                    )
-                    if not has_currency_hint:
-                        try:
-                            spec = await self._get_symbol_specification_for_broker_symbol(candidate)
-                            if not self._is_forex_spec_compatible(lookup, spec):
-                                skipped_or_rejected.append(f"{candidate}(FOREX_SPEC_MISMATCH)")
-                                continue
-                        except Exception:
-                            # Missing specification is handled by price retrieval path.
-                            pass
+                    attempted_tokens.add(candidate_token)
+                    attempted_candidates.append(candidate)
 
-                try:
-                    request_attempts += 1
-                    price_data = await self._request(
-                        "GET",
-                        f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(candidate)}/current-price",
-                        params={"keepSubscription": "true"}
-                    )
+                    if self._is_forex_lookup(lookup) and not self._is_forex_candidate_compatible(lookup, candidate):
+                        skipped_or_rejected.append(f"{candidate}(FOREX_MISMATCH)")
+                        continue
+                    if self._is_metal_lookup(lookup) and not self._is_metal_candidate_compatible(lookup, candidate):
+                        skipped_or_rejected.append(f"{candidate}(METAL_MISMATCH)")
+                        continue
+
+                    if self._is_forex_lookup(lookup):
+                        meta = self._broker_symbol_meta.get(candidate, {})
+                        if meta and not self._is_forex_spec_compatible(lookup, meta):
+                            skipped_or_rejected.append(f"{candidate}(FOREX_SPEC_MISMATCH)")
+                            continue
+
+                        # If symbol list metadata does not expose currency fields, verify once via specification cache.
+                        has_currency_hint = bool(
+                            self._extract_spec_currency(meta, ("currencyBase", "baseCurrency", "currencyBaseCode"))
+                            or self._extract_spec_currency(meta, ("currencyProfit", "quoteCurrency", "currencyQuote"))
+                        )
+                        if not has_currency_hint:
+                            try:
+                                spec = await self._get_symbol_specification_for_broker_symbol(candidate)
+                                if not self._is_forex_spec_compatible(lookup, spec):
+                                    skipped_or_rejected.append(f"{candidate}(FOREX_SPEC_MISMATCH)")
+                                    continue
+                            except Exception:
+                                # Missing specification is handled by price retrieval path.
+                                pass
 
                     try:
-                        bid = float(price_data.get("bid", 0) or 0)
-                        ask = float(price_data.get("ask", 0) or 0)
-                    except Exception:
-                        bid = 0.0
-                        ask = 0.0
+                        price_data = await self._fetch_current_price_payload(candidate)
 
-                    if not self._is_plausible_price_for_lookup(lookup, bid, ask):
-                        skipped_or_rejected.append(
-                            f"{candidate}(IMPLAUSIBLE_PRICE bid={bid:.6g} ask={ask:.6g})"
+                        try:
+                            bid = float(price_data.get("bid", 0) or 0)
+                            ask = float(price_data.get("ask", 0) or 0)
+                        except Exception:
+                            bid = 0.0
+                            ask = 0.0
+
+                        if not self._is_plausible_price_for_lookup(lookup, bid, ask):
+                            skipped_or_rejected.append(
+                                f"{candidate}(IMPLAUSIBLE_PRICE bid={bid:.6g} ask={ask:.6g})"
+                            )
+                            continue
+
+                        if candidate != broker_symbol:
+                            print(f"[MetaTrader] Price fallback resolved {lookup} -> {candidate}")
+                            self._symbol_map[lookup] = candidate
+
+                        tick = Tick(
+                            symbol=symbol,  # Return original symbol for consistency
+                            bid=Decimal(str(price_data.get("bid", 0))),
+                            ask=Decimal(str(price_data.get("ask", 0))),
+                            timestamp=datetime.now(),
                         )
-                        continue
 
-                    if candidate != broker_symbol:
-                        print(f"[MetaTrader] Price fallback resolved {lookup} -> {candidate}")
-                        self._symbol_map[lookup] = candidate
+                        # Cache the result
+                        self._set_cache(cache_key, tick, self.PRICES_CACHE_TTL)
+                        return tick
+                    except Exception as exc:
+                        last_error = exc
+                        if len(attempted_tokens) == 1 and not self._is_symbol_lookup_error(str(exc)):
+                            # If first candidate failed for non-symbol reasons, don't spam alternate tries.
+                            stop_on_non_symbol_error = True
+                            break
 
-                    tick = Tick(
-                        symbol=symbol,  # Return original symbol for consistency
-                        bid=Decimal(str(price_data.get("bid", 0))),
-                        ask=Decimal(str(price_data.get("ask", 0))),
-                        timestamp=datetime.now(),
-                    )
+                if stop_on_non_symbol_error:
+                    break
 
-                    # Cache the result
-                    self._set_cache(cache_key, tick, self.PRICES_CACHE_TTL)
-                    return tick
-                except Exception as exc:
-                    # 404 (NotFoundError) indicates the symbol is not in Market Watch.
-                    # The keepSubscription=true query param should handle this, but for some
-                    # brokers (like XM with GOLD#), it fails silently or requires an explicit subscribe first.
-                    exc_str = str(exc)
-                    if "NotFoundError" in exc_str and "symbol price not found" in exc_str:
-                        # Retry with explicit subscribe + progressive backoff.
-                        # Some MT5 brokers take 2-5 seconds to populate Market Watch
-                        # after a symbol subscription request.
-                        subscribe_waits = [1.0, 2.0, 4.0]
-                        price_recovered = False
-                        for sub_attempt, wait_time in enumerate(subscribe_waits):
-                            try:
-                                if sub_attempt == 0:
-                                    print(f"[MetaTrader] Price not found for {candidate}, subscribing (attempt {sub_attempt + 1}/{len(subscribe_waits)})...")
-                                    await self._request(
-                                        "POST",
-                                        f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(candidate)}/subscribe"
-                                    )
-
-                                await asyncio.sleep(wait_time)
-
-                                price_data = await self._request(
-                                    "GET",
-                                    f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(candidate)}/current-price",
-                                    params={"keepSubscription": "true"}
-                                )
-
-                                try:
-                                    bid = float(price_data.get("bid", 0) or 0)
-                                    ask = float(price_data.get("ask", 0) or 0)
-                                except Exception:
-                                    bid = 0.0
-                                    ask = 0.0
-
-                                if self._is_plausible_price_for_lookup(lookup, bid, ask):
-                                    if candidate != broker_symbol:
-                                        print(f"[MetaTrader] Price resolved {lookup} -> {candidate} (subscribe attempt {sub_attempt + 1})")
-                                        self._symbol_map[lookup] = candidate
-
-                                    tick = Tick(
-                                        symbol=symbol,
-                                        bid=Decimal(str(price_data.get("bid", 0))),
-                                        ask=Decimal(str(price_data.get("ask", 0))),
-                                        timestamp=datetime.now(),
-                                    )
-                                    self._set_cache(cache_key, tick, self.PRICES_CACHE_TTL)
-                                    return tick
-
-                                # Price returned but not plausible — don't retry, move to next candidate
-                                break
-
-                            except Exception as sub_exc:
-                                if sub_attempt == len(subscribe_waits) - 1:
-                                    print(f"[MetaTrader] Subscribe+retry failed for {candidate} after {len(subscribe_waits)} attempts: {sub_exc}")
-                                # else: silently retry with longer wait
-
-                    last_error = exc
-                    if request_attempts == 1 and not self._is_symbol_lookup_error(str(exc)):
-                        # If first candidate failed for non-symbol reasons, don't spam alternate tries.
-                        break
+                if (
+                    last_error
+                    and self._is_symbol_lookup_error(str(last_error))
+                    and not refreshed_inventory
+                ):
+                    # Broker inventory can be stale after reconnects/account routing refreshes.
+                    refreshed_inventory = True
+                    await self._ensure_symbol_inventory(force_reload=True)
+                    broker_symbol = self._resolve_symbol(lookup)
+                    attempted_tokens.clear()
+                    continue
+                break
 
             if skipped_or_rejected and last_error is None:
                 detail = ", ".join(skipped_or_rejected[:8])
@@ -2835,7 +2727,7 @@ class MetaTraderBroker(BaseBroker):
 
             if last_error:
                 detail = f"{type(last_error).__name__}: {last_error}"
-                tried = ", ".join(attempted_candidates[:12]) or "<none>"
+                tried = ", ".join(attempted_candidates[:candidate_limit]) or "<none>"
                 related = self._match_broker_symbols_by_lookup(lookup, limit=8)
                 related_text = ", ".join(related) if related else "<none>"
                 raise Exception(
