@@ -278,11 +278,12 @@ export function PriceTicker({ onSelect, selectedSymbol, symbols }: PriceTickerPr
   const selectedValue = normalizeSymbolValue(selectedSymbol || '')
 
   // In scoped mode show configured assets even before first real tick.
-  // In global mode keep the strict "real prices only" behavior.
+  // In global mode prefer real prices, but still render placeholders when real stream is not available yet.
+  const realPrices = prices.filter((price) => price.isReal && price.mid !== '--' && price.mid !== '')
   const visiblePrices = isScopedView
     ? prices
-    : prices.filter((price) => price.isReal && price.mid !== '--' && price.mid !== '')
-  const realCount = prices.filter((price) => price.isReal && price.mid !== '--' && price.mid !== '').length
+    : (realPrices.length > 0 ? realPrices : prices)
+  const realCount = realPrices.length
 
   return (
     <>
@@ -299,7 +300,9 @@ export function PriceTicker({ onSelect, selectedSymbol, symbols }: PriceTickerPr
           <span className="text-sm text-dark-400">
             {isScopedView
               ? `${visiblePrices.length} Asset nel workspace`
-              : `${realCount} Asset${realCount !== 1 ? 's' : ''} Reali`}
+              : realCount > 0
+                ? `${realCount} Asset${realCount !== 1 ? 's' : ''} Reali`
+                : `${visiblePrices.length} Asset (in attesa prezzi broker)`}
           </span>
         </div>
         <div className="flex items-center gap-2 text-xs">
@@ -371,7 +374,7 @@ export function PriceTicker({ onSelect, selectedSymbol, symbols }: PriceTickerPr
                 <span>
                   {isScopedView
                     ? 'Nessun asset configurato per questo workspace.'
-                    : 'Caricamento prezzi dal broker...'}
+                    : 'Caricamento asset...'}
                 </span>
               </div>
             )}

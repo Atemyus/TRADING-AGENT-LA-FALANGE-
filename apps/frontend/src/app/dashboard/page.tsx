@@ -90,6 +90,8 @@ interface PerformancePoint {
   balance: number
 }
 
+const WORKSPACE_SNAPSHOTS_CACHE_KEY = 'workspace_snapshots_cache'
+
 export default function DashboardPage() {
   const searchParams = useSearchParams()
   const { user } = useAuth()
@@ -104,12 +106,32 @@ export default function DashboardPage() {
   const [aggregatedStats, setAggregatedStats] = useState<AggregatedBrokerStats | null>(null)
   const [brokers, setBrokers] = useState<BrokerAccountData[]>([])
   const [selectedBrokerId, setSelectedBrokerId] = useState<number | null>(null)
-  const [workspaceSnapshots, setWorkspaceSnapshots] = useState<Record<number, WorkspaceSnapshot>>({})
+  const [workspaceSnapshots, setWorkspaceSnapshots] = useState<Record<number, WorkspaceSnapshot>>(() => {
+    if (typeof window === 'undefined') return {}
+    try {
+      const raw = localStorage.getItem(WORKSPACE_SNAPSHOTS_CACHE_KEY)
+      if (!raw) return {}
+      const parsed = JSON.parse(raw)
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+      return parsed as Record<number, WorkspaceSnapshot>
+    } catch {
+      return {}
+    }
+  })
   const workspaceSnapshotsRef = useRef<Record<number, WorkspaceSnapshot>>({})
   const [toggleLoadingByBroker, setToggleLoadingByBroker] = useState<Record<number, boolean>>({})
 
   useEffect(() => {
     workspaceSnapshotsRef.current = workspaceSnapshots
+  }, [workspaceSnapshots])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      localStorage.setItem(WORKSPACE_SNAPSHOTS_CACHE_KEY, JSON.stringify(workspaceSnapshots))
+    } catch {
+      // Ignore quota/storage errors, UI can continue without cache persistence.
+    }
   }, [workspaceSnapshots])
 
   // WebSocket symbol format
@@ -361,31 +383,9 @@ export default function DashboardPage() {
           // Multi-broker not available, fall back to legacy single broker
         }
 
-        // Legacy single-broker fallback:
-        // only use /api/v1/positions when no broker workspaces are configured.
-        if (allPositions.length === 0 && brokerList.length === 0) {
-          try {
-            const posData = await tradingApi.getPositions()
-            const mapped: Position[] = posData.positions.map((p: import('@/lib/api').Position) => ({
-              id: p.position_id,
-              symbol: p.symbol,
-              side: p.side as 'long' | 'short',
-              size: p.size,
-              entryPrice: p.entry_price,
-              currentPrice: p.current_price,
-              pnl: parseFloat(p.unrealized_pnl),
-              pnlPercent: parseFloat(p.unrealized_pnl_percent || '0'),
-              stopLoss: p.stop_loss || undefined,
-              takeProfit: p.take_profit || undefined,
-              leverage: p.leverage || 1,
-              marginUsed: p.margin_used,
-              openedAt: p.opened_at,
-            }))
-            allPositions.push(...mapped)
-          } catch {
-            // Legacy broker not available
-          }
-        }
+        // Do not call legacy /api/v1/positions fallback here.
+        // Dashboard operates on broker workspaces and should not emit noisy
+        // cross-origin failures when legacy endpoint is unavailable.
       }
 
       setPositions(allPositions)
