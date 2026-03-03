@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion'
 import { TrendingUp, TrendingDown, Wifi, WifiOff, ChevronLeft, ChevronRight } from 'lucide-react'
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { usePriceStream } from '@/hooks/useWebSocket'
 import { ALL_SYMBOLS, CATEGORY_LABELS, type TradingSymbol } from '@/lib/symbols'
 
@@ -25,10 +25,14 @@ interface PriceData {
 interface PriceTickerProps {
   onSelect?: (symbol: string) => void
   selectedSymbol?: string
+  symbols?: string[]
 }
 
-// Get WebSocket format symbols
-const WS_SYMBOLS = ALL_SYMBOLS.map(s => s.value)
+const SYMBOL_BY_VALUE = new Map(ALL_SYMBOLS.map((symbol) => [symbol.value, symbol]))
+const COMPACT_WS_SYMBOLS = ALL_SYMBOLS.slice(0, 10).map((symbol) => symbol.value)
+
+const normalizeSymbolValue = (value: string): string =>
+  (value || '').trim().toUpperCase().replace('/', '_')
 
 // Create empty placeholder for symbol (no hardcoded prices)
 const createEmptyPrice = (symbol: TradingSymbol): PriceData => {
@@ -166,9 +170,30 @@ function PriceCard({
   )
 }
 
-export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
+export function PriceTicker({ onSelect, selectedSymbol, symbols }: PriceTickerProps) {
+  const scopedSymbols = useMemo(() => {
+    if (!symbols || symbols.length === 0) return []
+    const resolved: TradingSymbol[] = []
+    const seen = new Set<string>()
+
+    for (const rawSymbol of symbols) {
+      const normalized = normalizeSymbolValue(rawSymbol)
+      if (!normalized || seen.has(normalized)) continue
+      const symbolConfig = SYMBOL_BY_VALUE.get(normalized)
+      if (!symbolConfig) continue
+      seen.add(normalized)
+      resolved.push(symbolConfig)
+    }
+
+    return resolved
+  }, [symbols])
+
+  const isScopedView = scopedSymbols.length > 0
+  const symbolsToRender = isScopedView ? scopedSymbols : ALL_SYMBOLS
+  const wsSymbols = useMemo(() => symbolsToRender.map((symbol) => symbol.value), [symbolsToRender])
+
   // Initialize with empty prices (no hardcoded values) - wait for broker data
-  const [prices, setPrices] = useState<PriceData[]>(() => ALL_SYMBOLS.map(createEmptyPrice))
+  const [prices, setPrices] = useState<PriceData[]>(() => symbolsToRender.map(createEmptyPrice))
   const [scrollPosition, setScrollPosition] = useState(0)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const prevPricesRef = useRef<Record<string, number>>({})
@@ -176,7 +201,7 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
   const basePricesRef = useRef<Record<string, number>>({})
 
   // Use WebSocket for real-time price streaming
-  const { prices: streamPrices, isConnected } = usePriceStream(WS_SYMBOLS)
+  const { prices: streamPrices, isConnected } = usePriceStream(wsSymbols)
 
   // Scroll handlers
   const scroll = useCallback((direction: 'left' | 'right') => {
@@ -206,57 +231,58 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
 
   // Update prices from WebSocket stream - use FIRST broker price as base
   useEffect(() => {
-    if (Object.keys(streamPrices).length > 0) {
-      const newPrices: PriceData[] = ALL_SYMBOLS.map(symbol => {
-        const streamData = streamPrices[symbol.value]
+    const newPrices: PriceData[] = symbolsToRender.map(symbol => {
+      const streamData = streamPrices[symbol.value]
 
-        if (streamData) {
-          const mid = parseFloat(streamData.mid)
+      if (streamData) {
+        const mid = parseFloat(streamData.mid)
 
-          // Set base price from FIRST broker price received (not hardcoded)
-          if (!basePricesRef.current[symbol.value]) {
-            basePricesRef.current[symbol.value] = mid
-          }
-
-          const prevMid = prevPricesRef.current[symbol.value] || mid
-          const baseMid = basePricesRef.current[symbol.value]
-
-          const sessionChange = mid - baseMid
-          const changePercent = baseMid > 0 ? (sessionChange / baseMid) * 100 : 0
-
-          prevPricesRef.current[symbol.value] = mid
-
-          return {
-            symbol: symbol.label,
-            displayName: symbol.displayName,
-            label: symbol.label,
-            value: symbol.value,
-            tvSymbol: symbol.tvSymbol,
-            category: symbol.category,
-            bid: streamData.bid,
-            ask: streamData.ask,
-            mid: streamData.mid,
-            spread: streamData.spread,
-            change: sessionChange,
-            changePercent,
-            isReal: streamData.isReal ?? false,
-          }
+        // Set base price from FIRST broker price received (not hardcoded)
+        if (!basePricesRef.current[symbol.value]) {
+          basePricesRef.current[symbol.value] = mid
         }
 
-        // Return empty placeholder if no broker data yet (no fallback to hardcoded)
-        return createEmptyPrice(symbol)
-      })
+        const prevMid = prevPricesRef.current[symbol.value] || mid
+        const baseMid = basePricesRef.current[symbol.value]
 
-      setPrices(newPrices)
-    }
-  }, [streamPrices])
+        const sessionChange = mid - baseMid
+        const changePercent = baseMid > 0 ? (sessionChange / baseMid) * 100 : 0
+
+        prevPricesRef.current[symbol.value] = mid
+
+        return {
+          symbol: symbol.label,
+          displayName: symbol.displayName,
+          label: symbol.label,
+          value: symbol.value,
+          tvSymbol: symbol.tvSymbol,
+          category: symbol.category,
+          bid: streamData.bid,
+          ask: streamData.ask,
+          mid: streamData.mid,
+          spread: streamData.spread,
+          change: sessionChange,
+          changePercent,
+          isReal: streamData.isReal ?? false,
+        }
+      }
+
+      // Return empty placeholder if no broker data yet (no fallback to hardcoded)
+      return createEmptyPrice(symbol)
+    })
+
+    setPrices(newPrices)
+  }, [streamPrices, symbolsToRender])
 
   // Convert selected symbol format
-  const selectedValue = selectedSymbol?.replace('/', '_')
+  const selectedValue = normalizeSymbolValue(selectedSymbol || '')
 
-  // Show ONLY real broker prices
-  const activePrices = prices.filter(p => p.isReal && p.mid !== '--' && p.mid !== '')
-  const realCount = activePrices.length
+  // In scoped mode show configured assets even before first real tick.
+  // In global mode keep the strict "real prices only" behavior.
+  const visiblePrices = isScopedView
+    ? prices
+    : prices.filter((price) => price.isReal && price.mid !== '--' && price.mid !== '')
+  const realCount = prices.filter((price) => price.isReal && price.mid !== '--' && price.mid !== '').length
 
   return (
     <>
@@ -271,7 +297,9 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <span className="text-sm text-dark-400">
-            {realCount} Asset{realCount !== 1 ? 's' : ''} Reali
+            {isScopedView
+              ? `${visiblePrices.length} Asset nel workspace`
+              : `${realCount} Asset${realCount !== 1 ? 's' : ''} Reali`}
           </span>
         </div>
         <div className="flex items-center gap-2 text-xs">
@@ -321,8 +349,8 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
               msOverflowStyle: 'none', /* IE/Edge */
             }}
           >
-            {activePrices.length > 0 ? (
-              activePrices.map((price, index) => (
+            {visiblePrices.length > 0 ? (
+              visiblePrices.map((price, index) => (
                 <motion.div
                   key={price.value}
                   initial={{ opacity: 0, y: 20 }}
@@ -340,7 +368,11 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
               ))
             ) : (
               <div className="flex items-center justify-center w-full py-8 text-dark-400">
-                <span>Caricamento prezzi dal broker...</span>
+                <span>
+                  {isScopedView
+                    ? 'Nessun asset configurato per questo workspace.'
+                    : 'Caricamento prezzi dal broker...'}
+                </span>
               </div>
             )}
           </div>
@@ -373,7 +405,7 @@ export function PriceTicker({ onSelect, selectedSymbol }: PriceTickerProps) {
 }
 
 export function PriceTickerCompact({ onSelect, selectedSymbol }: { onSelect?: (symbol: string) => void; selectedSymbol?: string }) {
-  const { prices: streamPrices, isConnected } = usePriceStream(WS_SYMBOLS.slice(0, 10))
+  const { prices: streamPrices, isConnected } = usePriceStream(COMPACT_WS_SYMBOLS)
   const basePricesRef = useRef<Record<string, number>>({})
 
   const prices = ALL_SYMBOLS.slice(0, 10).map(symbol => {

@@ -239,8 +239,10 @@ export default function DashboardPage() {
       setWorkspaceSnapshots(snapshots)
       workspaceSnapshotsRef.current = snapshots
     } catch {
-      setWorkspaceSnapshots({})
-      workspaceSnapshotsRef.current = {}
+      // Keep last known snapshots to avoid blank panel metrics on temporary API issues.
+      computedSnapshots = workspaceSnapshotsRef.current
+      setWorkspaceSnapshots(computedSnapshots)
+      workspaceSnapshotsRef.current = computedSnapshots
     }
 
     setError(null)
@@ -359,7 +361,9 @@ export default function DashboardPage() {
           // Multi-broker not available, fall back to legacy single broker
         }
 
-        if (allPositions.length === 0) {
+        // Legacy single-broker fallback:
+        // only use /api/v1/positions when no broker workspaces are configured.
+        if (allPositions.length === 0 && brokerList.length === 0) {
           try {
             const posData = await tradingApi.getPositions()
             const mapped: Position[] = posData.positions.map((p: import('@/lib/api').Position) => ({
@@ -542,6 +546,10 @@ export default function DashboardPage() {
   }, [brokers, selectedBrokerId])
 
   const selectedBroker = brokers.find((b) => b.id === selectedBrokerId) || null
+  const selectedBrokerSymbols = useMemo(() => {
+    if (!selectedBroker || selectedBroker.symbols.length === 0) return undefined
+    return selectedBroker.symbols
+  }, [selectedBroker])
   const selectedSnapshot = selectedBrokerId ? workspaceSnapshots[selectedBrokerId] : null
   const selectedSlotDisabled = Boolean(
     selectedBrokerId &&
@@ -731,7 +739,11 @@ export default function DashboardPage() {
     >
       {/* Asset Price Cards (top priority) */}
       <motion.div variants={itemVariants}>
-        <PriceTicker selectedSymbol={selectedSymbol} onSelect={setSelectedSymbol} />
+        <PriceTicker
+          selectedSymbol={selectedSymbol}
+          onSelect={setSelectedSymbol}
+          symbols={selectedBrokerSymbols}
+        />
       </motion.div>
 
       <motion.div variants={itemVariants} className="prometheus-hero-card p-6 md:p-7">
