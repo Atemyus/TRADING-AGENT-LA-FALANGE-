@@ -405,7 +405,7 @@ export const tradingApi = {
    */
   getPrices: async (symbols: string[]): Promise<{ prices: PriceData[] }> => {
     const symbolsStr = symbols.map(s => s.replace('/', '_')).join(',')
-    return fetchApi(`/api/v1/trading/prices?symbols=${symbolsStr}`)
+    return fetchApi(`/api/v1/trading/prices?symbols=${encodeURIComponent(symbolsStr)}`)
   },
 
   /**
@@ -1058,7 +1058,7 @@ export const brokerAccountsApi = {
    */
   getPrices: async (brokerId: number, symbols: string[]): Promise<BrokerPricesResponse> => {
     const symbolsStr = symbols.map((symbol) => symbol.replace('/', '_')).join(',')
-    return fetchApi(`/api/v1/brokers/${brokerId}/prices?symbols=${symbolsStr}`)
+    return fetchApi(`/api/v1/brokers/${brokerId}/prices?symbols=${encodeURIComponent(symbolsStr)}`)
   },
 
   /**

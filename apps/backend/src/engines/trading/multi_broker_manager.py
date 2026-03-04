@@ -8,6 +8,7 @@ Each broker account runs independently with its own:
 """
 
 import asyncio
+import math
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -33,6 +34,23 @@ from src.services.broker_credentials_service import (
 )
 
 
+def _safe_float(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+        parsed = float(value)
+        if not math.isfinite(parsed):
+            return None
+        return parsed
+    except Exception:
+        return None
+
+
+def _symbol_token(value: Any) -> str:
+    text = str(value or "").strip().upper()
+    return "".join(ch for ch in text if ch.isalnum())
+
+
 @dataclass
 class BrokerInstance:
     """Represents a running broker instance.
@@ -54,6 +72,7 @@ class BrokerInstance:
     status: str = "stopped"
     started_at: datetime | None = None
     last_error: str | None = None
+    last_connection_error: str | None = None
     last_account_snapshot: dict[str, Any] | None = None
     last_prices_snapshot: dict[str, dict[str, Any]] = field(default_factory=dict)
 
@@ -483,6 +502,7 @@ class MultiBrokerManager:
             "status": trader.state.status.value,
             "started_at": instance.started_at.isoformat() if instance.started_at else None,
             "last_error": instance.last_error,
+            "last_connection_error": instance.last_connection_error,
             "statistics": {
                 "analyses_today": trader.state.analyses_today,
                 "trades_today": trader.state.trades_today,
@@ -510,13 +530,16 @@ class MultiBrokerManager:
             instance = await self.initialize_broker(broker_account)
 
         if instance.trader.broker and getattr(instance.trader.broker, "is_connected", False):
+            instance.last_connection_error = None
             return instance.trader.broker
 
         if instance.trader.broker and not getattr(instance.trader.broker, "is_connected", False):
             try:
                 await instance.trader.broker.connect()
+                instance.last_connection_error = None
                 return instance.trader.broker
-            except Exception:
+            except Exception as exc:
+                instance.last_connection_error = f"Reconnect failed: {exc}"
                 instance.trader.broker = None
 
         broker_type = (instance.broker_type or "metaapi").lower()
@@ -543,10 +566,26 @@ class MultiBrokerManager:
                 else:
                     runtime_credentials = normalize_credentials(broker_account.credentials)
                 instance.runtime_credentials = dict(runtime_credentials)
-            except HTTPException:
-                return None
-            except Exception:
-                return None
+            except HTTPException as exc:
+                if runtime_credentials:
+                    print(
+                        f"[MultiBrokerManager] Runtime resolution failed for broker {broker_id}, "
+                        f"using cached credentials: {exc.detail}"
+                    )
+                    instance.last_connection_error = f"Runtime resolution failed, using cached credentials: {exc.detail}"
+                else:
+                    instance.last_connection_error = str(exc.detail)
+                    return None
+            except Exception as exc:
+                if runtime_credentials:
+                    print(
+                        f"[MultiBrokerManager] Runtime resolution exception for broker {broker_id}, "
+                        f"using cached credentials: {exc}"
+                    )
+                    instance.last_connection_error = f"Runtime resolution failed, using cached credentials: {exc}"
+                else:
+                    instance.last_connection_error = f"Runtime resolution failed: {exc}"
+                    return None
 
         broker_kwargs: dict[str, Any] = {}
         if broker_type in {"metaapi", "metatrader", "mt4", "mt5"}:
@@ -565,8 +604,12 @@ class MultiBrokerManager:
                     safe_platform = "mt4" if broker_type == "mt4" else "mt5"
                 server_name = runtime_credentials.get("server_name") or runtime_credentials.get("server")
                 if not account_number or not password:
+                    instance.last_connection_error = (
+                        "Bridge credentials missing: account_number/login or password not configured."
+                    )
                     return None
                 if safe_platform == "mt4" and not server_name:
+                    instance.last_connection_error = "Bridge credentials missing: server_name required for MT4."
                     return None
                 broker_kwargs = dict(runtime_credentials)
                 broker_kwargs["account_number"] = account_number
@@ -579,6 +622,9 @@ class MultiBrokerManager:
                 access_token = runtime_credentials.get("access_token")
                 account_id = runtime_credentials.get("account_id")
                 if not access_token or not account_id:
+                    instance.last_connection_error = (
+                        "MetaApi credentials missing: access_token/account_id not configured for workspace."
+                    )
                     return None
                 broker_kwargs = {
                     "access_token": access_token,
@@ -589,6 +635,7 @@ class MultiBrokerManager:
             account_id = runtime_credentials.get("account_id")
             environment = runtime_credentials.get("environment") or "practice"
             if not api_key or not account_id:
+                instance.last_connection_error = "OANDA credentials missing: api_key/account_id required."
                 return None
             broker_kwargs = {
                 "api_key": api_key,
@@ -601,6 +648,7 @@ class MultiBrokerManager:
             password = runtime_credentials.get("password")
             environment = runtime_credentials.get("environment") or "demo"
             if not api_key or not username or not password:
+                instance.last_connection_error = "IG credentials missing: api_key/username/password required."
                 return None
             broker_kwargs = {
                 "api_key": api_key,
@@ -614,6 +662,7 @@ class MultiBrokerManager:
             api_key = runtime_credentials.get("api_key")
             secret_key = runtime_credentials.get("secret_key")
             if not api_key or not secret_key:
+                instance.last_connection_error = "Alpaca credentials missing: api_key/secret_key required."
                 return None
             paper = (runtime_credentials.get("paper") or "true").lower() == "true"
             broker_kwargs = {
@@ -629,14 +678,17 @@ class MultiBrokerManager:
                 broker_type=instance.broker_type,
                 **broker_kwargs,
             )
-        except (NoBrokerConfiguredError, NotImplementedError):
+        except (NoBrokerConfiguredError, NotImplementedError) as exc:
+            instance.last_connection_error = str(exc)
             return None
 
         try:
             await broker.connect()
-        except Exception:
+        except Exception as exc:
+            instance.last_connection_error = f"Broker connect failed: {exc}"
             return None
         instance.trader.broker = broker
+        instance.last_connection_error = None
         return broker
 
     async def get_broker_account_info(
@@ -659,6 +711,21 @@ class MultiBrokerManager:
                 return dict(instance.last_account_snapshot)
             return None
 
+        balance = _safe_float(getattr(account_info, "balance", None))
+        equity = _safe_float(getattr(account_info, "equity", None))
+        margin_used = _safe_float(getattr(account_info, "margin_used", None))
+        margin_available = _safe_float(getattr(account_info, "margin_available", None))
+        unrealized_pnl = _safe_float(getattr(account_info, "unrealized_pnl", None))
+        realized_pnl_today = _safe_float(getattr(account_info, "realized_pnl_today", 0))
+
+        if balance is None:
+            if instance and instance.last_account_snapshot:
+                return dict(instance.last_account_snapshot)
+            return None
+
+        if equity is None:
+            equity = balance
+
         # Open positions should not block account balance/equity visibility.
         open_positions_count = 0
         try:
@@ -672,14 +739,14 @@ class MultiBrokerManager:
 
         payload = {
             "broker_id": broker_id,
-            "balance": float(account_info.balance),
-            "equity": float(account_info.equity),
-            "margin_used": float(account_info.margin_used),
-            "margin_available": float(account_info.margin_available),
-            "unrealized_pnl": float(account_info.unrealized_pnl),
-            "realized_pnl_today": float(getattr(account_info, "realized_pnl_today", 0) or 0),
+            "balance": balance,
+            "equity": equity,
+            "margin_used": margin_used if margin_used is not None else 0.0,
+            "margin_available": margin_available if margin_available is not None else 0.0,
+            "unrealized_pnl": unrealized_pnl if unrealized_pnl is not None else 0.0,
+            "realized_pnl_today": realized_pnl_today if realized_pnl_today is not None else 0.0,
             "open_positions": open_positions_count,
-            "currency": account_info.currency,
+            "currency": getattr(account_info, "currency", None) or "USD",
         }
         if instance:
             instance.last_account_snapshot = dict(payload)
@@ -775,14 +842,19 @@ class MultiBrokerManager:
             tick = ticks.get(requested_symbol)
             if tick is None:
                 tick = next(
-                    (value for value in ticks.values() if getattr(value, "symbol", "").upper() == requested_symbol),
+                    (
+                        value
+                        for key, value in ticks.items()
+                        if _symbol_token(key) == _symbol_token(requested_symbol)
+                        or _symbol_token(getattr(value, "symbol", "")) == _symbol_token(requested_symbol)
+                    ),
                     None,
                 )
             if tick is None:
                 continue
 
-            bid = getattr(tick, "bid", None)
-            ask = getattr(tick, "ask", None)
+            bid = _safe_float(getattr(tick, "bid", None))
+            ask = _safe_float(getattr(tick, "ask", None))
             if bid is None or ask is None:
                 continue
             mid = (bid + ask) / 2

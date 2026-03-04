@@ -1178,12 +1178,17 @@ async def get_broker_account_info(
     account_info = await manager.get_broker_account_info(broker_id, broker_account=broker)
 
     if not account_info:
+        instance = manager.get_instance(broker_id)
+        connection_hint = instance.last_connection_error if instance else None
+        message = "Broker account data unavailable"
+        if connection_hint:
+            message = f"{message}: {connection_hint}"
         return {
             "broker_id": broker_id,
             "name": broker.name,
             "balance": None,
             "equity": None,
-            "message": "Broker account data unavailable",
+            "message": message,
         }
 
     return {**account_info, "name": broker.name}
@@ -1224,10 +1229,17 @@ async def get_broker_prices(
         broker_account=broker,
     )
 
+    message: str | None = None
+    if not prices:
+        instance = manager.get_instance(broker_id)
+        if instance and instance.last_connection_error:
+            message = f"Broker prices unavailable: {instance.last_connection_error}"
+
     return {
         "broker_id": broker_id,
         "name": broker.name,
         "prices": prices or {},
+        **({"message": message} if message else {}),
     }
 
 
