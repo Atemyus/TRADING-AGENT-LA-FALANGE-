@@ -145,7 +145,22 @@ export default function DashboardPage() {
       return {}
     }
   })
-  const workspaceSnapshotsRef = useRef<Record<number, WorkspaceSnapshot>>({})
+  // Initialize ref from the same localStorage cache so that the very first
+  // fetchAccountData call can use cached values as fallback for panel metrics.
+  const workspaceSnapshotsRef = useRef<Record<number, WorkspaceSnapshot>>(
+    (() => {
+      if (typeof window === 'undefined') return {}
+      try {
+        const raw = localStorage.getItem(WORKSPACE_SNAPSHOTS_CACHE_KEY)
+        if (!raw) return {}
+        const parsed = JSON.parse(raw)
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+        return parsed as Record<number, WorkspaceSnapshot>
+      } catch {
+        return {}
+      }
+    })()
+  )
   const [toggleLoadingByBroker, setToggleLoadingByBroker] = useState<Record<number, boolean>>({})
 
   useEffect(() => {
@@ -302,6 +317,8 @@ export default function DashboardPage() {
 
     if (selectedBrokerId) {
       // Scoped view: one selected broker workspace
+      // Use snapshot as fallback when the live fetch returns null (broker temporarily unreachable)
+      const fallbackSnapshot = computedSnapshots[selectedBrokerId]
       try {
         const brokerAccount = await brokerAccountsApi.getAccountInfo(selectedBrokerId)
         if (brokerAccount.balance !== null) {
@@ -314,12 +331,22 @@ export default function DashboardPage() {
             brokerCount: 1,
             currency: brokerAccount.currency || 'USD',
           })
+        } else if (fallbackSnapshot && fallbackSnapshot.balance !== null) {
+          // Live fetch returned null but we have cached snapshot data — use it
+          setAggregatedStats({
+            totalBalance: fallbackSnapshot.balance ?? 0,
+            totalEquity: fallbackSnapshot.equity ?? 0,
+            totalUnrealizedPnl: fallbackSnapshot.unrealizedPnl ?? 0,
+            totalMarginUsed: fallbackSnapshot.marginUsed ?? 0,
+            totalOpenPositions: fallbackSnapshot.openPositions || 0,
+            brokerCount: 1,
+            currency: fallbackSnapshot.currency || 'USD',
+          })
         } else {
           setAggregatedStats(null)
         }
       } catch {
-        const fallbackSnapshot = computedSnapshots[selectedBrokerId]
-        if (fallbackSnapshot) {
+        if (fallbackSnapshot && fallbackSnapshot.balance !== null) {
           setAggregatedStats({
             totalBalance: fallbackSnapshot.balance ?? 0,
             totalEquity: fallbackSnapshot.equity ?? 0,
