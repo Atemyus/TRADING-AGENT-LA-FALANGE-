@@ -5,6 +5,7 @@ import { TrendingUp, TrendingDown, Wifi, WifiOff, ChevronLeft, ChevronRight } fr
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { usePriceStream } from '@/hooks/useWebSocket'
 import { ALL_SYMBOLS, CATEGORY_LABELS, type TradingSymbol } from '@/lib/symbols'
+import { brokerAccountsApi } from '@/lib/api'
 
 interface PriceData {
   symbol: string
@@ -26,6 +27,7 @@ interface PriceTickerProps {
   onSelect?: (symbol: string) => void
   selectedSymbol?: string
   symbols?: string[]
+  brokerId?: number
 }
 
 const SYMBOL_BY_VALUE = new Map(ALL_SYMBOLS.map((symbol) => [symbol.value, symbol]))
@@ -170,7 +172,7 @@ function PriceCard({
   )
 }
 
-export function PriceTicker({ onSelect, selectedSymbol, symbols }: PriceTickerProps) {
+export function PriceTicker({ onSelect, selectedSymbol, symbols, brokerId }: PriceTickerProps) {
   const scopedSymbols = useMemo(() => {
     if (!symbols || symbols.length === 0) return []
     const resolved: TradingSymbol[] = []
@@ -202,6 +204,45 @@ export function PriceTicker({ onSelect, selectedSymbol, symbols }: PriceTickerPr
 
   // Use WebSocket for real-time price streaming
   const { prices: streamPrices, isConnected } = usePriceStream(wsSymbols)
+  const [restPrices, setRestPrices] = useState<Record<string, {
+    bid: string
+    ask: string
+    mid: string
+    spread: string
+    timestamp: string
+    isReal?: boolean
+  }>>({})
+
+  // Broker-scoped REST fallback for prices (works even when global WS stream is not configured)
+  useEffect(() => {
+    if (!brokerId || wsSymbols.length === 0) {
+      setRestPrices({})
+      return
+    }
+
+    let cancelled = false
+    let intervalId: ReturnType<typeof setInterval> | null = null
+
+    const loadBrokerPrices = async () => {
+      try {
+        const payload = await brokerAccountsApi.getPrices(brokerId, wsSymbols)
+        if (cancelled) return
+        setRestPrices(payload.prices || {})
+      } catch {
+        if (cancelled) return
+      }
+    }
+
+    void loadBrokerPrices()
+    intervalId = setInterval(() => {
+      void loadBrokerPrices()
+    }, 4000)
+
+    return () => {
+      cancelled = true
+      if (intervalId) clearInterval(intervalId)
+    }
+  }, [brokerId, wsSymbols])
 
   // Scroll handlers
   const scroll = useCallback((direction: 'left' | 'right') => {
@@ -233,22 +274,30 @@ export function PriceTicker({ onSelect, selectedSymbol, symbols }: PriceTickerPr
   useEffect(() => {
     const newPrices: PriceData[] = symbolsToRender.map(symbol => {
       const streamData = streamPrices[symbol.value]
+      const restData = restPrices[symbol.value]
+      const sourceData = streamData && streamData.mid && streamData.mid !== '--'
+        ? streamData
+        : restData
 
-      if (streamData) {
-        const mid = parseFloat(streamData.mid)
+      if (sourceData) {
+        const mid = parseFloat(sourceData.mid)
 
         // Set base price from FIRST broker price received (not hardcoded)
-        if (!basePricesRef.current[symbol.value]) {
+        if (!basePricesRef.current[symbol.value] && !Number.isNaN(mid) && mid > 0) {
           basePricesRef.current[symbol.value] = mid
         }
 
         const prevMid = prevPricesRef.current[symbol.value] || mid
-        const baseMid = basePricesRef.current[symbol.value]
+        const baseMid = basePricesRef.current[symbol.value] || mid
 
         const sessionChange = mid - baseMid
         const changePercent = baseMid > 0 ? (sessionChange / baseMid) * 100 : 0
 
         prevPricesRef.current[symbol.value] = mid
+
+        const isRealPrice = streamData
+          ? (streamData.isReal ?? false)
+          : (restData?.isReal ?? true)
 
         return {
           symbol: symbol.label,
@@ -257,13 +306,13 @@ export function PriceTicker({ onSelect, selectedSymbol, symbols }: PriceTickerPr
           value: symbol.value,
           tvSymbol: symbol.tvSymbol,
           category: symbol.category,
-          bid: streamData.bid,
-          ask: streamData.ask,
-          mid: streamData.mid,
-          spread: streamData.spread,
+          bid: sourceData.bid,
+          ask: sourceData.ask,
+          mid: sourceData.mid,
+          spread: sourceData.spread,
           change: sessionChange,
           changePercent,
-          isReal: streamData.isReal ?? false,
+          isReal: isRealPrice,
         }
       }
 
@@ -272,7 +321,7 @@ export function PriceTicker({ onSelect, selectedSymbol, symbols }: PriceTickerPr
     })
 
     setPrices(newPrices)
-  }, [streamPrices, symbolsToRender])
+  }, [streamPrices, restPrices, symbolsToRender])
 
   // Convert selected symbol format
   const selectedValue = normalizeSymbolValue(selectedSymbol || '')

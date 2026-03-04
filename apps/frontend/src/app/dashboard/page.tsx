@@ -743,6 +743,7 @@ export default function DashboardPage() {
           selectedSymbol={selectedSymbol}
           onSelect={setSelectedSymbol}
           symbols={selectedBrokerSymbols}
+          brokerId={selectedBrokerId || undefined}
         />
       </motion.div>
 

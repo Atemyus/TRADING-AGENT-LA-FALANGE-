@@ -270,6 +270,31 @@ async def _resolve_validate_and_persist_metaapi_runtime(
     return runtime
 
 
+async def _best_effort_resolve_metaapi_runtime(
+    db: AsyncSession,
+    *,
+    broker: BrokerAccount,
+    current_user: User,
+) -> None:
+    """Try to refresh MetaApi runtime credentials without failing read-only endpoints."""
+    try:
+        await _resolve_validate_and_persist_metaapi_runtime(
+            db,
+            broker=broker,
+            current_user=current_user,
+        )
+    except HTTPException as exc:
+        print(
+            f"[brokers] MetaApi runtime resolution skipped for broker {broker.id} "
+            f"({broker.name}): {exc.detail}"
+        )
+    except Exception as exc:
+        print(
+            f"[brokers] MetaApi runtime resolution failed for broker {broker.id} "
+            f"({broker.name}): {exc}"
+        )
+
+
 async def _get_user_broker_or_404(
     db: AsyncSession,
     broker_id: int,
@@ -1163,6 +1188,48 @@ async def get_broker_account_info(
     return {**account_info, "name": broker.name}
 
 
+@router.get("/{broker_id}/prices")
+async def get_broker_prices(
+    broker_id: int,
+    symbols: str = "",
+    current_user: User = Depends(get_licensed_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get current prices for one broker workspace symbols."""
+    from src.engines.trading.multi_broker_manager import get_multi_broker_manager
+
+    broker = await _get_user_broker_or_404(db, broker_id, current_user)
+    if (broker.broker_type or "metaapi").lower() in MT_BROKER_TYPES:
+        await _best_effort_resolve_metaapi_runtime(
+            db,
+            broker=broker,
+            current_user=current_user,
+        )
+
+    requested_symbols: list[str] = []
+    seen: set[str] = set()
+    raw_symbols = [item.strip() for item in str(symbols or "").split(",") if item.strip()]
+    source_symbols = raw_symbols or list(broker.symbols or [])
+    for symbol in source_symbols:
+        normalized = symbol.upper().replace("/", "_")
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            requested_symbols.append(normalized)
+
+    manager = get_multi_broker_manager()
+    prices = await manager.get_broker_prices(
+        broker_id,
+        requested_symbols,
+        broker_account=broker,
+    )
+
+    return {
+        "broker_id": broker_id,
+        "name": broker.name,
+        "prices": prices or {},
+    }
+
+
 @router.get("/{broker_id}/positions")
 async def get_broker_positions(
     broker_id: int,
@@ -1174,7 +1241,7 @@ async def get_broker_positions(
 
     broker = await _get_user_broker_or_404(db, broker_id, current_user)
     if (broker.broker_type or "metaapi").lower() in MT_BROKER_TYPES:
-        await _resolve_validate_and_persist_metaapi_runtime(
+        await _best_effort_resolve_metaapi_runtime(
             db,
             broker=broker,
             current_user=current_user,
@@ -1296,7 +1363,7 @@ async def get_all_broker_positions(
     all_positions = []
     for broker in brokers:
         if (broker.broker_type or "metaapi").lower() in MT_BROKER_TYPES:
-            await _resolve_validate_and_persist_metaapi_runtime(
+            await _best_effort_resolve_metaapi_runtime(
                 db,
                 broker=broker,
                 current_user=current_user,
@@ -1334,7 +1401,7 @@ async def get_aggregated_account_summary(
 
     for broker in brokers:
         if (broker.broker_type or "metaapi").lower() in MT_BROKER_TYPES:
-            await _resolve_validate_and_persist_metaapi_runtime(
+            await _best_effort_resolve_metaapi_runtime(
                 db,
                 broker=broker,
                 current_user=current_user,
@@ -1360,7 +1427,7 @@ async def get_aggregated_account_summary(
     total_positions = 0
     for broker in brokers:
         if (broker.broker_type or "metaapi").lower() in MT_BROKER_TYPES:
-            await _resolve_validate_and_persist_metaapi_runtime(
+            await _best_effort_resolve_metaapi_runtime(
                 db,
                 broker=broker,
                 current_user=current_user,
@@ -1397,7 +1464,7 @@ async def get_all_broker_statuses(
 
     for broker in brokers:
         if (broker.broker_type or "metaapi").lower() in MT_BROKER_TYPES:
-            await _resolve_validate_and_persist_metaapi_runtime(
+            await _best_effort_resolve_metaapi_runtime(
                 db,
                 broker=broker,
                 current_user=current_user,

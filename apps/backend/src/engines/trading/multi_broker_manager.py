@@ -8,7 +8,7 @@ Each broker account runs independently with its own:
 """
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -54,6 +54,8 @@ class BrokerInstance:
     status: str = "stopped"
     started_at: datetime | None = None
     last_error: str | None = None
+    last_account_snapshot: dict[str, Any] | None = None
+    last_prices_snapshot: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 class MultiBrokerManager:
@@ -643,17 +645,19 @@ class MultiBrokerManager:
         broker_account: BrokerAccount | None = None,
     ) -> dict | None:
         """Get account info (balance, equity) for a specific broker."""
+        instance = self._instances.get(broker_id)
         broker = await self._ensure_broker_connection(broker_id, broker_account=broker_account)
         if not broker:
+            if instance and instance.last_account_snapshot:
+                return dict(instance.last_account_snapshot)
             return None
 
         try:
             account_info = await broker.get_account_info()
-        except Exception as e:
-            return {
-                "broker_id": broker_id,
-                "error": str(e)
-            }
+        except Exception:
+            if instance and instance.last_account_snapshot:
+                return dict(instance.last_account_snapshot)
+            return None
 
         # Open positions should not block account balance/equity visibility.
         open_positions_count = 0
@@ -661,9 +665,12 @@ class MultiBrokerManager:
             open_positions = await broker.get_positions()
             open_positions_count = len(open_positions or [])
         except Exception:
-            open_positions_count = 0
+            if instance and instance.last_account_snapshot:
+                open_positions_count = int(instance.last_account_snapshot.get("open_positions", 0) or 0)
+            else:
+                open_positions_count = 0
 
-        return {
+        payload = {
             "broker_id": broker_id,
             "balance": float(account_info.balance),
             "equity": float(account_info.equity),
@@ -674,6 +681,9 @@ class MultiBrokerManager:
             "open_positions": open_positions_count,
             "currency": account_info.currency,
         }
+        if instance:
+            instance.last_account_snapshot = dict(payload)
+        return payload
 
     async def get_broker_positions(
         self,
@@ -719,6 +729,81 @@ class MultiBrokerManager:
             ]
         except Exception:
             return []
+
+    async def get_broker_prices(
+        self,
+        broker_id: int,
+        symbols: list[str],
+        broker_account: BrokerAccount | None = None,
+    ) -> dict[str, dict[str, Any]] | None:
+        """Get current prices for specific symbols from a broker workspace."""
+        instance = self._instances.get(broker_id)
+        broker = await self._ensure_broker_connection(broker_id, broker_account=broker_account)
+        if not broker:
+            if instance and instance.last_prices_snapshot:
+                return dict(instance.last_prices_snapshot)
+            return None
+
+        target_symbols: list[str] = []
+        seen: set[str] = set()
+        for symbol in symbols:
+            normalized = str(symbol or "").strip().upper().replace("/", "_")
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            target_symbols.append(normalized)
+
+        if not target_symbols and instance:
+            for symbol in instance.symbols:
+                normalized = str(symbol or "").strip().upper().replace("/", "_")
+                if normalized and normalized not in seen:
+                    seen.add(normalized)
+                    target_symbols.append(normalized)
+
+        if not target_symbols:
+            return {}
+
+        try:
+            ticks = await broker.get_prices(target_symbols)
+        except Exception:
+            if instance and instance.last_prices_snapshot:
+                return dict(instance.last_prices_snapshot)
+            return {}
+
+        payload: dict[str, dict[str, Any]] = {}
+        for requested_symbol in target_symbols:
+            tick = ticks.get(requested_symbol)
+            if tick is None:
+                tick = next(
+                    (value for value in ticks.values() if getattr(value, "symbol", "").upper() == requested_symbol),
+                    None,
+                )
+            if tick is None:
+                continue
+
+            bid = getattr(tick, "bid", None)
+            ask = getattr(tick, "ask", None)
+            if bid is None or ask is None:
+                continue
+            mid = (bid + ask) / 2
+            spread = ask - bid
+            timestamp = getattr(tick, "timestamp", None)
+            payload[requested_symbol] = {
+                "symbol": requested_symbol,
+                "bid": str(bid),
+                "ask": str(ask),
+                "mid": str(mid),
+                "spread": str(spread),
+                "timestamp": timestamp.isoformat() if timestamp else datetime.utcnow().isoformat(),
+                "isReal": True,
+            }
+
+        if instance and payload:
+            instance.last_prices_snapshot = dict(payload)
+
+        if not payload and instance and instance.last_prices_snapshot:
+            return dict(instance.last_prices_snapshot)
+        return payload
 
     def get_all_statuses(self) -> list[dict]:
         """Get status of all broker instances."""
