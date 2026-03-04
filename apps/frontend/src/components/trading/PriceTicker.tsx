@@ -32,9 +32,59 @@ interface PriceTickerProps {
 
 const SYMBOL_BY_VALUE = new Map(ALL_SYMBOLS.map((symbol) => [symbol.value, symbol]))
 const COMPACT_WS_SYMBOLS = ALL_SYMBOLS.slice(0, 10).map((symbol) => symbol.value)
+const SYMBOL_ALIASES: Record<string, string> = {
+  GOLD: 'XAU_USD',
+  XAUUSD: 'XAU_USD',
+  SILVER: 'XAG_USD',
+  XAGUSD: 'XAG_USD',
+}
 
 const normalizeSymbolValue = (value: string): string =>
   (value || '').trim().toUpperCase().replace('/', '_')
+
+const stripBrokerDecorators = (value: string): string =>
+  (value || '').replace(/[#.\-]+$/g, '')
+
+const compactSymbolKey = (value: string): string =>
+  (value || '').replace(/[^A-Z0-9]/g, '')
+
+const createVirtualSymbol = (normalized: string, rawSymbol: string): TradingSymbol => {
+  const display = (rawSymbol || normalized).trim().toUpperCase()
+  const tvToken = compactSymbolKey(stripBrokerDecorators(normalized)) || compactSymbolKey(normalized)
+  return {
+    value: normalized,
+    label: display,
+    tvSymbol: tvToken ? `FOREXCOM:${tvToken}` : display,
+    category: 'forex',
+    displayName: display,
+  }
+}
+
+const resolveSymbolConfig = (rawSymbol: string): TradingSymbol | null => {
+  const normalized = normalizeSymbolValue(rawSymbol)
+  if (!normalized) return null
+
+  const direct = SYMBOL_BY_VALUE.get(normalized)
+  if (direct) return direct
+
+  const stripped = stripBrokerDecorators(normalized)
+  if (stripped) {
+    const strippedDirect = SYMBOL_BY_VALUE.get(stripped)
+    if (strippedDirect) return strippedDirect
+  }
+
+  const aliasCandidates = [compactSymbolKey(normalized), compactSymbolKey(stripped)]
+  for (const candidate of aliasCandidates) {
+    if (!candidate) continue
+    const aliasTarget = SYMBOL_ALIASES[candidate]
+    if (!aliasTarget) continue
+    const aliasResolved = SYMBOL_BY_VALUE.get(aliasTarget)
+    if (aliasResolved) return aliasResolved
+  }
+
+  // Keep unknown broker symbols visible in scoped view (e.g. broker-specific suffixes).
+  return createVirtualSymbol(normalized, rawSymbol)
+}
 
 // Create empty placeholder for symbol (no hardcoded prices)
 const createEmptyPrice = (symbol: TradingSymbol): PriceData => {
@@ -179,11 +229,10 @@ export function PriceTicker({ onSelect, selectedSymbol, symbols, brokerId }: Pri
     const seen = new Set<string>()
 
     for (const rawSymbol of symbols) {
-      const normalized = normalizeSymbolValue(rawSymbol)
-      if (!normalized || seen.has(normalized)) continue
-      const symbolConfig = SYMBOL_BY_VALUE.get(normalized)
+      const symbolConfig = resolveSymbolConfig(rawSymbol)
       if (!symbolConfig) continue
-      seen.add(normalized)
+      if (seen.has(symbolConfig.value)) continue
+      seen.add(symbolConfig.value)
       resolved.push(symbolConfig)
     }
 
