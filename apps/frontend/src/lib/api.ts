@@ -829,6 +829,12 @@ export interface BrokerPositionsResponse {
   message?: string
 }
 
+export interface BrokerPricesResponse {
+  broker_id: number
+  name: string
+  prices: Record<string, PriceData & { isReal?: boolean }>
+}
+
 export const brokerAccountsApi = {
   /**
    * Get all broker accounts
@@ -1045,6 +1051,14 @@ export const brokerAccountsApi = {
    */
   getPositions: async (brokerId: number): Promise<BrokerPositionsResponse> => {
     return fetchApi(`/api/v1/brokers/${brokerId}/positions`)
+  },
+
+  /**
+   * Get prices for specific symbols from a broker workspace
+   */
+  getPrices: async (brokerId: number, symbols: string[]): Promise<BrokerPricesResponse> => {
+    const symbolsStr = symbols.map((symbol) => symbol.replace('/', '_')).join(',')
+    return fetchApi(`/api/v1/brokers/${brokerId}/prices?symbols=${symbolsStr}`)
   },
 
   /**

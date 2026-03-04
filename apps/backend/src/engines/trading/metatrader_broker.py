@@ -524,6 +524,10 @@ class MetaTraderBroker(BaseBroker):
         """Encode broker-native symbol for safe usage inside URL path segments."""
         return quote(str(symbol or ""), safe="")
 
+    def _encode_symbol_path_segment(self, broker_symbol: str) -> str:
+        """Backward-compatible alias for encoded symbol path segments."""
+        return self._encode_symbol_path(broker_symbol)
+
     def _strip_contract_tail_token(self, token: str) -> str:
         current = token
         for pattern in self.CONTRACT_TAIL_PATTERNS:
@@ -1272,9 +1276,10 @@ class MetaTraderBroker(BaseBroker):
         if cached is not None:
             return cached
 
+        encoded_symbol = self._encode_symbol_path(broker_symbol)
         spec = await self._request(
             "GET",
-            f"/users/current/accounts/{self.account_id}/symbols/{self._encode_symbol_path(broker_symbol)}/specification",
+            f"/users/current/accounts/{self.account_id}/symbols/{encoded_symbol}/specification",
         )
         self._set_cache(cache_key, spec, 300)  # Cache for 5 minutes
         return spec
@@ -2885,10 +2890,11 @@ class MetaTraderBroker(BaseBroker):
         mt_timeframe = tf_map.get(timeframe, "1h")
 
         broker_symbol = self._resolve_symbol(symbol)
+        encoded_symbol = self._encode_symbol_path(broker_symbol)
 
         candles = await self._request(
             "GET",
-            f"/users/current/accounts/{self.account_id}/historical-market-data/symbols/{self._encode_symbol_path(broker_symbol)}/timeframes/{mt_timeframe}/candles",
+            f"/users/current/accounts/{self.account_id}/historical-market-data/symbols/{encoded_symbol}/timeframes/{mt_timeframe}/candles",
             params={"limit": count},
         )
 

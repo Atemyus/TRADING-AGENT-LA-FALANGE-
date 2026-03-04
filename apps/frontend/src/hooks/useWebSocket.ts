@@ -4,35 +4,54 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 
-// Production backend URL (Railway)
-const PRODUCTION_BACKEND_URL = 'wss://trading-agent-la-falange-production.up.railway.app';
+function normalizeWebSocketBaseUrl(value?: string | null): string | null {
+  if (!value) return null;
 
-// Dynamically determine WebSocket URL based on current page location
-function getWebSocketUrl(): string {
-  // If running in browser, check the current location
-  if (typeof window !== 'undefined') {
-    const host = window.location.host;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
 
-    // If we're on localhost, use local backend
-    if (host.includes('localhost') || host.includes('127.0.0.1')) {
-      const hostname = window.location.hostname;
-      return `ws://${hostname}:8000`;
-    }
+  const withProtocol = /^[a-z]+:\/\//i.test(trimmed)
+    ? trimmed
+    : `https://${trimmed.replace(/^\/+/, '')}`;
 
-    // For production (Railway, etc.), ALWAYS use the hardcoded production URL
-    // Don't rely on env vars as Next.js bakes in defaults at build time
-    return PRODUCTION_BACKEND_URL;
+  try {
+    const parsed = new URL(withProtocol);
+    const protocol = parsed.protocol.toLowerCase();
+    const wsProtocol =
+      protocol === 'http:' || protocol === 'ws:'
+        ? 'ws:'
+        : protocol === 'https:' || protocol === 'wss:'
+          ? 'wss:'
+          : null;
+    if (!wsProtocol) return null;
+    return `${wsProtocol}//${parsed.host}`;
+  } catch {
+    return null;
   }
-
-  // Fallback for SSR - use production URL
-  return PRODUCTION_BACKEND_URL;
 }
 
-// Get URL once at module load time
-let WS_URL = PRODUCTION_BACKEND_URL;
-if (typeof window !== 'undefined') {
-  WS_URL = getWebSocketUrl();
-  console.log('[WebSocket] Using URL:', WS_URL);
+// Dynamically determine WebSocket base URL (env > current host fallback)
+function getWebSocketBaseUrl(): string {
+  const explicitWsUrl = normalizeWebSocketBaseUrl(process.env.NEXT_PUBLIC_WS_URL);
+  if (explicitWsUrl) return explicitWsUrl;
+
+  const apiWsUrl = normalizeWebSocketBaseUrl(process.env.NEXT_PUBLIC_API_URL);
+  if (apiWsUrl) return apiWsUrl;
+
+  if (typeof window !== 'undefined') {
+    const { hostname, host, protocol } = window.location;
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return `ws://${hostname}:8000`;
+    }
+    const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${wsProtocol}//${host}`;
+  }
+
+  return 'ws://localhost:8000';
+}
+
+function getWebSocketStreamUrl(): string {
+  return `${getWebSocketBaseUrl()}/api/v1/ws/stream`;
 }
 
 type MessageHandler = (data: unknown) => void;
@@ -73,7 +92,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     }
 
     try {
-      const wsUrl = `${WS_URL}/api/v1/ws/stream`;
+      const wsUrl = getWebSocketStreamUrl();
       console.log('[WebSocket] Connecting to:', wsUrl);
       const ws = new WebSocket(wsUrl);
 
@@ -274,7 +293,7 @@ export function useAvailableSymbols() {
   useEffect(() => {
     const connect = () => {
       try {
-        const wsUrl = `${WS_URL}/api/v1/ws/stream`;
+        const wsUrl = getWebSocketStreamUrl();
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
 

@@ -162,10 +162,20 @@ class PriceStreamingService:
                 print("⚠️ Price streaming: No broker instance, using simulated data")
 
         except NoBrokerConfiguredError as e:
-            print(f"⚠️ Price streaming: No default broker configured ({e}), using simulated data")
+            fallback_mode = (
+                "running in broker_only mode (simulation disabled)"
+                if self._disable_simulation
+                else "using simulated data"
+            )
+            print(f"⚠️ Price streaming: No default broker configured ({e}), {fallback_mode}")
             self._broker = None
         except Exception as e:
-            print(f"⚠️ Price streaming: Could not get broker ({e}), using simulated data")
+            fallback_mode = (
+                "running in broker_only mode (simulation disabled)"
+                if self._disable_simulation
+                else "using simulated data"
+            )
+            print(f"⚠️ Price streaming: Could not get broker ({e}), {fallback_mode}")
             import traceback
             traceback.print_exc()
             self._broker = None
@@ -264,9 +274,15 @@ class PriceStreamingService:
             print("[PriceStreaming] Starting BROKER price stream")
             self._stream_task = asyncio.create_task(self._stream_from_broker())
         else:
-            # Always start simulated stream as fallback so UI has prices
-            print("[PriceStreaming] Starting SIMULATED price stream (no broker connected)")
-            self._stream_task = asyncio.create_task(self._stream_simulated())
+            if self._disable_simulation:
+                print(
+                    "[PriceStreaming] Broker-only mode active and no broker connected. "
+                    "Price stream is idle until a real broker becomes available."
+                )
+                self._stream_task = asyncio.create_task(self._stream_idle())
+            else:
+                print("[PriceStreaming] Starting SIMULATED price stream (no broker connected)")
+                self._stream_task = asyncio.create_task(self._stream_simulated())
 
     async def stop_streaming(self):
         """Stop the price streaming loop."""
@@ -466,6 +482,14 @@ class PriceStreamingService:
             except Exception as e:
                 print(f"Simulated streaming error: {e}")
                 await asyncio.sleep(1)
+
+    async def _stream_idle(self):
+        """Keep service alive when broker-only mode is active without a broker."""
+        while self._streaming:
+            try:
+                await asyncio.sleep(1.0)
+            except asyncio.CancelledError:
+                break
 
     def _get_simulation_params(self, symbol: str, base: Decimal):
         """Get fluctuation and spread parameters based on symbol type."""

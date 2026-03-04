@@ -76,23 +76,64 @@ class Settings(BaseSettings):
         def normalize_origin(origin: str) -> str:
             return origin.strip().rstrip("/")
 
+        def with_www_variants(origin: str) -> list[str]:
+            normalized = normalize_origin(origin)
+            if not normalized:
+                return []
+            if "://" not in normalized:
+                return [normalized]
+
+            scheme, host = normalized.split("://", 1)
+            if not host:
+                return [normalized]
+
+            if host.startswith("www."):
+                bare = f"{scheme}://{host[4:]}"
+                return [normalized, bare]
+            return [normalized, f"{scheme}://www.{host}"]
+
         v = self.CORS_ORIGINS
+        parsed: list[str] = []
         if not v:
-            return ["*"]
-        # Handle JSON array format
-        if v.startswith("["):
+            parsed = []
+        elif v.startswith("["):
+            # Handle JSON array format
             try:
                 origins = json.loads(v)
                 if isinstance(origins, list):
-                    return [o for o in (normalize_origin(str(origin)) for origin in origins) if o]
-                return ["*"]
+                    parsed = [o for o in (normalize_origin(str(origin)) for origin in origins) if o]
             except json.JSONDecodeError:
-                pass
-        # Handle "*" wildcard
-        if v.strip() == "*":
+                parsed = []
+        elif v.strip() == "*":
+            # Handle "*" wildcard
             return ["*"]
-        # Handle comma-separated list
-        return [o for o in (normalize_origin(origin) for origin in v.split(",")) if o]
+        else:
+            # Handle comma-separated list
+            parsed = [o for o in (normalize_origin(origin) for origin in v.split(",")) if o]
+
+        # Always include configured frontend URL + known production frontend domains.
+        # This prevents CORS lockout when environment variables are incomplete.
+        extra_origins: list[str] = []
+        if self.FRONTEND_URL:
+            extra_origins.extend(with_www_variants(self.FRONTEND_URL))
+        extra_origins.extend(
+            [
+                "https://prometheusapp.dev",
+                "https://www.prometheusapp.dev",
+            ]
+        )
+
+        merged = [*parsed, *extra_origins]
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for origin in merged:
+            normalized = normalize_origin(origin)
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            deduped.append(normalized)
+
+        return deduped
 
     # Database
     DATABASE_URL: str = Field(

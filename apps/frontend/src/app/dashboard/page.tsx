@@ -90,6 +90,8 @@ interface PerformancePoint {
   balance: number
 }
 
+const WORKSPACE_SNAPSHOTS_CACHE_KEY = 'workspace_snapshots_cache'
+
 export default function DashboardPage() {
   const searchParams = useSearchParams()
   const { user } = useAuth()
@@ -104,12 +106,32 @@ export default function DashboardPage() {
   const [aggregatedStats, setAggregatedStats] = useState<AggregatedBrokerStats | null>(null)
   const [brokers, setBrokers] = useState<BrokerAccountData[]>([])
   const [selectedBrokerId, setSelectedBrokerId] = useState<number | null>(null)
-  const [workspaceSnapshots, setWorkspaceSnapshots] = useState<Record<number, WorkspaceSnapshot>>({})
+  const [workspaceSnapshots, setWorkspaceSnapshots] = useState<Record<number, WorkspaceSnapshot>>(() => {
+    if (typeof window === 'undefined') return {}
+    try {
+      const raw = localStorage.getItem(WORKSPACE_SNAPSHOTS_CACHE_KEY)
+      if (!raw) return {}
+      const parsed = JSON.parse(raw)
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+      return parsed as Record<number, WorkspaceSnapshot>
+    } catch {
+      return {}
+    }
+  })
   const workspaceSnapshotsRef = useRef<Record<number, WorkspaceSnapshot>>({})
   const [toggleLoadingByBroker, setToggleLoadingByBroker] = useState<Record<number, boolean>>({})
 
   useEffect(() => {
     workspaceSnapshotsRef.current = workspaceSnapshots
+  }, [workspaceSnapshots])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      localStorage.setItem(WORKSPACE_SNAPSHOTS_CACHE_KEY, JSON.stringify(workspaceSnapshots))
+    } catch {
+      // Ignore quota/storage errors, UI can continue without cache persistence.
+    }
   }, [workspaceSnapshots])
 
   // WebSocket symbol format
@@ -239,8 +261,10 @@ export default function DashboardPage() {
       setWorkspaceSnapshots(snapshots)
       workspaceSnapshotsRef.current = snapshots
     } catch {
-      setWorkspaceSnapshots({})
-      workspaceSnapshotsRef.current = {}
+      // Keep last known snapshots to avoid blank panel metrics on temporary API issues.
+      computedSnapshots = workspaceSnapshotsRef.current
+      setWorkspaceSnapshots(computedSnapshots)
+      workspaceSnapshotsRef.current = computedSnapshots
     }
 
     setError(null)
@@ -359,29 +383,9 @@ export default function DashboardPage() {
           // Multi-broker not available, fall back to legacy single broker
         }
 
-        if (allPositions.length === 0) {
-          try {
-            const posData = await tradingApi.getPositions()
-            const mapped: Position[] = posData.positions.map((p: import('@/lib/api').Position) => ({
-              id: p.position_id,
-              symbol: p.symbol,
-              side: p.side as 'long' | 'short',
-              size: p.size,
-              entryPrice: p.entry_price,
-              currentPrice: p.current_price,
-              pnl: parseFloat(p.unrealized_pnl),
-              pnlPercent: parseFloat(p.unrealized_pnl_percent || '0'),
-              stopLoss: p.stop_loss || undefined,
-              takeProfit: p.take_profit || undefined,
-              leverage: p.leverage || 1,
-              marginUsed: p.margin_used,
-              openedAt: p.opened_at,
-            }))
-            allPositions.push(...mapped)
-          } catch {
-            // Legacy broker not available
-          }
-        }
+        // Do not call legacy /api/v1/positions fallback here.
+        // Dashboard operates on broker workspaces and should not emit noisy
+        // cross-origin failures when legacy endpoint is unavailable.
       }
 
       setPositions(allPositions)
@@ -542,6 +546,10 @@ export default function DashboardPage() {
   }, [brokers, selectedBrokerId])
 
   const selectedBroker = brokers.find((b) => b.id === selectedBrokerId) || null
+  const selectedBrokerSymbols = useMemo(() => {
+    if (!selectedBroker || selectedBroker.symbols.length === 0) return undefined
+    return selectedBroker.symbols
+  }, [selectedBroker])
   const selectedSnapshot = selectedBrokerId ? workspaceSnapshots[selectedBrokerId] : null
   const selectedSlotDisabled = Boolean(
     selectedBrokerId &&
@@ -620,17 +628,16 @@ export default function DashboardPage() {
   const baseScopedOpenPositions = selectedSnapshot?.openPositions ?? aggregatedStats?.totalOpenPositions ?? 0
   const baseScopedTodayPnl = selectedSnapshot?.dailyPnl ?? selectedSnapshot?.unrealizedPnl ?? aggregatedStats?.totalUnrealizedPnl ?? null
 
-  const scopedBalance = selectedSlotDisabled ? null : baseScopedBalance
-  const scopedUnrealizedPnl = selectedSlotDisabled ? null : baseScopedUnrealizedPnl
-  const scopedMarginUsed = selectedSlotDisabled ? null : baseScopedMarginUsed
-  const scopedOpenPositions = selectedSlotDisabled ? null : baseScopedOpenPositions
-  const scopedTodayPnl = selectedSlotDisabled ? null : baseScopedTodayPnl
+  const scopedBalance = baseScopedBalance
+  const scopedUnrealizedPnl = baseScopedUnrealizedPnl
+  const scopedMarginUsed = baseScopedMarginUsed
+  const scopedOpenPositions = baseScopedOpenPositions
+  const scopedTodayPnl = baseScopedTodayPnl
 
   const scopedOrders = useMemo(() => {
-    if (selectedSlotDisabled) return []
     if (!selectedBrokerId) return orders
     return orders.filter((order) => order.brokerId === selectedBrokerId)
-  }, [orders, selectedBrokerId, selectedSlotDisabled])
+  }, [orders, selectedBrokerId])
 
   const performanceData = useMemo<PerformancePoint[]>(() => {
     const groupedByDay = new Map<string, number>()
@@ -682,45 +689,33 @@ export default function DashboardPage() {
     return { totalTrades, winRate, bestTrade, worstTrade }
   }, [scopedOrders])
 
-  const accountBalanceValue = isLoading && !selectedSlotDisabled && scopedBalance === null
+  const accountBalanceValue = isLoading && scopedBalance === null
     ? 'Loading...'
     : formatCurrencyNullable(scopedBalance, scopedCurrency)
-  const accountBalanceChange = selectedSlotDisabled
-    ? '--'
-    : scopedTodayPnl !== null
-      ? `${scopedTodayPnl >= 0 ? '+' : ''}${formatCurrency(scopedTodayPnl, scopedCurrency)} today`
-      : 'Today P&L unavailable'
-  const unrealizedValue = isLoading && !selectedSlotDisabled && scopedUnrealizedPnl === null
+  const accountBalanceChange = scopedTodayPnl !== null
+    ? `${scopedTodayPnl >= 0 ? '+' : ''}${formatCurrency(scopedTodayPnl, scopedCurrency)} today`
+    : 'Today P&L unavailable'
+  const unrealizedValue = isLoading && scopedUnrealizedPnl === null
     ? 'Loading...'
     : formatCurrencyNullable(scopedUnrealizedPnl, scopedCurrency)
   const unrealizedChange = scopedOpenPositions === null ? '--' : `${scopedOpenPositions} positions`
   const openPositionsValue = scopedOpenPositions === null ? '--' : String(scopedOpenPositions)
-  const openPositionsSubtext = selectedSlotDisabled
-    ? '--'
-    : scopedMarginUsed !== null
-      ? `${formatCurrency(scopedMarginUsed, scopedCurrency)} margin`
-      : 'Margin unavailable'
-  const winRateValue = selectedSlotDisabled
-    ? '--'
-    : scopedTradeStats.totalTrades > 0
-      ? `${scopedTradeStats.winRate.toFixed(1)}%`
-      : isLoading
-        ? '...'
-        : '0%'
-  const winRateSubtext = selectedSlotDisabled
-    ? '--'
-    : `${scopedTradeStats.totalTrades} trades`
-  const footerTotalTrades = selectedSlotDisabled ? '--' : String(scopedTradeStats.totalTrades)
-  const footerBestTrade = selectedSlotDisabled
-    ? '--'
-    : scopedTradeStats.bestTrade !== null
-      ? formatCurrency(scopedTradeStats.bestTrade, scopedCurrency)
-      : '$0.00'
-  const footerWorstTrade = selectedSlotDisabled
-    ? '--'
-    : scopedTradeStats.worstTrade !== null
-      ? formatCurrency(scopedTradeStats.worstTrade, scopedCurrency)
-      : '$0.00'
+  const openPositionsSubtext = scopedMarginUsed !== null
+    ? `${formatCurrency(scopedMarginUsed, scopedCurrency)} margin`
+    : 'Margin unavailable'
+  const winRateValue = scopedTradeStats.totalTrades > 0
+    ? `${scopedTradeStats.winRate.toFixed(1)}%`
+    : isLoading
+      ? '...'
+      : '0%'
+  const winRateSubtext = `${scopedTradeStats.totalTrades} trades`
+  const footerTotalTrades = String(scopedTradeStats.totalTrades)
+  const footerBestTrade = scopedTradeStats.bestTrade !== null
+    ? formatCurrency(scopedTradeStats.bestTrade, scopedCurrency)
+    : '$0.00'
+  const footerWorstTrade = scopedTradeStats.worstTrade !== null
+    ? formatCurrency(scopedTradeStats.worstTrade, scopedCurrency)
+    : '$0.00'
 
   return (
     <motion.div
@@ -731,7 +726,12 @@ export default function DashboardPage() {
     >
       {/* Asset Price Cards (top priority) */}
       <motion.div variants={itemVariants}>
-        <PriceTicker selectedSymbol={selectedSymbol} onSelect={setSelectedSymbol} />
+        <PriceTicker
+          selectedSymbol={selectedSymbol}
+          onSelect={setSelectedSymbol}
+          symbols={selectedBrokerSymbols}
+          brokerId={selectedBrokerId || undefined}
+        />
       </motion.div>
 
       <motion.div variants={itemVariants} className="prometheus-hero-card p-6 md:p-7">
@@ -900,33 +900,31 @@ export default function DashboardPage() {
                   <div className="workspace-metric-block">
                     <p className="workspace-metric-label">Balance</p>
                     <p className="workspace-metric-value">
-                      {isWorkspaceDisabled ? '--' : formatSigned(snapshot?.balance, snapshot?.currency || 'USD')}
+                      {formatSigned(snapshot?.balance, snapshot?.currency || 'USD')}
                     </p>
                   </div>
                   <div className="workspace-metric-block">
                     <p className="workspace-metric-label">Equity</p>
                     <p className="workspace-metric-value">
-                      {isWorkspaceDisabled ? '--' : formatSigned(snapshot?.equity, snapshot?.currency || 'USD')}
+                      {formatSigned(snapshot?.equity, snapshot?.currency || 'USD')}
                     </p>
                   </div>
                   <div className="workspace-metric-block">
                     <p className="workspace-metric-label">Live P&L</p>
                     <p className={`workspace-metric-value ${
-                      isWorkspaceDisabled
-                        ? 'text-dark-300'
-                        : (snapshot?.unrealizedPnl || 0) > 0
-                          ? 'text-profit'
-                          : (snapshot?.unrealizedPnl || 0) < 0
-                            ? 'text-loss'
-                            : 'text-dark-200'
+                      (snapshot?.unrealizedPnl || 0) > 0
+                        ? 'text-profit'
+                        : (snapshot?.unrealizedPnl || 0) < 0
+                          ? 'text-loss'
+                          : 'text-dark-200'
                     }`}>
-                      {isWorkspaceDisabled ? '--' : formatSigned(snapshot?.unrealizedPnl, snapshot?.currency || 'USD')}
+                      {formatSigned(snapshot?.unrealizedPnl, snapshot?.currency || 'USD')}
                     </p>
                   </div>
                   <div className="workspace-metric-block">
                     <p className="workspace-metric-label">Margin Used</p>
                     <p className="workspace-metric-value">
-                      {isWorkspaceDisabled ? '--' : formatSigned(snapshot?.marginUsed, snapshot?.currency || 'USD')}
+                      {formatSigned(snapshot?.marginUsed, snapshot?.currency || 'USD')}
                     </p>
                   </div>
                 </div>
@@ -1005,14 +1003,14 @@ export default function DashboardPage() {
               label="Account Balance"
               value={accountBalanceValue}
               change={accountBalanceChange}
-              isPositive={selectedSlotDisabled ? undefined : (scopedTodayPnl !== null ? scopedTodayPnl >= 0 : undefined)}
+              isPositive={scopedTodayPnl !== null ? scopedTodayPnl >= 0 : undefined}
               icon={DollarSign}
             />
             <StatCard
               label="Unrealized P&L"
               value={unrealizedValue}
               change={unrealizedChange}
-              isPositive={selectedSlotDisabled ? undefined : (scopedUnrealizedPnl !== null ? scopedUnrealizedPnl >= 0 : undefined)}
+              isPositive={scopedUnrealizedPnl !== null ? scopedUnrealizedPnl >= 0 : undefined}
               icon={
                 scopedUnrealizedPnl === null || scopedUnrealizedPnl >= 0
                   ? TrendingUp
