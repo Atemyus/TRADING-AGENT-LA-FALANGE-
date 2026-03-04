@@ -116,13 +116,15 @@ function PriceCard({
   isSelected,
   onClick,
   isLoading,
-  compact = false
+  compact = false,
+  hasTimedOut = false,
 }: {
   price: PriceData
   isSelected: boolean
   onClick: () => void
   isLoading?: boolean
   compact?: boolean
+  hasTimedOut?: boolean
 }) {
   const [flash, setFlash] = useState<'up' | 'down' | null>(null)
   const [prevMid, setPrevMid] = useState(price.mid)
@@ -205,6 +207,10 @@ function PriceCard({
           <span className={`text-xl font-mono font-bold transition-colors duration-300 ${flash === 'up' ? 'text-neon-green' : flash === 'down' ? 'text-neon-red' : ''}`}>
             {price.mid}
           </span>
+        ) : hasTimedOut ? (
+          <span className="text-xl font-mono font-bold text-dark-500" title="Awaiting broker price stream">
+            --
+          </span>
         ) : (
           <span className="text-xl font-mono font-bold text-dark-500 animate-pulse">
             Loading...
@@ -268,6 +274,29 @@ export function PriceTicker({ onSelect, selectedSymbol, symbols, brokerId }: Pri
     isReal?: boolean
   }>>({})
 
+  // Track whether prices have timed out (no data after 10 seconds)
+  const [hasTimedOut, setHasTimedOut] = useState(false)
+  const receivedAnyPriceRef = useRef(false)
+  // Track consecutive REST failures for user feedback
+  const [restFailed, setRestFailed] = useState(false)
+  const restFailCountRef = useRef(0)
+
+  // Reset timeout when symbols or brokerId change
+  useEffect(() => {
+    setHasTimedOut(false)
+    receivedAnyPriceRef.current = false
+    restFailCountRef.current = 0
+    setRestFailed(false)
+
+    const timer = setTimeout(() => {
+      if (!receivedAnyPriceRef.current) {
+        setHasTimedOut(true)
+      }
+    }, 10000)
+
+    return () => clearTimeout(timer)
+  }, [brokerId, wsSymbols])
+
   // Broker-scoped REST fallback for prices (works even when global WS stream is not configured)
   useEffect(() => {
     if (!brokerId || wsSymbols.length === 0) {
@@ -283,8 +312,14 @@ export function PriceTicker({ onSelect, selectedSymbol, symbols, brokerId }: Pri
         const payload = await brokerAccountsApi.getPrices(brokerId, wsSymbols)
         if (cancelled) return
         setRestPrices(payload.prices || {})
+        restFailCountRef.current = 0
+        setRestFailed(false)
       } catch {
         if (cancelled) return
+        restFailCountRef.current += 1
+        if (restFailCountRef.current >= 3) {
+          setRestFailed(true)
+        }
       }
     }
 
@@ -336,6 +371,12 @@ export function PriceTicker({ onSelect, selectedSymbol, symbols, brokerId }: Pri
 
       if (sourceData) {
         const mid = parseFloat(sourceData.mid)
+
+        // Mark that we received at least one price — cancel timeout
+        if (!Number.isNaN(mid) && mid > 0 && !receivedAnyPriceRef.current) {
+          receivedAnyPriceRef.current = true
+          setHasTimedOut(false)
+        }
 
         // Set base price from FIRST broker price received (not hardcoded)
         if (!basePricesRef.current[symbol.value] && !Number.isNaN(mid) && mid > 0) {
@@ -415,6 +456,11 @@ export function PriceTicker({ onSelect, selectedSymbol, symbols, brokerId }: Pri
               <Wifi size={12} className="text-neon-green" />
               <span className="text-neon-green">Live</span>
             </>
+          ) : restFailed && hasTimedOut ? (
+            <>
+              <WifiOff size={12} className="text-loss" />
+              <span className="text-loss">Unable to reach broker</span>
+            </>
           ) : (
             <>
               <WifiOff size={12} className="text-dark-400" />
@@ -470,6 +516,7 @@ export function PriceTicker({ onSelect, selectedSymbol, symbols, brokerId }: Pri
                     isSelected={selectedValue === price.value}
                     onClick={() => onSelect?.(toSelectionSymbol(price.value) || price.label)}
                     isLoading={!isConnected}
+                    hasTimedOut={hasTimedOut}
                   />
                 </motion.div>
               ))

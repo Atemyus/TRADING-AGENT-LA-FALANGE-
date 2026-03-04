@@ -105,7 +105,7 @@ export function PerformanceChart({
         <div className="flex items-center justify-center h-[200px] border border-dashed border-dark-700 rounded-lg">
           <div className="text-center">
             <Calendar className="w-12 h-12 mx-auto text-dark-500 mb-3" />
-            <p className="text-dark-400">Connect your broker to see performance data</p>
+            <p className="text-dark-400">No trades recorded yet. Start the Auto Bot to begin trading.</p>
           </div>
         </div>
       </motion.div>

@@ -120,7 +120,8 @@ export function OrderHistory({ orders = [], isLoading = false, isDisabled = fals
           </div>
         ) : filteredOrders.length === 0 ? (
           <div className="p-8 text-center text-dark-400">
-            No orders found
+            <p className="font-mono text-lg text-dark-300">No orders found</p>
+            <p className="text-xs mt-2">Trades will appear here once the Auto Bot executes orders.</p>
           </div>
         ) : (
           filteredOrders.map((order, index) => {
