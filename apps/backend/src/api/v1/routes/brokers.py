@@ -1167,7 +1167,7 @@ async def get_broker_account_info(
 
     broker = await _get_user_broker_or_404(db, broker_id, current_user)
     if (broker.broker_type or "metaapi").lower() in MT_BROKER_TYPES:
-        await _resolve_validate_and_persist_metaapi_runtime(
+        await _best_effort_resolve_metaapi_runtime(
             db,
             broker=broker,
             current_user=current_user,

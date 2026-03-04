@@ -51,13 +51,36 @@ async def _get_service_or_503():
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(e),
         )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Trading service unavailable: {e.__class__.__name__}",
+        )
+
+
+async def _get_service_or_none():
+    """Best-effort service resolver for read-only calls."""
+    try:
+        return await get_trading_service()
+    except Exception:
+        return None
 
 
 @router.get("", response_model=PositionsListResponse)
 async def get_positions():
     """Get all open positions with current prices."""
-    service = await _get_service_or_503()
-    positions = await service.get_positions_with_prices()
+    service = await _get_service_or_none()
+    if service is None:
+        return PositionsListResponse(
+            positions=[],
+            total_unrealized_pnl="0",
+            total_margin_used="0",
+        )
+
+    try:
+        positions = await service.get_positions_with_prices()
+    except Exception:
+        positions = []
 
     total_pnl = sum(Decimal(p["unrealized_pnl"]) for p in positions)
     total_margin = sum(Decimal(p["margin_used"]) for p in positions)
