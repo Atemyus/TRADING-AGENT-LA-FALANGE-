@@ -92,10 +92,37 @@ interface PerformancePoint {
 
 const WORKSPACE_SNAPSHOTS_CACHE_KEY = 'workspace_snapshots_cache'
 
+const SYMBOL_SELECTION_ALIASES: Record<string, string> = {
+  GOLD: 'XAU/USD',
+  XAUUSD: 'XAU/USD',
+  SILVER: 'XAG/USD',
+  XAGUSD: 'XAG/USD',
+}
+
+const normalizeDashboardSymbol = (value: string): string => {
+  const raw = String(value || '').trim().toUpperCase()
+  if (!raw) return 'EUR/USD'
+
+  const withoutDecorators = raw.replace(/\s*\(.*?\)\s*/g, '')
+  const compact = withoutDecorators.replace(/\s+/g, '')
+  const slashSymbol = compact.replace(/_/g, '/')
+
+  if (SYMBOL_SELECTION_ALIASES[slashSymbol]) {
+    return SYMBOL_SELECTION_ALIASES[slashSymbol]
+  }
+  if (slashSymbol.includes('/')) {
+    return slashSymbol
+  }
+  if (/^[A-Z]{6}$/.test(slashSymbol)) {
+    return `${slashSymbol.slice(0, 3)}/${slashSymbol.slice(3)}`
+  }
+  return slashSymbol
+}
+
 export default function DashboardPage() {
   const searchParams = useSearchParams()
   const { user } = useAuth()
-  const [selectedSymbol, setSelectedSymbol] = useState('EUR/USD')
+  const [selectedSymbol, setSelectedSymbol] = useState(() => normalizeDashboardSymbol('EUR/USD'))
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [consensusResult, setConsensusResult] = useState<ConsensusResult | null>(null)
   const [positions, setPositions] = useState<Position[]>([])
@@ -135,7 +162,11 @@ export default function DashboardPage() {
   }, [workspaceSnapshots])
 
   // WebSocket symbol format
-  const wsSymbol = selectedSymbol.replace('/', '_')
+  const wsSymbol = normalizeDashboardSymbol(selectedSymbol).replace('/', '_')
+
+  const handleSelectSymbol = useCallback((symbol: string) => {
+    setSelectedSymbol(normalizeDashboardSymbol(symbol))
+  }, [])
 
   // Use WebSocket for real-time price streaming
   const { prices: streamPrices } = usePriceStream([wsSymbol])
@@ -173,14 +204,14 @@ export default function DashboardPage() {
       const customEvent = event as CustomEvent<WorkspaceSymbolSelectionEventDetail>
       const symbol = customEvent?.detail?.symbol
       if (symbol) {
-        setSelectedSymbol(symbol)
+        handleSelectSymbol(symbol)
       }
     }
     window.addEventListener('workspace-symbol-selected', handler)
     return () => {
       window.removeEventListener('workspace-symbol-selected', handler)
     }
-  }, [])
+  }, [handleSelectSymbol])
 
   // Fetch all dashboard data
   const fetchAccountData = useCallback(async () => {
@@ -728,7 +759,7 @@ export default function DashboardPage() {
       <motion.div variants={itemVariants}>
         <PriceTicker
           selectedSymbol={selectedSymbol}
-          onSelect={setSelectedSymbol}
+          onSelect={handleSelectSymbol}
           symbols={selectedBrokerSymbols}
           brokerId={selectedBrokerId || undefined}
         />
@@ -936,11 +967,12 @@ export default function DashboardPage() {
                       type="button"
                       onClick={(event) => {
                         event.stopPropagation()
-                        setSelectedSymbol(symbol)
+                        const normalizedSymbol = normalizeDashboardSymbol(symbol)
+                        handleSelectSymbol(normalizedSymbol)
                         if (typeof window !== 'undefined') {
                           window.dispatchEvent(
                             new CustomEvent<WorkspaceSymbolSelectionEventDetail>('workspace-symbol-selected', {
-                              detail: { symbol },
+                              detail: { symbol: normalizedSymbol },
                             }),
                           )
                         }

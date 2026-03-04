@@ -42,6 +42,12 @@ const SYMBOL_ALIASES: Record<string, string> = {
 const normalizeSymbolValue = (value: string): string =>
   (value || '').trim().toUpperCase().replace('/', '_')
 
+const toSelectionSymbol = (value: string): string => {
+  const normalized = normalizeSymbolValue(value)
+  if (!normalized) return ''
+  return normalized.includes('_') ? normalized.replace(/_/g, '/') : normalized
+}
+
 const stripBrokerDecorators = (value: string): string =>
   (value || '').replace(/[#.\-]+$/g, '')
 
@@ -462,7 +468,7 @@ export function PriceTicker({ onSelect, selectedSymbol, symbols, brokerId }: Pri
                   <PriceCard
                     price={price}
                     isSelected={selectedValue === price.value}
-                    onClick={() => onSelect?.(price.label)}
+                    onClick={() => onSelect?.(toSelectionSymbol(price.value) || price.label)}
                     isLoading={!isConnected}
                   />
                 </motion.div>
@@ -549,7 +555,7 @@ export function PriceTickerCompact({ onSelect, selectedSymbol }: { onSelect?: (s
           return (
             <div
               key={price.value}
-              onClick={() => onSelect?.(price.label)}
+              onClick={() => onSelect?.(toSelectionSymbol(price.value) || price.label)}
               className={`
                 flex items-center gap-3 px-4 py-2 rounded-lg whitespace-nowrap cursor-pointer
                 transition-colors duration-200
