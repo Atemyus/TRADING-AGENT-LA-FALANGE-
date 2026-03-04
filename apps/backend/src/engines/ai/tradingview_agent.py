@@ -2142,8 +2142,8 @@ IMPORTANTE: break_even_trigger e trailing_stop_pips sono OPZIONALI. Usa null qua
 
         # Collect trade parameters
         entries = [r.entry_price for r in agreeing if r.entry_price]
-        stop_losses = [r.stop_loss for r in agreeing if r.stop_loss]
-        take_profits = [r.take_profit[0] for r in agreeing if r.take_profit]
+        stop_losses_raw = [r.stop_loss for r in agreeing if r.stop_loss]
+        take_profits_raw = [r.take_profit[0] for r in agreeing if r.take_profit]
         break_evens = [r.break_even_trigger for r in agreeing if r.break_even_trigger]
         trailing_stops = [r.trailing_stop_pips for r in agreeing if r.trailing_stop_pips]
 
@@ -2152,6 +2152,40 @@ IMPORTANTE: break_even_trigger e trailing_stop_pips sono OPZIONALI. Usa null qua
         for r in agreeing:
             tp_val = r.take_profit[0] if r.take_profit else None
             print(f"  [{r.model_display_name}] Entry={r.entry_price}, SL={r.stop_loss}, TP={tp_val}, BE={r.break_even_trigger}")
+
+        # ====== FILTER OUT SL/TP VALUES ON WRONG SIDE OF PRICE ======
+        # AI models sometimes return completely wrong SL/TP values (e.g. SL above price for LONG).
+        # Use median entry price or fallback to detect and discard nonsensical values.
+        ref_price = statistics.median(entries) if entries else None
+        stop_losses = stop_losses_raw
+        take_profits = take_profits_raw
+
+        if ref_price and ref_price > 0:
+            if direction == "LONG":
+                # LONG: SL must be BELOW price, TP must be ABOVE price
+                valid_sls = [sl for sl in stop_losses_raw if sl < ref_price]
+                valid_tps = [tp for tp in take_profits_raw if tp > ref_price]
+            else:
+                # SHORT: SL must be ABOVE price, TP must be BELOW price
+                valid_sls = [sl for sl in stop_losses_raw if sl > ref_price]
+                valid_tps = [tp for tp in take_profits_raw if tp < ref_price]
+
+            if valid_sls:
+                discarded_sls = len(stop_losses_raw) - len(valid_sls)
+                if discarded_sls > 0:
+                    print(f"  [Filter] Discarded {discarded_sls} SL values on wrong side of price ({ref_price:.5f}) for {direction}")
+                stop_losses = valid_sls
+            else:
+                print(f"  [Filter] WARNING: ALL SL values on wrong side of price for {direction} — keeping raw values for auto_trader correction")
+
+            if valid_tps:
+                discarded_tps = len(take_profits_raw) - len(valid_tps)
+                if discarded_tps > 0:
+                    print(f"  [Filter] Discarded {discarded_tps} TP values on wrong side of price ({ref_price:.5f}) for {direction}")
+                take_profits = valid_tps
+            else:
+                print(f"  [Filter] WARNING: ALL TP values on wrong side of price for {direction} — keeping raw values for auto_trader correction")
+
         if stop_losses:
             print(f"  [Aggregation] SL values: {stop_losses} → median: {statistics.median(stop_losses):.5f}")
         if take_profits:

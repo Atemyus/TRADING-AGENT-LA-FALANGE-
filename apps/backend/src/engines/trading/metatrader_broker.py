@@ -101,9 +101,9 @@ class MetaTraderBroker(BaseBroker):
         'USD_PLN': ['USDPLN', 'USDPLNm', 'USDPLN.', 'USDPLN-ECN'],
 
         # ============ METALS ============
-        'XAU_USD': ['XAUUSD', 'XAUUSDm', 'GOLD', 'GOLDm', 'GOLD.', 'XAUUSD.', 'XAUUSD-ECN'],
-        'XAG_USD': ['XAGUSD', 'XAGUSDm', 'SILVER', 'SILVERm', 'SILVER.', 'XAGUSD.'],
-        'XPT_USD': ['XPTUSD', 'XPTUSDm', 'PLATINUM', 'XPTUSD.', 'PLATINUMm'],
+        'XAU_USD': ['XAUUSD', 'GOLD#', 'XAUUSDm', 'GOLD', 'GOLDm', 'GOLD.', 'XAUUSD.', 'XAUUSD-ECN'],
+        'XAG_USD': ['XAGUSD', 'SILVER#', 'XAGUSDm', 'SILVER', 'SILVERm', 'SILVER.', 'XAGUSD.'],
+        'XPT_USD': ['XPTUSD', 'PLATINUM#', 'XPTUSDm', 'PLATINUM', 'XPTUSD.', 'PLATINUMm'],
         'XPD_USD': ['XPDUSD', 'XPDUSDm', 'PALLADIUM', 'XPDUSD.', 'PALLADIUMm'],
         'XCU_USD': ['XCUUSD', 'COPPER', 'COPPERm', 'COPPER.', 'HG', 'HGm'],
 
@@ -2878,6 +2878,9 @@ class MetaTraderBroker(BaseBroker):
         Get historical candles.
 
         Timeframes: 1m, 5m, 15m, 30m, 1h, 4h, 1d, 1w, 1mn
+
+        Tries multiple symbol candidates if the first one returns a 404
+        (some brokers expose current-price for a symbol but not historical candles).
         """
         if not self._connected:
             await self.connect()
@@ -2889,13 +2892,29 @@ class MetaTraderBroker(BaseBroker):
         }
         mt_timeframe = tf_map.get(timeframe, "1h")
 
-        broker_symbol = self._resolve_symbol(symbol)
-        encoded_symbol = self._encode_symbol_path(broker_symbol)
+        lookup = self._symbol_lookup_key(symbol)
+        candidates = self._get_symbol_candidates(lookup)
+        if not candidates:
+            candidates = [self._resolve_symbol(symbol)]
 
-        candles = await self._request(
-            "GET",
-            f"/users/current/accounts/{self.account_id}/historical-market-data/symbols/{encoded_symbol}/timeframes/{mt_timeframe}/candles",
-            params={"limit": count},
-        )
+        last_error: Exception | None = None
+        for candidate in candidates:
+            encoded_symbol = self._encode_symbol_path(candidate)
+            try:
+                candles = await self._request(
+                    "GET",
+                    f"/users/current/accounts/{self.account_id}/historical-market-data/symbols/{encoded_symbol}/timeframes/{mt_timeframe}/candles",
+                    params={"limit": count},
+                )
+                if isinstance(candles, list) and candles:
+                    return candles
+            except Exception as e:
+                last_error = e
+                error_text = str(e)
+                if self._is_symbol_lookup_error(error_text) or "404" in error_text or "not found" in error_text.lower():
+                    continue
+                raise
 
-        return candles
+        if last_error:
+            raise last_error
+        return []

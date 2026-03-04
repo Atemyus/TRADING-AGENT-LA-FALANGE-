@@ -448,24 +448,34 @@ class AutoTrader:
         if current_price <= 0:
             return (default_rr, "invalid current price")
 
-        if not hasattr(self.broker, "get_candles"):
-            return (default_rr, "broker does not expose candles")
-
         candles_raw: list[Any] = []
         timeframe_candidates = ("15m", "M15", "1h", "H1")
-        for timeframe in timeframe_candidates:
-            try:
-                candles_raw = await self.broker.get_candles(symbol=symbol, timeframe=timeframe, count=80)
-            except TypeError:
+        if hasattr(self.broker, "get_candles"):
+            for timeframe in timeframe_candidates:
                 try:
-                    candles_raw = await self.broker.get_candles(symbol, timeframe, 80)
+                    candles_raw = await self.broker.get_candles(symbol=symbol, timeframe=timeframe, count=80)
+                except TypeError:
+                    try:
+                        candles_raw = await self.broker.get_candles(symbol, timeframe, 80)
+                    except Exception:
+                        candles_raw = []
                 except Exception:
                     candles_raw = []
-            except Exception:
-                candles_raw = []
 
-            if isinstance(candles_raw, list) and len(candles_raw) >= 20:
-                break
+                if isinstance(candles_raw, list) and len(candles_raw) >= 20:
+                    break
+
+        # Fallback: use external market data (Yahoo Finance) when broker candles unavailable
+        if not candles_raw or len(candles_raw) < 20:
+            try:
+                mds = get_market_data_service()
+                for tf in ("15m", "1h"):
+                    market_data = await mds.get_market_data(symbol=symbol, timeframe=tf, bars=80)
+                    if market_data and market_data.candles and len(market_data.candles) >= 20:
+                        candles_raw = [c.to_dict() for c in market_data.candles]
+                        break
+            except Exception:
+                pass
 
         if not candles_raw or len(candles_raw) < 20:
             return (default_rr, "insufficient candles")
