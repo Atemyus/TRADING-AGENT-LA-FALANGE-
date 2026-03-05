@@ -163,8 +163,8 @@ function AIReasoningPanel({ brokerId, brokerName, compact = false }: AIReasoning
             <div
               key={`${log.timestamp}-${i}`}
               className={`flex items-start gap-2 py-1 px-2 rounded hover:bg-slate-800/50 ${log.type === 'trade' ? 'bg-green-500/5 border-l-2 border-green-500' :
-                  log.type === 'error' ? 'bg-red-500/5 border-l-2 border-red-500' :
-                    ''
+                log.type === 'error' ? 'bg-red-500/5 border-l-2 border-red-500' :
+                  ''
                 }`}
             >
               <span className="flex-shrink-0 mt-0.5">{getLogIcon(log.type)}</span>
@@ -820,16 +820,16 @@ export default function BotControlPage() {
                   initial={{ opacity: 0, y: -5 }}
                   animate={{ opacity: 1, y: 0 }}
                   className={`p-4 rounded-lg border transition-colors cursor-pointer ${isSelected
-                      ? 'bg-indigo-500/10 border-indigo-500'
-                      : 'bg-dark-900/70 border-dark-700 hover:border-primary-500/35'
+                    ? 'bg-indigo-500/10 border-indigo-500'
+                    : 'bg-dark-900/70 border-dark-700 hover:border-primary-500/35'
                     }`}
                   onClick={() => setSelectedBrokerId(isSelected ? null : broker.id)}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                       <div className={`w-3 h-3 rounded-full ${isRunning ? 'bg-green-500 animate-pulse' :
-                          isPaused ? 'bg-yellow-500' :
-                            broker.is_enabled ? 'bg-slate-500' : 'bg-slate-700'
+                        isPaused ? 'bg-yellow-500' :
+                          broker.is_enabled ? 'bg-slate-500' : 'bg-slate-700'
                         }`} />
 
                       <div>
@@ -1048,8 +1048,8 @@ export default function BotControlPage() {
                 key={symbol}
                 onClick={() => setPreviewSymbol(symbol)}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${previewSymbol === symbol
-                    ? "bg-indigo-600 text-white"
-                    : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+                  ? "bg-indigo-600 text-white"
+                  : "bg-slate-700 text-slate-300 hover:bg-slate-600"
                   }`}
               >
                 {symbol}
@@ -1097,8 +1097,8 @@ export default function BotControlPage() {
                       handleConfigUpdate({ symbols: newSymbols });
                     }}
                     className={`px-3 py-2 rounded-lg text-sm transition-colors ${currentConfig.symbols.includes(symbol)
-                        ? "bg-indigo-600 text-white"
-                        : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+                      ? "bg-indigo-600 text-white"
+                      : "bg-slate-700 text-slate-300 hover:bg-slate-600"
                       }`}
                   >
                     {symbol}
@@ -1118,8 +1118,8 @@ export default function BotControlPage() {
                     key={mode.value}
                     onClick={() => handleConfigUpdate({ analysis_mode: mode.value })}
                     className={`w-full px-4 py-3 rounded-lg text-left transition-colors ${currentConfig.analysis_mode === mode.value
-                        ? "bg-indigo-600"
-                        : "bg-slate-700 hover:bg-slate-600"
+                      ? "bg-indigo-600"
+                      : "bg-slate-700 hover:bg-slate-600"
                       }`}
                   >
                     <div className="font-medium">{mode.label}</div>
@@ -1265,6 +1265,7 @@ export default function BotControlPage() {
               </p>
               <div className="grid grid-cols-3 gap-2">
                 {[
+                  { value: 0, label: "Continuo", desc: "No stop" },
                   { value: 300, label: "5 min", desc: "Piu reattivo" },
                   { value: 600, label: "10 min", desc: "Bilanciato" },
                   { value: 900, label: "15 min", desc: "Moderato" },
@@ -1276,8 +1277,8 @@ export default function BotControlPage() {
                     key={interval.value}
                     onClick={() => handleConfigUpdate({ analysis_interval_seconds: interval.value })}
                     className={`px-3 py-2 rounded-lg text-sm transition-colors ${currentConfig.analysis_interval_seconds === interval.value
-                        ? "bg-indigo-600 text-white"
-                        : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+                      ? "bg-indigo-600 text-white"
+                      : "bg-slate-700 text-slate-300 hover:bg-slate-600"
                       }`}
                   >
                     <div className="font-medium">{interval.label}</div>
@@ -1417,8 +1418,8 @@ export default function BotControlPage() {
                                 {model.name}
                               </span>
                               <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${model.provider === "NVIDIA"
-                                  ? "bg-green-500/20 text-green-400"
-                                  : "bg-blue-500/20 text-blue-400"
+                                ? "bg-green-500/20 text-green-400"
+                                : "bg-blue-500/20 text-blue-400"
                                 }`}>
                                 {model.provider}
                               </span>
@@ -1526,8 +1527,8 @@ export default function BotControlPage() {
                       <td className="py-3">
                         <span
                           className={`px-2 py-1 rounded text-xs ${direction === "LONG"
-                              ? "bg-profit/20 text-profit"
-                              : "bg-loss/20 text-loss"
+                            ? "bg-profit/20 text-profit"
+                            : "bg-loss/20 text-loss"
                             }`}
                         >
                           {direction}

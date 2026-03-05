@@ -774,8 +774,11 @@ class AutoTrader:
                 self.state.last_analysis_at = datetime.utcnow()
                 self.state.analyses_today += 1
 
-                # Wait for next interval
-                await asyncio.sleep(self.config.analysis_interval_seconds)
+                # Wait for next interval if configured, else minimal sleep to prevent CPU lock
+                if self.config.analysis_interval_seconds > 0:
+                    await asyncio.sleep(self.config.analysis_interval_seconds)
+                else:
+                    await asyncio.sleep(5)  # Minimal 5s breathing room for continuous mode
 
             except asyncio.CancelledError:
                 break
@@ -868,7 +871,9 @@ class AutoTrader:
                         )
                         trade.stop_loss = trade.entry_price
                         trade.is_break_even = True
-                        await self._notify(f"🔒 {trade.symbol} Break Even attivato a {trade.entry_price:.5f}")
+                        msg = f"🔒 {trade.symbol} Break Even attivato a {trade.entry_price:.5f}"
+                        await self._notify(msg)
+                        self._log_analysis(trade.symbol, "info", msg, {"event": "break_even", "price": trade.entry_price})
 
                 # Check Trailing Stop
                 if trade.trailing_stop_pips and trade.is_break_even:
@@ -893,7 +898,9 @@ class AutoTrader:
                         )
                         trade.stop_loss = new_sl
                         trade.current_trailing_sl = new_sl
-                        await self._notify(f"📈 {trade.symbol} Trailing Stop aggiornato a {new_sl:.5f}")
+                        msg = f"📈 {trade.symbol} Trailing Stop aggiornato a {new_sl:.5f}"
+                        await self._notify(msg)
+                        self._log_analysis(trade.symbol, "info", msg, {"event": "trailing_stop", "price": new_sl})
 
             except Exception as e:
                 self.state.errors.append({
