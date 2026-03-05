@@ -2052,12 +2052,14 @@ Rispondi SOLO con un oggetto JSON valido (niente markdown, niente spiegazioni fu
         overall_consensus["all_results"] = all_results
 
         # Multi-timeframe alignment score
+        # Include ALL timeframes (even HOLDs) in the denominator to enforce strict consensus.
         tf_directions = [tc["direction"] for tc in tf_consensus.values() if tc["direction"] != "HOLD"]
         if tf_directions:
             majority_count = Counter(tf_directions).most_common(1)[0][1]
-            alignment = majority_count / len(tf_directions) * 100
+            alignment = majority_count / len(timeframes) * 100
             overall_consensus["timeframe_alignment"] = round(alignment, 1)
-            overall_consensus["is_aligned"] = alignment >= 80  # 80%+ agreement across TFs
+            # Require >50% alignment to account for majority rules (e.g. 2/3 TFs must agree)
+            overall_consensus["is_aligned"] = alignment > 50
         else:
             overall_consensus["timeframe_alignment"] = 0
             overall_consensus["is_aligned"] = False
