@@ -1146,6 +1146,36 @@ class AutoTrader:
                     "models_agree": consensus.get("models_agree", 0),
                 })
 
+                # --- SMART EXIT LOGIC ---
+                # Check if we have an open position for this symbol WITHOUT a Take Profit
+                open_trade = next((t for t in self.state.open_positions if self._canonical_symbol(t.symbol) == self._canonical_symbol(symbol)), None)
+                if open_trade and not open_trade.take_profit:
+                    self._log_analysis(symbol, "info", f"💡 Smart Exit Check per posizione aperta {open_trade.direction} senza TP")
+                    
+                    current_direction = consensus.get('direction', 'HOLD')
+                    confidence = consensus.get('confidence', 0)
+                    
+                    # Logica Smart Exit: se AI dice forte reversal, chiudi il trade
+                    should_smart_exit = False
+                    if open_trade.direction == "LONG" and current_direction == "SHORT" and confidence >= 50:
+                        should_smart_exit = True
+                        self._log_analysis(symbol, "trade", f"🚨 SMART EXIT TRIGGERED: Reversal AI da LONG a SHORT ({confidence:.1f}%)")
+                    elif open_trade.direction == "SHORT" and current_direction == "LONG" and confidence >= 50:
+                        should_smart_exit = True
+                        self._log_analysis(symbol, "trade", f"🚨 SMART EXIT TRIGGERED: Reversal AI da SHORT a LONG ({confidence:.1f}%)")
+                    
+                    if should_smart_exit:
+                        try:
+                            close_res = await self.broker.close_position(symbol=symbol)
+                            if close_res.is_filled:
+                                self._log_analysis(symbol, "trade", f"✅ Posizione {open_trade.direction} chiusa via Smart Exit AI.")
+                            else:
+                                self._log_analysis(symbol, "error", f"❌ Fallita chiusura Smart Exit: {close_res.error_message}")
+                        except Exception as close_exc:
+                            self._log_analysis(symbol, "error", f"⚠️ Errore imprevisto chiusura Smart Exit: {close_exc}")
+                        
+                        continue # Salta l'esecuzione di nuovi trade se abbiamo appena chiuso via Smart Exit
+
                 if self._should_enter_tradingview_trade(consensus):
                     self._log_analysis(symbol, "trade", f"TRADE: {consensus.get('direction')} {symbol} @ confidence {consensus.get('confidence', 0):.1f}%")
                     await self._execute_tradingview_trade(symbol, consensus, results)
@@ -1233,8 +1263,12 @@ class AutoTrader:
                 f"modelli concordi {models_agree}/{total_models} < minimo {effective_min_models_agree}"
             )
 
-        if not consensus.get("stop_loss") or not consensus.get("take_profit"):
-            reasons.append("SL/TP mancanti")
+        if not consensus.get("stop_loss"):
+            reasons.append("SL mancante")
+            
+        # Non rifiutiamo più il trade se TP è mancante o vuoto, perché l'AI potrebbe volerlo
+        tp = consensus.get("take_profit")
+        # Se c'è una chiave tp ma è vuota [], è voluta dall'AI (ok). Se non c'è proprio (None), consideriamolo mancante se la validazione del prompt fallisce (ma non dovrebbe accadere col nuovo prompt).
 
         timeframes = consensus.get("timeframes_analyzed", [])
         if len(timeframes) > 1 and not consensus.get("is_aligned", False):
@@ -1275,16 +1309,28 @@ class AutoTrader:
                 )
                 return
 
-            # Verifica che stop_loss e take_profit siano presenti
+            # Verifica che stop_loss sia presente (Take Profit ora è opzionale)
             stop_loss = consensus.get("stop_loss")
-            take_profit = consensus.get("take_profit")
+            take_profit_array = consensus.get("take_profit", [])
+            
+            # Prendi il primo TP se esiste, altrimenti None
+            take_profit = take_profit_array[0] if isinstance(take_profit_array, list) and take_profit_array else (take_profit_array if isinstance(take_profit_array, (int, float, str)) else None)
 
-            if stop_loss is None or take_profit is None:
-                self._log_analysis(symbol, "error", f"❌ Trade annullato: SL={stop_loss}, TP={take_profit} — mancano SL/TP nel consenso")
+            if stop_loss is None:
+                self._log_analysis(symbol, "error", f"❌ Trade annullato: SL mancante nel consenso")
                 return
 
             stop_loss = float(stop_loss)
-            take_profit = float(take_profit)
+            
+            # Se l'AI ha omesso il TP (take_profit = []), lo accettiamo.
+            has_take_profit = False
+            if take_profit is not None:
+                try:
+                    take_profit = float(take_profit)
+                    has_take_profit = True
+                except (ValueError, TypeError):
+                    take_profit = None
+                    has_take_profit = False
 
             # Get current price
             self._log_analysis(symbol, "info", f"Recupero prezzo corrente per {symbol}...")
@@ -1307,7 +1353,8 @@ class AutoTrader:
             # Round SL/TP from AI to correct decimals for this instrument
             _rp = lambda p: self._round_price(symbol, p)
             stop_loss = _rp(stop_loss)
-            take_profit = _rp(take_profit)
+            if has_take_profit:
+                take_profit = _rp(take_profit)
 
             if direction == "LONG":
                 # LONG: SL deve essere SOTTO il prezzo, TP deve essere SOPRA
@@ -1325,25 +1372,28 @@ class AutoTrader:
                     sl_dist = max_sl_distance
                     self._log_analysis(symbol, "error", f"⚠️ SL troppo lontano ({old_sl}, {((current_price - old_sl) / current_price * 100):.1f}%) → corretto a {stop_loss} ({MAX_SL_PERCENT}%)")
 
-                if take_profit <= current_price:
-                    self._log_analysis(symbol, "error", f"⚠️ TP ({take_profit}) <= prezzo ({current_price}) per LONG — TP invertito/invalido, correggo...")
-                    take_profit = _rp(current_price + (sl_dist * MIN_RR_RATIO))
-                    self._log_analysis(symbol, "info", f"TP corretto a: {take_profit} (R:R 1:{MIN_RR_RATIO})")
-                else:
-                    tp_dist = take_profit - current_price
-                    actual_rr = tp_dist / sl_dist if sl_dist > 0 else 0
-
-                    # Enforce minimum R:R — se TP troppo vicino, spostalo a MIN_RR_RATIO
-                    if actual_rr < MIN_RR_RATIO:
-                        old_tp = take_profit
+                if has_take_profit:
+                    if take_profit <= current_price:
+                        self._log_analysis(symbol, "error", f"⚠️ TP ({take_profit}) <= prezzo ({current_price}) per LONG — TP invertito/invalido, correggo...")
                         take_profit = _rp(current_price + (sl_dist * MIN_RR_RATIO))
-                        self._log_analysis(symbol, "info", f"📏 TP troppo vicino ({old_tp}, R:R 1:{actual_rr:.1f}) → spostato a {take_profit} (R:R 1:{MIN_RR_RATIO})")
+                        self._log_analysis(symbol, "info", f"TP corretto a: {take_profit} (R:R 1:{MIN_RR_RATIO})")
+                    else:
+                        tp_dist = take_profit - current_price
+                        actual_rr = tp_dist / sl_dist if sl_dist > 0 else 0
 
-                    # Cap TP: se il TP è troppo lontano (oltre MAX_RR_RATIO x SL), limitalo
-                    elif actual_rr > MAX_RR_RATIO:
-                        old_tp = take_profit
-                        take_profit = _rp(current_price + (sl_dist * MAX_RR_RATIO))
-                        self._log_analysis(symbol, "info", f"📏 TP troppo lontano ({old_tp}, R:R 1:{actual_rr:.1f}) → cappato a {take_profit} (R:R 1:{MAX_RR_RATIO})")
+                        # Enforce minimum R:R — se TP troppo vicino, spostalo a MIN_RR_RATIO
+                        if actual_rr < MIN_RR_RATIO:
+                            old_tp = take_profit
+                            take_profit = _rp(current_price + (sl_dist * MIN_RR_RATIO))
+                            self._log_analysis(symbol, "info", f"📏 TP troppo vicino ({old_tp}, R:R 1:{actual_rr:.1f}) → spostato a {take_profit} (R:R 1:{MIN_RR_RATIO})")
+
+                        # Cap TP: se il TP è troppo lontano (oltre MAX_RR_RATIO x SL), limitalo
+                        elif actual_rr > MAX_RR_RATIO:
+                            old_tp = take_profit
+                            take_profit = _rp(current_price + (sl_dist * MAX_RR_RATIO))
+                            self._log_analysis(symbol, "info", f"📏 TP troppo lontano ({old_tp}, R:R 1:{actual_rr:.1f}) → cappato a {take_profit} (R:R 1:{MAX_RR_RATIO})")
+                else:
+                    self._log_analysis(symbol, "info", f"🚀 L'AI ha ometto il TP: il trade correrà con Break Even / Trailing Stop / Smart Exit.")
 
             elif direction == "SHORT":
                 # SHORT: SL deve essere SOPRA il prezzo, TP deve essere SOTTO
@@ -1361,25 +1411,28 @@ class AutoTrader:
                     sl_dist = max_sl_distance
                     self._log_analysis(symbol, "error", f"⚠️ SL troppo lontano ({old_sl}, {((old_sl - current_price) / current_price * 100):.1f}%) → corretto a {stop_loss} ({MAX_SL_PERCENT}%)")
 
-                if take_profit >= current_price:
-                    self._log_analysis(symbol, "error", f"⚠️ TP ({take_profit}) >= prezzo ({current_price}) per SHORT — TP invertito/invalido, correggo...")
-                    take_profit = _rp(current_price - (sl_dist * MIN_RR_RATIO))
-                    self._log_analysis(symbol, "info", f"TP corretto a: {take_profit} (R:R 1:{MIN_RR_RATIO})")
-                else:
-                    tp_dist = current_price - take_profit
-                    actual_rr = tp_dist / sl_dist if sl_dist > 0 else 0
-
-                    # Enforce minimum R:R — se TP troppo vicino, spostalo a MIN_RR_RATIO
-                    if actual_rr < MIN_RR_RATIO:
-                        old_tp = take_profit
+                if has_take_profit:
+                    if take_profit >= current_price:
+                        self._log_analysis(symbol, "error", f"⚠️ TP ({take_profit}) >= prezzo ({current_price}) per SHORT — TP invertito/invalido, correggo...")
                         take_profit = _rp(current_price - (sl_dist * MIN_RR_RATIO))
-                        self._log_analysis(symbol, "info", f"📏 TP troppo vicino ({old_tp}, R:R 1:{actual_rr:.1f}) → spostato a {take_profit} (R:R 1:{MIN_RR_RATIO})")
+                        self._log_analysis(symbol, "info", f"TP corretto a: {take_profit} (R:R 1:{MIN_RR_RATIO})")
+                    else:
+                        tp_dist = current_price - take_profit
+                        actual_rr = tp_dist / sl_dist if sl_dist > 0 else 0
 
-                    # Cap TP: se il TP è troppo lontano (oltre MAX_RR_RATIO x SL), limitalo
-                    elif actual_rr > MAX_RR_RATIO:
-                        old_tp = take_profit
-                        take_profit = _rp(current_price - (sl_dist * MAX_RR_RATIO))
-                        self._log_analysis(symbol, "info", f"📏 TP troppo lontano ({old_tp}, R:R 1:{actual_rr:.1f}) → cappato a {take_profit} (R:R 1:{MAX_RR_RATIO})")
+                        # Enforce minimum R:R — se TP troppo vicino, spostalo a MIN_RR_RATIO
+                        if actual_rr < MIN_RR_RATIO:
+                            old_tp = take_profit
+                            take_profit = _rp(current_price - (sl_dist * MIN_RR_RATIO))
+                            self._log_analysis(symbol, "info", f"📏 TP troppo vicino ({old_tp}, R:R 1:{actual_rr:.1f}) → spostato a {take_profit} (R:R 1:{MIN_RR_RATIO})")
+
+                        # Cap TP: se il TP è troppo lontano (oltre MAX_RR_RATIO x SL), limitalo
+                        elif actual_rr > MAX_RR_RATIO:
+                            old_tp = take_profit
+                            take_profit = _rp(current_price - (sl_dist * MAX_RR_RATIO))
+                            self._log_analysis(symbol, "info", f"📏 TP troppo lontano ({old_tp}, R:R 1:{actual_rr:.1f}) → cappato a {take_profit} (R:R 1:{MAX_RR_RATIO})")
+                else:
+                    self._log_analysis(symbol, "info", f"🚀 L'AI ha ometto il TP: il trade correrà con Break Even / Trailing Stop / Smart Exit.")
 
             # ====== CALCOLO POSIZIONE (basato su valore pip) ======
             account_info = await self.broker.get_account_info()
@@ -1408,16 +1461,23 @@ class AutoTrader:
                 broker_spec=broker_spec,
                 tick=tick,
             )
-            stop_loss, take_profit, broker_stop_adjusted = self._enforce_broker_stop_distance(
+            
+            broker_stop_adjusted = False
+            # Only enforce broker stop distance if we actually have a take_profit
+            # Else, pass a dummy tp that won't get triggered (we won't send it to the broker anyway)
+            stop_loss, validated_tp, broker_stop_adjusted = self._enforce_broker_stop_distance(
                 symbol=symbol,
                 direction=direction,
                 current_price=current_price,
                 stop_loss=stop_loss,
-                take_profit=take_profit,
+                take_profit=take_profit if has_take_profit else (current_price * 2 if direction == "LONG" else current_price * 0.5),
                 min_distance=min_stop_distance,
                 point_size=point_size,
                 tick=tick,
             )
+            
+            if has_take_profit:
+                take_profit = validated_tp
             if broker_stop_adjusted:
                 self._log_analysis(
                     symbol,
@@ -1461,15 +1521,17 @@ class AutoTrader:
                 if direction == "LONG":
                     stop_loss = _rp(current_price - new_sl_distance)
                     # Ricalcola TP con R:R 1:2
-                    take_profit = _rp(current_price + (new_sl_distance * 2))
+                    if has_take_profit:
+                        take_profit = _rp(current_price + (new_sl_distance * 2))
                 else:
                     stop_loss = _rp(current_price + new_sl_distance)
-                    take_profit = _rp(current_price - (new_sl_distance * 2))
+                    if has_take_profit:
+                        take_profit = _rp(current_price - (new_sl_distance * 2))
 
                 lot_size = MIN_LOT
                 sl_pips = max_sl_pips
 
-                self._log_analysis(symbol, "info", f"✅ SL/TP ricalcolati — SL: {stop_loss} ({sl_pips:.1f} pips) | TP: {take_profit} | Size: {lot_size} lotti")
+                self._log_analysis(symbol, "info", f"✅ SL/(TP) ricalcolati — SL: {stop_loss} ({sl_pips:.1f} pips) | TP: {take_profit if has_take_profit else 'N/A'} | Size: {lot_size} lotti")
             else:
                 lot_size = max(MIN_LOT, lot_size)
 
@@ -1529,7 +1591,7 @@ class AutoTrader:
 
             side = OrderSide.BUY if direction == "LONG" else OrderSide.SELL
 
-            self._log_analysis(symbol, "trade", f"📊 Ordine: {side.value} {lot_size} lotti | SL: {stop_loss} ({sl_pips:.1f} pips) | TP: {take_profit} | Rischio: ${actual_risk:.2f} ({risk_pct:.2f}%)")
+            self._log_analysis(symbol, "trade", f"📊 Ordine: {side.value} {lot_size} lotti | SL: {stop_loss} ({sl_pips:.1f} pips) | TP: {take_profit if has_take_profit else 'N/A'} | Rischio: ${actual_risk:.2f} ({risk_pct:.2f}%)")
 
             can_open_now, block_reason_now = await self._can_open_trade_for_symbol(symbol)
             if not can_open_now:
@@ -1549,7 +1611,7 @@ class AutoTrader:
                     order_type=OrderType.MARKET,
                     size=Decimal(str(attempt_lot_size)),
                     stop_loss=Decimal(str(stop_loss)),
-                    take_profit=Decimal(str(take_profit)),
+                    take_profit=Decimal(str(take_profit)) if has_take_profit else None,
                 )
 
                 order_result = await self.broker.place_order(order)
@@ -1599,16 +1661,18 @@ class AutoTrader:
                     if not changed:
                         prev_sl = stop_loss
                         prev_tp = take_profit
-                        stop_loss, take_profit = self._expand_stops_after_invalid_rejection(
+                        stop_loss, exp_tp = self._expand_stops_after_invalid_rejection(
                             symbol=symbol,
                             direction=direction,
                             current_price=current_price,
                             stop_loss=stop_loss,
-                            take_profit=take_profit,
+                            take_profit=take_profit if has_take_profit else (current_price * 2 if direction == "LONG" else current_price * 0.5),
                             min_distance=min_stop_distance,
                             retry_index=invalid_stops_retries,
                         )
-                        changed = (prev_sl != stop_loss) or (prev_tp != take_profit)
+                        if has_take_profit:
+                            take_profit = exp_tp
+                        changed = (prev_sl != stop_loss) or (has_take_profit and prev_tp != take_profit)
 
                     if changed:
                         sl_distance = abs(current_price - stop_loss)
@@ -1717,16 +1781,16 @@ class AutoTrader:
                         )
                         protection_applied = False
                         try:
-                            protection_applied = await self.broker.modify_position(
-                                symbol=symbol,
-                                stop_loss=Decimal(str(stop_loss)),
-                                take_profit=Decimal(str(take_profit)),
-                            )
+                            protection_kwargs = {"symbol": symbol, "stop_loss": Decimal(str(stop_loss))}
+                            if has_take_profit:
+                                protection_kwargs["take_profit"] = Decimal(str(take_profit))
+                                
+                            protection_applied = await self.broker.modify_position(**protection_kwargs)
                         except Exception as protection_exc:
                             self._log_analysis(
                                 symbol,
                                 "error",
-                                f"Errore durante applicazione SL/TP post-fill: {protection_exc}",
+                                f"Errore durante applicazione SL/(TP) post-fill: {protection_exc}",
                             )
 
                         if protection_applied:
@@ -1764,16 +1828,16 @@ class AutoTrader:
                 be_trigger = consensus.get("break_even_trigger")
                 trailing_pips = consensus.get("trailing_stop_pips")
                 if be_trigger is None:
-                    # Default BE: quando il prezzo raggiunge il 50% del TP
-                    tp_distance = abs(take_profit - fill_price)
+                    # Default BE: quando il prezzo raggiunge il 50% del TP o distanza 1:1 SL se TP assente
+                    tp_distance = abs(take_profit - fill_price) if has_take_profit else sl_distance
                     if direction == "LONG":
                         be_trigger = _rp(fill_price + (tp_distance * 0.5))
                     else:
                         be_trigger = _rp(fill_price - (tp_distance * 0.5))
-                    self._log_analysis(symbol, "info", f"🔒 Break Even auto impostato a {be_trigger} (50% del TP)")
+                    self._log_analysis(symbol, "info", f"🔒 Break Even auto impostato a {be_trigger} (dinamico)")
                 if trailing_pips is None:
-                    # Default trailing: 15 pips dopo il BE
-                    trailing_pips = 15.0
+                    # Default trailing: 15 pips dopo il BE (o 10 se SL ristretto)
+                    trailing_pips = min(15.0, sl_pips * 0.8)
                     self._log_analysis(symbol, "info", f"📈 Trailing Stop auto: {trailing_pips} pips dopo BE")
 
                 trade = TradeRecord(
@@ -1782,7 +1846,7 @@ class AutoTrader:
                     direction=direction,
                     entry_price=fill_price,
                     stop_loss=stop_loss,
-                    take_profit=take_profit,
+                    take_profit=take_profit if has_take_profit else 0.0,
                     units=filled_size,
                     timestamp=datetime.utcnow(),
                     confidence=consensus["confidence"],
@@ -1795,13 +1859,13 @@ class AutoTrader:
 
                 self.state.open_positions.append(trade)
                 self.state.trades_today += 1
-                self._log_analysis(symbol, "trade", f"✅ TRADE ESEGUITO: {side.value} {symbol} @ {fill_price} | SL: {stop_loss} | TP: {take_profit} | ID: {order_result.order_id}")
+                self._log_analysis(symbol, "trade", f"✅ TRADE ESEGUITO: {side.value} {symbol} @ {fill_price} | SL: {stop_loss} | TP: {take_profit if has_take_profit else 'N/A'} | ID: {order_result.order_id}")
 
                 await self._notify_tradingview_trade(trade, consensus, results)
             elif order_result.is_rejected:
                 reject_msg = order_result.error_message or 'motivo sconosciuto'
                 self._log_analysis(symbol, "error", f"❌ ORDINE RIFIUTATO: {reject_msg}")
-                self._log_analysis(symbol, "error", f"📋 Dettagli: {side.value} {lot_size} lotti {symbol} | SL: {stop_loss} | TP: {take_profit}")
+                self._log_analysis(symbol, "error", f"📋 Dettagli: {side.value} {lot_size} lotti {symbol} | SL: {stop_loss} | TP: {take_profit if has_take_profit else 'N/A'}")
                 reject_upper = reject_msg.upper()
                 if (
                     "TRADING NON CONSENTITO" in reject_upper
@@ -1856,7 +1920,7 @@ class AutoTrader:
 📊 **{trade.direction}** {trade.symbol}
 💰 Entry: {trade.entry_price:.5f}
 🛑 SL: {trade.stop_loss:.5f}
-🎯 TP: {trade.take_profit:.5f}
+🎯 TP: {trade.take_profit:.5f} se trade.take_profit else "Libero (Smart Exit/TS)"
 ⚙️ {advanced_str}
 
 🤖 **AI Consensus**: {consensus['models_agree']}/{consensus['total_models']} ({consensus['confidence']:.1f}%)

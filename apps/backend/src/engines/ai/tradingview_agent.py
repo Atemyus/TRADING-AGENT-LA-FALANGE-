@@ -1644,74 +1644,29 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
         result.indicators_used = selected_indicators
         indicators = ', '.join(selected_indicators)
 
-        prompt = f"""Sei un analista di trading senior specializzato in {style.upper()} con oltre 15 anni di esperienza nell'analisi di {symbol} sul timeframe {timeframe} minuti.
+        prompt_phase1 = f"""Sei un analista di trading senior specializzato in {style.upper()} con oltre 15 anni di esperienza nell'analisi di {symbol} sul timeframe {timeframe} minuti.
 
 ## IL TUO STILE DI ANALISI: {style.upper()}
 Il tuo focus specializzato: {focus}
 I tuoi indicatori preferiti: {indicators}
 
-## REQUISITI DELL'ANALISI
-Fornisci un'analisi di mercato completa e professionale. La tua analisi deve includere:
+Guarda il grafico allegato.
 
-1. **ANALISI DELLA STRUTTURA DI MERCATO**:
-   - Direzione del trend attuale (rialzista/ribassista/laterale)
-   - Swing high e swing low chiave
-   - Rotture o cambiamenti della struttura di mercato
-
-2. **LETTURA DEGLI INDICATORI TECNICI**:
-   - Cosa mostrano gli indicatori visibili (EMA, RSI, ecc.)
-   - Divergenze tra prezzo e indicatori
-   - Condizioni di ipercomprato/ipervenduto
-
-3. **LIVELLI DI PREZZO CHIAVE**:
-   - Identifica i livelli di supporto dal grafico
-   - Identifica i livelli di resistenza dal grafico
-   - Order block, zone di squilibrio o aree di liquidità se visibili
-
-4. **STRATEGIA DI ENTRATA/USCITA**:
-   - Prezzo di entrata specifico con giustificazione
-   - Posizionamento dello stop loss con ragionamento
-   - Obiettivi di take profit (livelli multipli)
-
-5. **VALUTAZIONE DEL RISCHIO**:
-   - Rischi chiave di questo trade
-   - Scenari di invalidazione
-
-6. **GESTIONE AVANZATA DELLA POSIZIONE** (OBBLIGATORIO per LONG/SHORT):
-   - **Break Even**: A quale prezzo spostare lo stop loss al prezzo di entrata per proteggere il capitale. Tipicamente quando il prezzo raggiunge il 40-60% della distanza verso il TP1.
-   - **Trailing Stop** (OPZIONALE): Se ritieni utile, indica quanti pips di distanza mantenere come trailing stop DOPO che il break even è stato attivato. Valuta in base alla volatilità e alle condizioni di mercato. Se non lo ritieni necessario, restituisci null.
-
-## FORMATO OUTPUT
-Rispondi SOLO con un oggetto JSON valido (niente markdown, niente spiegazioni fuori dal JSON):
+## FORMATO OUTPUT - FASE 1
+Rispondi SOLO con un oggetto JSON valido contenente la tua decisione direzionale base (niente markdown, niente spiegazioni):
 {{
   "direction": "LONG" oppure "SHORT" oppure "HOLD",
-  "confidence": 0-100 (la tua percentuale di confidenza),
-  "entry_price": prezzo esatto o null,
-  "stop_loss": prezzo esatto o null,
-  "take_profit": [TP1, TP2, TP3] o [],
-  "break_even_trigger": prezzo ESATTO al quale spostare lo SL all'entry (OBBLIGATORIO se LONG o SHORT),
-  "trailing_stop_pips": distanza in pips per il trailing stop dopo il break even oppure null (a tua discrezione),
-  "key_observations": [
-    "Osservazione sul trend IN ITALIANO",
-    "Osservazione sugli indicatori IN ITALIANO",
-    "Osservazione sui livelli di prezzo IN ITALIANO",
-    "Osservazione sul momentum IN ITALIANO",
-    "Osservazione su volume/volatilità IN ITALIANO"
-  ],
-  "reasoning": "Fornisci un'analisi professionale dettagliata di 200-400 parole IN ITALIANO che spieghi la tua decisione di trading. Includi livelli di prezzo specifici, letture degli indicatori, analisi della struttura di mercato e fattori di rischio. Scrivi come se stessi presentando a clienti istituzionali."
+  "confidence": 0-100 (la tua percentuale di confidenza)
 }}
-
-IMPORTANTE: Sii specifico con i livelli di prezzo effettivi visibili sul grafico. Non usare valori placeholder.
-IMPORTANTE: Scrivi TUTTO in ITALIANO (key_observations, reasoning).
-IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. trailing_stop_pips è a tua discrezione (restituisci null se non lo ritieni utile).
 """
 
         try:
             api_url, api_key = self._get_api_config(model_key=model_key)
-            content = self._build_message_content(prompt, screenshot, model_key=model_key)
+            content_phase1 = self._build_message_content(prompt_phase1, screenshot, model_key=model_key)
 
             async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(
+                # FASE 1: Solo direzione
+                response_phase1 = await client.post(
                     f"{api_url}/chat/completions",
                     headers={
                         "Authorization": f"Bearer {api_key}",
@@ -1721,88 +1676,146 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
                         "model": model_id,
                         "messages": [{
                             "role": "user",
-                            "content": content
+                            "content": content_phase1
                         }],
-                        "max_tokens": 3000,  # Increased for longer professional analysis
-                        "temperature": 0.3
+                        "max_tokens": 150,
+                        "temperature": 0.1
                     }
                 )
-                response.raise_for_status()
-                data = response.json()
-                raw_content = data["choices"][0]["message"]["content"]
-                text = self._normalize_response_text(raw_content)
-                if not text:
-                    # Some models (e.g. Kimi thinking mode) may return content=null
-                    print(f"[{display_name}] Response content was null, skipping")
-                else:
-                    print(f"[{display_name}] Raw response length: {len(text)} chars")
+                response_phase1.raise_for_status()
+                data_phase1 = response_phase1.json()
+                raw_content_phase1 = data_phase1["choices"][0]["message"]["content"]
+                text_phase1 = self._normalize_response_text(raw_content_phase1)
+                
+                analysis_phase1 = self._extract_json_object(text_phase1)
+                if analysis_phase1 is None:
+                    analysis_phase1 = self._extract_analysis_from_plain_text(text_phase1)
 
-                analysis = self._extract_json_object(text)
-                used_fallback = False
-                if analysis is None:
-                    analysis = self._extract_analysis_from_plain_text(text)
-                    used_fallback = analysis is not None
-
-                if analysis:
-                    direction = str(analysis.get("direction", "HOLD")).strip().upper()
+                direction = "HOLD"
+                confidence = 0.0
+                
+                if analysis_phase1:
+                    direction = str(analysis_phase1.get("direction", "HOLD")).strip().upper()
                     if direction not in {"LONG", "SHORT", "HOLD"}:
                         direction = "HOLD"
-                    result.direction = direction
+                    
+                    conf_val = self._coerce_float(analysis_phase1.get("confidence"))
+                    confidence = min(max(float(conf_val if conf_val is not None else 0.0), 0.0), 100.0)
 
-                    confidence = self._coerce_float(analysis.get("confidence"))
-                    if confidence is None:
-                        confidence = 50.0 if used_fallback else 0.0
-                    result.confidence = min(max(float(confidence), 0.0), 100.0)
+                result.direction = direction
+                result.confidence = confidence
+                
+                print(f"[{display_name}] Fase 1: {direction} @ {confidence}%")
 
-                    result.entry_price = self._coerce_float(analysis.get("entry_price"))
-                    result.stop_loss = self._coerce_float(analysis.get("stop_loss"))
+                # FASE 2: Solo se la direzione è LONG o SHORT con un minimo di confidenza
+                if direction in {"LONG", "SHORT"} and confidence >= 50.0:
+                    prompt_phase2 = f"""Hai deciso di impostare un trade {direction} su {symbol} (TF {timeframe}m) con {confidence}% di confidenza basandoti sul grafico precedente.
 
-                    take_profit_raw = analysis.get("take_profit", [])
-                    if isinstance(take_profit_raw, list):
-                        result.take_profit = [
-                            value for value in (self._coerce_float(tp) for tp in take_profit_raw) if value is not None
-                        ]
+Ora fornisci i dettagli operativi completi e la tua analisi professionale.
+
+## GESTIONE DELLA POSIZIONE (OBBLIGATORIO per LONG/SHORT):
+- **Break Even**: A quale prezzo spostare lo stop loss al prezzo di entrata per proteggere il capitale. Tipicamente quando il prezzo raggiunge il 40-60% della distanza verso il TP1.
+- **Trailing Stop** (OPZIONALE): Quanti pips di distanza mantenere come trailing stop DOPO che il break even è stato attivato. Valuta in base alla volatilità. (null se non necessario).
+- **Take Profit** (OPZIONALE): Puoi impostare uno o più livelli di TP. Se decidi di NON fissare un TP e preferisci far correre il trade affidandoti solo al Trailing Stop e alla gestione attiva, restituisci un array vuoto [].
+
+## FORMATO OUTPUT - FASE 2
+Rispondi SOLO con un oggetto JSON valido (niente markdown, niente spiegazioni fuori dal JSON):
+{{
+  "entry_price": prezzo esatto o null se a mercato,
+  "stop_loss": prezzo esatto (OBBLIGATORIO),
+  "take_profit": [TP1, TP2] oppure [] se ometti il TP per usare il Trailing Stop,
+  "break_even_trigger": prezzo ESATTO al quale spostare lo SL all'entry (OBBLIGATORIO),
+  "trailing_stop_pips": distanza in pips per il trailing stop dopo il break even oppure null,
+  "key_observations": [
+    "Osservazione sul trend IN ITALIANO",
+    "Osservazione sugli indicatori IN ITALIANO",
+    "Osservazione sui livelli di prezzo IN ITALIANO"
+  ],
+  "reasoning": "Fornisci un'analisi professionale dettagliata di 200-400 parole IN ITALIANO che spieghi la tua decisione. Includi letture degli indicatori e struttura."
+}}
+"""
+                    
+                    # Appendi il prompt della fase 2 alla conversazione per dare contesto
+                    # Se il modello supporta la cronologia, passiamo l'immagine solo una volta
+                    messages_phase2 = [
+                        {"role": "user", "content": content_phase1},
+                        {"role": "assistant", "content": raw_content_phase1},
+                        {"role": "user", "content": prompt_phase2}
+                    ]
+
+                    response_phase2 = await client.post(
+                        f"{api_url}/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {api_key}",
+                            "Content-Type": "application/json"
+                        },
+                        json={
+                            "model": model_id,
+                            "messages": messages_phase2,
+                            "max_tokens": 1500,
+                            "temperature": 0.3
+                        }
+                    )
+                    response_phase2.raise_for_status()
+                    data_phase2 = response_phase2.json()
+                    raw_content_phase2 = data_phase2["choices"][0]["message"]["content"]
+                    text_phase2 = self._normalize_response_text(raw_content_phase2)
+                    
+                    analysis_phase2 = self._extract_json_object(text_phase2)
+                    used_fallback = False
+                    if analysis_phase2 is None:
+                        analysis_phase2 = self._extract_analysis_from_plain_text(text_phase2)
+                        used_fallback = analysis_phase2 is not None
+
+                    if analysis_phase2:
+                        result.entry_price = self._coerce_float(analysis_phase2.get("entry_price"))
+                        result.stop_loss = self._coerce_float(analysis_phase2.get("stop_loss"))
+
+                        take_profit_raw = analysis_phase2.get("take_profit", [])
+                        if isinstance(take_profit_raw, list):
+                            result.take_profit = [
+                                value for value in (self._coerce_float(tp) for tp in take_profit_raw) if value is not None
+                            ]
+                        else:
+                            single_tp = self._coerce_float(take_profit_raw)
+                            result.take_profit = [single_tp] if single_tp is not None else []
+
+                        result.break_even_trigger = self._coerce_float(analysis_phase2.get("break_even_trigger"))
+                        result.trailing_stop_pips = self._coerce_float(analysis_phase2.get("trailing_stop_pips"))
+
+                        observations = analysis_phase2.get("key_observations", [])
+                        if isinstance(observations, list):
+                            result.key_observations = [str(obs).strip() for obs in observations if str(obs).strip()]
+                        elif isinstance(observations, str) and observations.strip():
+                            result.key_observations = [
+                                chunk.strip("-• \t")
+                                for chunk in re.split(r"[\n;]+", observations)
+                                if chunk.strip()
+                            ]
+                        else:
+                            result.key_observations = []
+
+                        reasoning = analysis_phase2.get("reasoning", "")
+                        if not isinstance(reasoning, str) or not reasoning.strip():
+                            reasoning = text_phase2
+                        result.reasoning = reasoning.strip()
+                        result.error = None
+                        
+                        if used_fallback:
+                            print(f"[{display_name}] Fase 2: Parsed fallback from non-JSON response")
+                        else:
+                            print(f"[{display_name}] Fase 2: TP={result.take_profit}, SL={result.stop_loss}")
                     else:
-                        single_tp = self._coerce_float(take_profit_raw)
-                        result.take_profit = [single_tp] if single_tp is not None else []
-
-                    result.break_even_trigger = self._coerce_float(analysis.get("break_even_trigger"))
-                    result.trailing_stop_pips = self._coerce_float(analysis.get("trailing_stop_pips"))
-
-                    observations = analysis.get("key_observations", [])
-                    if isinstance(observations, list):
-                        result.key_observations = [str(obs).strip() for obs in observations if str(obs).strip()]
-                    elif isinstance(observations, str) and observations.strip():
-                        result.key_observations = [
-                            chunk.strip("-• \t")
-                            for chunk in re.split(r"[\n;]+", observations)
-                            if chunk.strip()
-                        ]
-                    else:
-                        result.key_observations = []
-
-                    reasoning = analysis.get("reasoning", "")
-                    if not isinstance(reasoning, str) or not reasoning.strip():
-                        reasoning = text
-                    result.reasoning = reasoning.strip()
-                    result.error = None
-
-                    # Track indicators that were actually prepared for this model screenshot.
-                    result.indicators_used = selected_indicators
-
-                    if used_fallback:
-                        print(
-                            f"[{display_name}] Parsed fallback from non-JSON response: "
-                            f"{result.direction} @ {result.confidence}% confidence"
-                        )
-                    else:
-                        print(f"[{display_name}] Parsed: {result.direction} @ {result.confidence}% confidence")
+                        print(f"[{display_name}] Fase 2: Nessuna analisi parsabile trovata")
+                        result.reasoning = f"No structured analysis returned. Raw: {text_phase2[:500]}"
+                
                 else:
-                    print(f"[{display_name}] No parseable analysis found in response")
-                    result.direction = "HOLD"
-                    result.confidence = 50
-                    result.reasoning = f"No structured analysis returned. Raw: {text[:500]}"
-                    result.error = "No parseable analysis in response"
+                    # Direzione HOLD o confidenza < 50, saltiamo la fase 2.
+                    result.reasoning = "Segnale debole o HOLD, analisi profonda saltata per risparmio API."
+                    result.error = None
+                
+                # Track indicators that were actually prepared for this model screenshot.
+                result.indicators_used = selected_indicators
 
         except httpx.HTTPStatusError as e:
             error_detail = ""
