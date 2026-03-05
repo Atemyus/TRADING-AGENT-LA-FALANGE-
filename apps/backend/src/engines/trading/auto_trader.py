@@ -1204,10 +1204,6 @@ class AutoTrader:
         if result.final_direction == "HOLD":
             return False
 
-        # Confidence check
-        if result.final_confidence < self.config.min_confidence:
-            return False
-
         # Model agreement check
         if result.total_models_used < self.config.min_models_agree:
             return False
@@ -1247,13 +1243,12 @@ class AutoTrader:
         if direction == "HOLD":
             reasons.append("direzione HOLD")
 
-        confidence = float(consensus.get("confidence", 0) or 0)
-        if confidence < self.config.min_confidence:
-            reasons.append(f"confidence {confidence:.1f}% < {self.config.min_confidence:.1f}%")
-
+        import math
         total_models = int(consensus.get("total_models", 0) or 0)
+        # Rendiamo la tolleranza più dinamica: richiediamo >50% dei modelli validi, fino al limite impostato.
+        required_ratio = max(1, math.ceil(total_models * 0.51))
         effective_min_models_agree = (
-            min(self.config.min_models_agree, total_models)
+            min(self.config.min_models_agree, required_ratio)
             if total_models > 0
             else self.config.min_models_agree
         )
@@ -1941,22 +1936,20 @@ class AutoTrader:
         if consensus.get("direction") == "HOLD":
             return False
 
-        # Confidence check
-        if consensus.get("confidence", 0) < self.config.min_confidence:
-            return False
-
+        import math
         # Model agreement check
         total_models = int(consensus.get("total_models", 0) or 0)
+        required_ratio = max(1, math.ceil(total_models * 0.51))
         effective_min_models_agree = (
-            min(self.config.min_models_agree, total_models)
+            min(self.config.min_models_agree, required_ratio)
             if total_models > 0
             else self.config.min_models_agree
         )
         if consensus.get("models_agree", 0) < effective_min_models_agree:
             return False
 
-        # Must have stop loss and take profit
-        if not consensus.get("stop_loss") or not consensus.get("take_profit"):
+        # Must have stop loss (take profit is optional if trailing stop is used)
+        if not consensus.get("stop_loss"):
             return False
 
         return True

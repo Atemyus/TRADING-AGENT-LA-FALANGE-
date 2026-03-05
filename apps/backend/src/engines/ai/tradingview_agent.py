@@ -1411,14 +1411,24 @@ Rispondi SOLO con un array JSON di nomi di indicatori (max {max_ind}), es.:
         screenshot: str,
         symbol: str,
         timeframe: str,
+        mode: str = "standard",
     ) -> list[str]:
-        """Get dynamic indicator selection for one model."""
+        """Get dynamic indicator selection for one model based on mode.
+        If mode is quick/standard, use predefined styles to save time.
+        If mode is premium/ultra, ask the AI to pick indicators based on the market.
+        """
         model_id = self.VISION_MODELS.get(model_key)
         if not model_id:
             return self._default_indicators_for_model(model_key)
 
         preferences = self.MODEL_PREFERENCES.get(model_key, {})
         fallback = self._default_indicators_for_model(model_key)
+
+        # In Quick and Standard mode, use predefined indicators directly to speed up analysis
+        if mode in ["quick", "standard"]:
+            return fallback
+
+        # In Premium and Ultra mode, give the AI full freedom to adapt to the screenshot
         indicators = await self._ask_ai_for_indicators(
             model_id=model_id,
             screenshot=screenshot,
@@ -1540,6 +1550,8 @@ Disegni effettuati:
 
 Ora fornisci la tua analisi di trading completa basata su TUTTO ciò che hai osservato.
 
+NOTA OPERATIVA: Cerca attivamente opportunità di trading. Se le probabilità sono a tuo favore, raccomanda "LONG" o "SHORT". Usa "HOLD" SOLO in caso di estrema incertezza, trend inesistente o assenza totale di setup. Non essere eccessivamente conservativo e sfrutta il trailing stop per mitigare i rischi.
+
 IMPORTANTE: Scrivi TUTTO in ITALIANO (reasoning, key_observations).
 
 Rispondi SOLO con un oggetto JSON:
@@ -1547,7 +1559,7 @@ Rispondi SOLO con un oggetto JSON:
   "direction": "LONG" oppure "SHORT" oppure "HOLD",
   "confidence": 0-100,
   "entry_price": prezzo esatto o null,
-  "stop_loss": prezzo esatto o null,
+  "stop_loss": prezzo esatto (OBBLIGATORIO),
   "take_profit": [prezzo1, prezzo2, prezzo3] o [],
   "break_even_trigger": prezzo ESATTO per spostare SL all'entry (OBBLIGATORIO se LONG o SHORT),
   "trailing_stop_pips": distanza trailing stop in pips oppure null (a tua discrezione),
@@ -1651,6 +1663,9 @@ Il tuo focus specializzato: {focus}
 I tuoi indicatori preferiti: {indicators}
 
 Guarda il grafico allegato.
+
+## NOTA OPERATIVA
+Cerca attivamente opportunità di trading. Se le probabilità sono a tuo favore, raccomanda "LONG" o "SHORT". Usa "HOLD" SOLO in caso di estrema incertezza, trend inesistente o assenza totale di setup. Non essere eccessivamente conservativo: accetta i rischi misurati.
 
 ## FORMATO OUTPUT - FASE 1
 Rispondi SOLO con un oggetto JSON valido contenente la tua decisione direzionale base (niente markdown, niente spiegazioni):
@@ -1976,7 +1991,7 @@ Rispondi SOLO con un oggetto JSON valido (niente markdown, niente spiegazioni fu
 
             # Step 1: Ask each model which indicators it wants for this market/timeframe.
             indicator_tasks = [
-                self._select_indicators_for_model(model_key, base_screenshot, symbol, tf)
+                self._select_indicators_for_model(model_key, base_screenshot, symbol, tf, mode)
                 for model_key in model_keys
             ]
             indicator_choices = await asyncio.gather(*indicator_tasks, return_exceptions=True)
@@ -2011,8 +2026,32 @@ Rispondi SOLO con un oggetto JSON valido (niente markdown, niente spiegazioni fu
                 await asyncio.sleep(0.6)
                 model_screenshot = await self.browser.take_screenshot() or base_screenshot
                 final_indicators = added if added else selected
-                print(f"  [{self.MODEL_DISPLAY_NAMES.get(model_key, model_key)}] indicators: {', '.join(final_indicators)}")
-                model_payloads.append((model_key, model_screenshot, final_indicators))
+                # If mode is Premium or Ultra, ask the AI to draw on the chart (FVG, OB, Trendlines, Fib)
+                drawings_made: list[dict[str, Any]] = []
+                if mode in ["premium", "ultra"]:
+                    print(f"  [{model_key}] requesting custom drawings (Premium/Ultra mode)...")
+                    drawings_requested = await self._ask_ai_for_drawings(
+                        model_id=self.VISION_MODELS.get(model_key, ""),
+                        screenshot=model_screenshot, # Use the screenshot with indicators already applied
+                        symbol=symbol,
+                        preferences=self.MODEL_PREFERENCES.get(model_key, {})
+                    )
+                    
+                    if drawings_requested and self.browser:
+                        print(f"  [{model_key}] drawing {len(drawings_requested)} elements...")
+                        success_count = 0
+                        for drawing in drawings_requested:
+                            success = await self.browser.add_drawing(drawing)
+                            if success:
+                                drawings_made.append(drawing)
+                                success_count += 1
+                        
+                        if success_count > 0:
+                            # Take a new screenshot including the drawings
+                            await asyncio.sleep(0.5)
+                            model_screenshot = await self.browser.take_screenshot() or model_screenshot
+
+                model_payloads.append((model_key, model_screenshot, final_indicators, drawings_made))
 
             # Clear chart before moving to next timeframe.
             if self.browser and self.browser._initialized and tf_index < len(timeframes) - 1:
@@ -2022,8 +2061,15 @@ Rispondi SOLO con un oggetto JSON valido (niente markdown, niente spiegazioni fu
             # Step 3: Run all model analyses in parallel using model-specific screenshots.
             print(f"  Sending {len(model_payloads)} model-specific screenshots to AI models...")
             tasks = [
-                self._analyze_model_from_screenshot(model_key, screenshot, symbol, tf, indicators_used=indicators)
-                for model_key, screenshot, indicators in model_payloads
+                self._analyze_model_from_screenshot(
+                    model_key, 
+                    screenshot, 
+                    symbol, 
+                    tf, 
+                    indicators_used=indicators,
+                    drawings_made=drawings
+                )
+                for model_key, screenshot, indicators, drawings in model_payloads
             ]
             tf_results = await asyncio.gather(*tasks, return_exceptions=True)
 
