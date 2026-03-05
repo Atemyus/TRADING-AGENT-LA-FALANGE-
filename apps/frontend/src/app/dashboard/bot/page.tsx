@@ -162,11 +162,10 @@ function AIReasoningPanel({ brokerId, brokerName, compact = false }: AIReasoning
           logs.map((log, i) => (
             <div
               key={`${log.timestamp}-${i}`}
-              className={`flex items-start gap-2 py-1 px-2 rounded hover:bg-slate-800/50 ${
-                log.type === 'trade' ? 'bg-green-500/5 border-l-2 border-green-500' :
-                log.type === 'error' ? 'bg-red-500/5 border-l-2 border-red-500' :
-                ''
-              }`}
+              className={`flex items-start gap-2 py-1 px-2 rounded hover:bg-slate-800/50 ${log.type === 'trade' ? 'bg-green-500/5 border-l-2 border-green-500' :
+                  log.type === 'error' ? 'bg-red-500/5 border-l-2 border-red-500' :
+                    ''
+                }`}
             >
               <span className="flex-shrink-0 mt-0.5">{getLogIcon(log.type)}</span>
               <span className="text-slate-500 flex-shrink-0">
@@ -203,14 +202,12 @@ function Toggle({
       aria-checked={enabled}
       onClick={onChange}
       disabled={disabled}
-      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-900 ${
-        enabled ? "bg-indigo-600" : "bg-slate-600"
-      } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-900 ${enabled ? "bg-indigo-600" : "bg-slate-600"
+        } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
     >
       <span
-        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-          enabled ? "translate-x-5" : "translate-x-0"
-        }`}
+        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${enabled ? "translate-x-5" : "translate-x-0"
+          }`}
       />
     </button>
   );
@@ -822,20 +819,18 @@ export default function BotControlPage() {
                   key={broker.id}
                   initial={{ opacity: 0, y: -5 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className={`p-4 rounded-lg border transition-colors cursor-pointer ${
-                    isSelected
+                  className={`p-4 rounded-lg border transition-colors cursor-pointer ${isSelected
                       ? 'bg-indigo-500/10 border-indigo-500'
                       : 'bg-dark-900/70 border-dark-700 hover:border-primary-500/35'
-                  }`}
+                    }`}
                   onClick={() => setSelectedBrokerId(isSelected ? null : broker.id)}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                      <div className={`w-3 h-3 rounded-full ${
-                        isRunning ? 'bg-green-500 animate-pulse' :
-                        isPaused ? 'bg-yellow-500' :
-                        broker.is_enabled ? 'bg-slate-500' : 'bg-slate-700'
-                      }`} />
+                      <div className={`w-3 h-3 rounded-full ${isRunning ? 'bg-green-500 animate-pulse' :
+                          isPaused ? 'bg-yellow-500' :
+                            broker.is_enabled ? 'bg-slate-500' : 'bg-slate-700'
+                        }`} />
 
                       <div>
                         <div className="flex items-center gap-2">
@@ -875,9 +870,8 @@ export default function BotControlPage() {
                           </div>
                           <div className="text-center">
                             <p className="text-slate-400 text-xs">P&L</p>
-                            <p className={`font-medium ${
-                              brokerDailyPnl >= 0 ? 'text-profit' : 'text-loss'
-                            }`}>
+                            <p className={`font-medium ${brokerDailyPnl >= 0 ? 'text-profit' : 'text-loss'
+                              }`}>
                               {brokerDailyPnl >= 0 ? "+" : ""}${brokerDailyPnl.toFixed(2)}
                             </p>
                           </div>
@@ -965,9 +959,8 @@ export default function BotControlPage() {
                             <DollarSign size={14} />
                             <span className="text-xs">P&L Giornaliero</span>
                           </div>
-                          <p className={`text-xl font-bold ${
-                            brokerDailyPnl >= 0 ? 'text-profit' : 'text-loss'
-                          }`}>
+                          <p className={`text-xl font-bold ${brokerDailyPnl >= 0 ? 'text-profit' : 'text-loss'
+                            }`}>
                             {brokerDailyPnl >= 0 ? "+" : ""}${brokerDailyPnl.toFixed(2)}
                           </p>
                         </div>
@@ -1054,11 +1047,10 @@ export default function BotControlPage() {
               <button
                 key={symbol}
                 onClick={() => setPreviewSymbol(symbol)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  previewSymbol === symbol
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${previewSymbol === symbol
                     ? "bg-indigo-600 text-white"
                     : "bg-slate-700 text-slate-300 hover:bg-slate-600"
-                }`}
+                  }`}
               >
                 {symbol}
               </button>
@@ -1104,11 +1096,10 @@ export default function BotControlPage() {
                         : [...currentConfig.symbols, symbol];
                       handleConfigUpdate({ symbols: newSymbols });
                     }}
-                    className={`px-3 py-2 rounded-lg text-sm transition-colors ${
-                      currentConfig.symbols.includes(symbol)
+                    className={`px-3 py-2 rounded-lg text-sm transition-colors ${currentConfig.symbols.includes(symbol)
                         ? "bg-indigo-600 text-white"
                         : "bg-slate-700 text-slate-300 hover:bg-slate-600"
-                    }`}
+                      }`}
                   >
                     {symbol}
                   </button>
@@ -1126,11 +1117,10 @@ export default function BotControlPage() {
                   <button
                     key={mode.value}
                     onClick={() => handleConfigUpdate({ analysis_mode: mode.value })}
-                    className={`w-full px-4 py-3 rounded-lg text-left transition-colors ${
-                      currentConfig.analysis_mode === mode.value
+                    className={`w-full px-4 py-3 rounded-lg text-left transition-colors ${currentConfig.analysis_mode === mode.value
                         ? "bg-indigo-600"
                         : "bg-slate-700 hover:bg-slate-600"
-                    }`}
+                      }`}
                   >
                     <div className="font-medium">{mode.label}</div>
                     <div className="text-xs text-slate-400">{mode.description}</div>
@@ -1285,11 +1275,10 @@ export default function BotControlPage() {
                   <button
                     key={interval.value}
                     onClick={() => handleConfigUpdate({ analysis_interval_seconds: interval.value })}
-                    className={`px-3 py-2 rounded-lg text-sm transition-colors ${
-                      currentConfig.analysis_interval_seconds === interval.value
+                    className={`px-3 py-2 rounded-lg text-sm transition-colors ${currentConfig.analysis_interval_seconds === interval.value
                         ? "bg-indigo-600 text-white"
                         : "bg-slate-700 text-slate-300 hover:bg-slate-600"
-                    }`}
+                      }`}
                   >
                     <div className="font-medium">{interval.label}</div>
                     <div className="text-[10px] opacity-70">{interval.desc}</div>
@@ -1427,11 +1416,10 @@ export default function BotControlPage() {
                               <span className={`text-sm font-medium ${isEnabled ? "text-white" : "text-slate-500 line-through"}`}>
                                 {model.name}
                               </span>
-                              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                                model.provider === "NVIDIA"
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${model.provider === "NVIDIA"
                                   ? "bg-green-500/20 text-green-400"
                                   : "bg-blue-500/20 text-blue-400"
-                              }`}>
+                                }`}>
                                 {model.provider}
                               </span>
                             </div>
@@ -1516,6 +1504,8 @@ export default function BotControlPage() {
                   <th className="pb-3">Broker</th>
                   <th className="pb-3">Direction</th>
                   <th className="pb-3">Entry</th>
+                  <th className="pb-3">Stop Loss</th>
+                  <th className="pb-3">Take Profit</th>
                   <th className="pb-3">Current</th>
                   <th className="pb-3">Size</th>
                   <th className="pb-3 text-right">Unrealized P&L</th>
@@ -1535,16 +1525,17 @@ export default function BotControlPage() {
                       <td className="py-3 text-slate-400">{pos.broker_name}</td>
                       <td className="py-3">
                         <span
-                          className={`px-2 py-1 rounded text-xs ${
-                            direction === "LONG"
+                          className={`px-2 py-1 rounded text-xs ${direction === "LONG"
                               ? "bg-profit/20 text-profit"
                               : "bg-loss/20 text-loss"
-                          }`}
+                            }`}
                         >
                           {direction}
                         </span>
                       </td>
                       <td className="py-3 font-mono">{Number(pos.entry_price).toFixed(5)}</td>
+                      <td className="py-3 font-mono">{pos.stop_loss !== null ? Number(pos.stop_loss).toFixed(5) : "-"}</td>
+                      <td className="py-3 font-mono">{pos.take_profit !== null ? Number(pos.take_profit).toFixed(5) : "-"}</td>
                       <td className="py-3 font-mono">{Number(pos.current_price).toFixed(5)}</td>
                       <td className="py-3 font-mono">{Number(pos.size).toFixed(2)}</td>
                       <td className={`py-3 text-right font-mono font-semibold ${isProfit ? "text-profit" : "text-loss"}`}>
