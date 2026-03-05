@@ -1624,6 +1624,7 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
         symbol: str,
         timeframe: str,
         indicators_used: list[str] | None = None,
+        drawings_made: list[dict[str, Any]] | None = None,
     ) -> TradingViewAnalysisResult:
         """
         Analyze a screenshot with a specific AI model (API call only, no browser interaction).
@@ -1654,6 +1655,7 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
             fallback=self._default_indicators_for_model(model_key),
         )
         result.indicators_used = selected_indicators
+        result.drawings_made = drawings_made or []
         indicators = ', '.join(selected_indicators)
 
         prompt_phase1 = f"""Sei un analista di trading senior specializzato in {style.upper()} con oltre 15 anni di esperienza nell'analisi di {symbol} sul timeframe {timeframe} minuti.
