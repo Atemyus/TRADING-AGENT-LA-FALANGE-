@@ -1768,7 +1768,7 @@ Rispondi SOLO con un oggetto JSON valido contenente la tua decisione direzionale
                 print(f"[{display_name}] Fase 1: {direction} @ {confidence}%")
 
                 # FASE 2: Solo se la direzione è LONG o SHORT con un minimo di confidenza
-                if direction in {"LONG", "SHORT"} and confidence >= 50.0:
+                if direction in {"LONG", "SHORT"} and confidence >= 1.0:
                     prompt_phase2 = f"""Hai deciso di impostare un trade {direction} su {symbol} (TF {timeframe}m) con {confidence}% di confidenza basandoti sul grafico precedente.
 
 Ora fornisci i dettagli operativi completi e la tua analisi professionale.
