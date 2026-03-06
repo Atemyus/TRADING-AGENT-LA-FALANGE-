@@ -784,6 +784,49 @@ class TradingViewBrowser:
         # For now, return None - AI will estimate from visual context
         return None
 
+    async def add_drawing(self, drawing: dict[str, Any]) -> bool:
+        """
+        Add a technical drawing to the chart based on AI requested dict.
+        Supported types: trendline, horizontal_line, rectangle, fibonacci, pitchfork.
+        """
+        if not self._initialized or not self.page:
+            return False
+
+        d_type = drawing.get("type")
+        label = drawing.get("label", "Unknown Drawing")
+
+        try:
+            print(f"[TradingViewBrowser] Applying AI drawing: {d_type} ('{label}')")
+            if d_type == "trendline":
+                return await self.draw_trendline(
+                    drawing.get("start_x", 0), drawing.get("start_y", 0),
+                    drawing.get("end_x", 0), drawing.get("end_y", 0)
+                )
+            elif d_type == "horizontal_line":
+                return await self.draw_horizontal_line(drawing.get("y", 0))
+            elif d_type == "rectangle":
+                return await self.draw_rectangle(
+                    drawing.get("x1", 0), drawing.get("y1", 0),
+                    drawing.get("x2", 0), drawing.get("y2", 0)
+                )
+            elif d_type == "fibonacci":
+                return await self.draw_fibonacci(
+                    drawing.get("start_x", 0), drawing.get("start_y", 0),
+                    drawing.get("end_x", 0), drawing.get("end_y", 0)
+                )
+            elif d_type == "pitchfork":
+                return await self.draw_pitchfork(
+                    drawing.get("x1", 0), drawing.get("y1", 0),
+                    drawing.get("x2", 0), drawing.get("y2", 0),
+                    drawing.get("x3", 0), drawing.get("y3", 0)
+                )
+            else:
+                print(f"[TradingViewBrowser] Unknown drawing type requested: {d_type}")
+                return False
+        except Exception as e:
+            print(f"[TradingViewBrowser] Failed to add drawing '{d_type}': {e}")
+            return False
+
 
 class TradingViewAIAgent:
     """
