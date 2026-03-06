@@ -74,14 +74,27 @@ function AIReasoningPanel({ brokerId, brokerName, compact = false }: AIReasoning
   React.useEffect(() => {
     const fetchLogs = async () => {
       try {
+        let rawLogs = [];
         // Use broker-specific logs if brokerId is provided
         if (brokerId) {
           const data = await brokerAccountsApi.getLogs(brokerId, 50);
-          setLogs(data.logs);
+          rawLogs = data.logs;
         } else {
           const data = await botApi.getLogs(50);
-          setLogs(data.logs);
+          rawLogs = data.logs;
         }
+
+        // Filter out HOLD messages or unpassed condition logs to keep the UI clean
+        const filteredLogs = rawLogs.filter((log: any) => {
+          const msg = log.message || '';
+          const upperMsg = msg.toUpperCase();
+          if (upperMsg.includes('HOLD')) return false;
+          if (upperMsg.includes('CONDIZIONI NON SODDISFATTE')) return false;
+          if (upperMsg.includes('RISPARMIO API')) return false;
+          return true;
+        });
+
+        setLogs(filteredLogs);
       } catch {
         // silently ignore
       }
