@@ -561,6 +561,31 @@ class AutoTrader:
 
         return (stop_loss, take_profit)
 
+    def _calculate_trade_rr_ratio(
+        self,
+        direction: str,
+        current_price: float,
+        stop_loss: float | None,
+        take_profit: float | None,
+    ) -> float | None:
+        """Return reward/risk ratio for the proposed trade, or None if invalid."""
+        if stop_loss is None or take_profit is None:
+            return None
+
+        if direction == "LONG":
+            risk = current_price - stop_loss
+            reward = take_profit - current_price
+        elif direction == "SHORT":
+            risk = stop_loss - current_price
+            reward = current_price - take_profit
+        else:
+            return None
+
+        if risk <= 0 or reward <= 0:
+            return None
+
+        return reward / risk
+
     def add_callback(self, callback: Callable):
         """Add a callback for trade notifications."""
         self._callbacks.append(callback)
@@ -1341,7 +1366,7 @@ class AutoTrader:
             self._log_analysis(symbol, "info", f"Prezzo corrente: {current_price}")
 
             # ====== VALIDAZIONE SL/TP rispetto alla direzione ======
-            MIN_RR_RATIO = 2.0  # Min Risk:Reward ratio (1:2) — TP almeno 2x la distanza SL
+            MIN_RR_RATIO = 1.0  # Min Risk:Reward ratio (1:1) — trade inferiori vengono annullati
             MAX_RR_RATIO = 3.0  # Max Risk:Reward ratio (1:3) — TP non oltre 3x la distanza SL
 
             # ====== VALIDAZIONE DISTANZA MASSIMA SL (protezione da valori AI assurdi) ======
@@ -1497,6 +1522,23 @@ class AutoTrader:
                         f"Trade annullato: distanza SL = 0 dopo adeguamento broker (prezzo={current_price}, SL={stop_loss})",
                     )
                     return
+
+            if has_take_profit:
+                final_rr = self._calculate_trade_rr_ratio(
+                    direction=direction,
+                    current_price=current_price,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                )
+                if final_rr is None or final_rr < MIN_RR_RATIO:
+                    rr_label = "non calcolabile" if final_rr is None else f"1:{final_rr:.2f}"
+                    self._log_analysis(
+                        symbol,
+                        "skip",
+                        f"Trade annullato: R:R finale {rr_label} < minimo richiesto 1:{MIN_RR_RATIO:.1f}.",
+                    )
+                    return
+
             # Calcola distanza SL in pips e valore pip per 1 lotto standard
             sl_pips, pip_value = self._calculate_pip_info(symbol, current_price, sl_distance, broker_spec)
 
@@ -1522,13 +1564,13 @@ class AutoTrader:
 
                 if direction == "LONG":
                     stop_loss = _rp(current_price - new_sl_distance)
-                    # Ricalcola TP con R:R 1:2
+                    # Ricalcola TP mantenendo almeno il minimo R:R richiesto
                     if has_take_profit:
-                        take_profit = _rp(current_price + (new_sl_distance * 2))
+                        take_profit = _rp(current_price + (new_sl_distance * MIN_RR_RATIO))
                 else:
                     stop_loss = _rp(current_price + new_sl_distance)
                     if has_take_profit:
-                        take_profit = _rp(current_price - (new_sl_distance * 2))
+                        take_profit = _rp(current_price - (new_sl_distance * MIN_RR_RATIO))
 
                 lot_size = MIN_LOT
                 sl_pips = max_sl_pips
@@ -1586,6 +1628,22 @@ class AutoTrader:
                             "(cap basato su margine disponibile)"
                         ),
                     )
+
+            if has_take_profit:
+                execution_rr = self._calculate_trade_rr_ratio(
+                    direction=direction,
+                    current_price=current_price,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                )
+                if execution_rr is None or execution_rr < MIN_RR_RATIO:
+                    rr_label = "non calcolabile" if execution_rr is None else f"1:{execution_rr:.2f}"
+                    self._log_analysis(
+                        symbol,
+                        "skip",
+                        f"Trade annullato prima dell'ordine: R:R finale {rr_label} < minimo richiesto 1:{MIN_RR_RATIO:.1f}.",
+                    )
+                    return
 
             # Calcolo rischio effettivo
             actual_risk = lot_size * sl_pips * pip_value
@@ -1694,6 +1752,22 @@ class AutoTrader:
                                 "Trade annullato: impossibile ricalcolare rischio dopo retry INVALID_STOPS",
                             )
                             break
+
+                        if has_take_profit:
+                            retry_rr = self._calculate_trade_rr_ratio(
+                                direction=direction,
+                                current_price=current_price,
+                                stop_loss=stop_loss,
+                                take_profit=take_profit,
+                            )
+                            if retry_rr is None or retry_rr < MIN_RR_RATIO:
+                                rr_label = "non calcolabile" if retry_rr is None else f"1:{retry_rr:.2f}"
+                                self._log_analysis(
+                                    symbol,
+                                    "skip",
+                                    f"Trade annullato dopo retry INVALID_STOPS: R:R finale {rr_label} < minimo richiesto 1:{MIN_RR_RATIO:.1f}.",
+                                )
+                                break
 
                         max_lot_for_risk = round(risk_amount / (sl_pips * pip_value), 2)
                         if max_lot_for_risk < MIN_LOT:
