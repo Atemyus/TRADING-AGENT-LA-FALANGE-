@@ -11,10 +11,12 @@ from .groq_provider import GroqProvider
 from .mistral_provider import MistralProvider
 from .ollama_provider import OllamaProvider
 from .openai_provider import OpenAIProvider
+from .openrouter_provider import OpenRouterProvider
 
 __all__ = [
     "AIMLProvider",
     "OpenAIProvider",
+    "OpenRouterProvider",
     "AnthropicProvider",
     "GoogleProvider",
     "GroqProvider",
@@ -26,6 +28,7 @@ __all__ = [
 PROVIDERS = {
     "aiml": AIMLProvider,
     "openai": OpenAIProvider,
+    "openrouter": OpenRouterProvider,
     "anthropic": AnthropicProvider,
     "google": GoogleProvider,
     "groq": GroqProvider,

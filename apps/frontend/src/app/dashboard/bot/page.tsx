@@ -1407,8 +1407,8 @@ export default function BotControlPage() {
                   </label>
                   <div className="space-y-2">
                     {[
-                      { key: "chatgpt", name: "ChatGPT 5.2", style: "SMC / Order Blocks", provider: "AIML" },
-                      { key: "gemini", name: "Gemini 3 Pro", style: "Trend / MACD", provider: "AIML" },
+                      { key: "chatgpt", name: "GPT-5.4", style: "SMC / Order Blocks", provider: "OpenRouter" },
+                      { key: "gemini", name: "Gemini 3.1 Flash Lite", style: "Trend / MACD", provider: "OpenRouter" },
                       { key: "grok", name: "Grok 4.1 Fast", style: "Volatility / Bollinger", provider: "AIML" },
                       { key: "qwen", name: "Qwen3 VL", style: "Ichimoku / RSI", provider: "AIML" },
                       { key: "llama", name: "Llama 4 Scout", style: "Momentum / Stochastic", provider: "AIML" },

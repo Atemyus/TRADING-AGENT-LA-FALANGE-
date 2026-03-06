@@ -22,6 +22,7 @@ from src.engines.ai.consensus_engine import (
 )
 from src.engines.ai.providers import (
     AIMLProvider,
+    OpenRouterProvider,
 )
 from src.services.market_data_service import get_market_data_service
 from src.services.technical_analysis_service import get_technical_analysis_service
@@ -58,21 +59,19 @@ class AIServiceConfig:
     providers: list[ProviderConfig] = field(default_factory=list)
 
 
-# Default provider configurations - AIML API with 8 models
-# All models accessed via api.aimlapi.com with single API key
-# Model IDs verified from https://docs.aimlapi.com/api-references/model-database
-# Vision-capable models + Llama 4 Scout + ERNIE 4.5 VL for analysis
+# Default provider configurations for the standard AI service.
+# ChatGPT and Gemini are routed via OpenRouter, the remaining models via AIML.
 DEFAULT_PROVIDERS = [
-    # ChatGPT 5.2 (OpenAI via AIML) - Vision: YES
+    # GPT-5.4 (OpenAI via OpenRouter)
     ProviderConfig(
-        provider_class=AIMLProvider,
-        model_name="chatgpt-5.2",
+        provider_class=OpenRouterProvider,
+        model_name="chatgpt-5.4",
         weight=1.0,
     ),
-    # Gemini 3 Pro Preview (Google via AIML) - Vision: YES
+    # Gemini 3.1 Flash Lite (Google via OpenRouter)
     ProviderConfig(
-        provider_class=AIMLProvider,
-        model_name="gemini-3-pro",
+        provider_class=OpenRouterProvider,
+        model_name="gemini-3.1-flash-lite",
         weight=1.0,
     ),
     # Grok 4.1 Fast (xAI via AIML) - Vision: YES
@@ -399,13 +398,13 @@ class AIService:
         trading_style: str = "intraday",
     ) -> ConsensusResult:
         """
-        Analisi premium usando tutti i 4 modelli AIML con vision.
+        Analisi premium usando i modelli principali configurati.
 
-        Usa ChatGPT 5.2, Gemini 3 Pro, Grok 4.1 Fast, Qwen3 VL.
+        Usa GPT-5.4, Gemini 3.1 Flash Lite, Grok 4.1 Fast, Qwen3 VL.
         Analisi di grado istituzionale completa con concetti SMC,
         analisi della liquidità e narrativa di trade dettagliata.
         """
-        # Usa tutti i 4 modelli vision per la migliore analisi
+        # Usa i modelli attivi per la migliore analisi
         return await self.analyze(
             context,
             mode="premium",

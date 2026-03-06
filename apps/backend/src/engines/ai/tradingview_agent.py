@@ -841,10 +841,10 @@ class TradingViewAIAgent:
     """
 
     # AI Models for chart analysis
-    # Models via AIML API (api.aimlapi.com)
+    # Models routed across OpenRouter, AIML, and NVIDIA.
     VISION_MODELS = {
-        "chatgpt": "openai/gpt-5-2",               # Vision: YES - AIML
-        "gemini": "google/gemini-3-pro-preview",   # Vision: YES - AIML
+        "chatgpt": "openai/gpt-5.4",               # Vision: YES - OpenRouter
+        "gemini": "google/gemini-3.1-flash-lite-preview",   # Vision: YES - OpenRouter
         "grok": "x-ai/grok-4-1-fast-reasoning",    # Vision: YES - AIML
         "qwen": "alibaba/qwen3-vl-32b-instruct",   # Vision: YES - AIML
         "llama": "meta-llama/llama-4-scout",       # Text analysis - AIML
@@ -853,6 +853,9 @@ class TradingViewAIAgent:
         "mistral": "mistralai/mistral-large-3-675b-instruct-2512",  # Text analysis - NVIDIA
     }
 
+    # Models that use OpenRouter instead of AIML.
+    OPENROUTER_MODELS = {"chatgpt", "gemini"}
+
     # Models that use NVIDIA API instead of AIML
     NVIDIA_MODELS = {"kimi", "mistral"}
 
@@ -860,8 +863,8 @@ class TradingViewAIAgent:
     TEXT_ONLY_MODELS = {"llama"}
 
     MODEL_DISPLAY_NAMES = {
-        "chatgpt": "ChatGPT 5.2",
-        "gemini": "Gemini 3 Pro",
+        "chatgpt": "GPT-5.4",
+        "gemini": "Gemini 3.1 Flash Lite",
         "grok": "Grok 4.1 Fast",
         "qwen": "Qwen3 VL",
         "llama": "Llama 4 Scout",
@@ -919,7 +922,7 @@ class TradingViewAIAgent:
     MAX_INDICATORS_FREE_PLAN = 2
 
     # Analysis mode configuration - timeframes and models per mode
-    # 8 models available: ChatGPT, Gemini, Grok, Qwen, Llama, ERNIE (AIML) + Kimi, Mistral (NVIDIA)
+    # 8 models available: GPT-5.4, Gemini 3.1 Flash Lite, Grok, Qwen, Llama, ERNIE, Kimi, Mistral
     MODE_CONFIG = {
         "quick": {
             "timeframes": ["15"],  # 15 minutes
@@ -954,6 +957,8 @@ class TradingViewAIAgent:
         self.browser: TradingViewBrowser | None = None
         self.api_key = settings.AIML_API_KEY
         self.base_url = settings.AIML_BASE_URL
+        self.openrouter_api_key = settings.OPENROUTER_API_KEY
+        self.openrouter_base_url = settings.OPENROUTER_BASE_URL
         self.nvidia_api_key = settings.NVIDIA_API_KEY
         self.nvidia_base_url = settings.NVIDIA_BASE_URL
         self.timeout = 120.0
@@ -965,18 +970,26 @@ class TradingViewAIAgent:
         Always reads from env to pick up runtime changes (e.g. settings saved after bot start).
         """
         is_nvidia = False
+        is_openrouter = False
         if model_key:
             is_nvidia = model_key in self.NVIDIA_MODELS
+            is_openrouter = model_key in self.OPENROUTER_MODELS
         elif model_id:
             # Reverse lookup: check if this model_id belongs to a NVIDIA model
             nvidia_model_ids = {self.VISION_MODELS[k] for k in self.NVIDIA_MODELS if k in self.VISION_MODELS}
+            openrouter_model_ids = {self.VISION_MODELS[k] for k in self.OPENROUTER_MODELS if k in self.VISION_MODELS}
             is_nvidia = model_id in nvidia_model_ids
+            is_openrouter = model_id in openrouter_model_ids
 
         if is_nvidia:
             # Read fresh from env/settings to pick up keys saved after init
             nvidia_key = os.environ.get("NVIDIA_API_KEY") or settings.NVIDIA_API_KEY
             nvidia_url = os.environ.get("NVIDIA_BASE_URL", self.nvidia_base_url)
             return nvidia_url, nvidia_key
+        if is_openrouter:
+            openrouter_key = os.environ.get("OPENROUTER_API_KEY") or settings.OPENROUTER_API_KEY
+            openrouter_url = os.environ.get("OPENROUTER_BASE_URL", self.openrouter_base_url)
+            return openrouter_url, openrouter_key
         # Read fresh from env/settings to pick up keys saved after init
         aiml_key = os.environ.get("AIML_API_KEY") or settings.AIML_API_KEY
         aiml_url = os.environ.get("AIML_BASE_URL", self.base_url)

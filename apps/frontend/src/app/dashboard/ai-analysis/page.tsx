@@ -40,11 +40,17 @@ const TradingViewWidget = dynamic(
   { ssr: false, loading: () => <div className="h-[400px] bg-dark-900 rounded-xl animate-pulse" /> }
 )
 
-// Provider styling for AIML API models
+// Provider styling for configured AI models
 const providerStyles: Record<string, { color: string; icon: string; bg: string }> = {
-  // The 8 AIML models (matching backend provider names)
+  // Configured model providers (matching backend provider names)
   OpenAI: { color: 'text-green-400', icon: 'OA', bg: 'bg-green-500/20' },
   Google: { color: 'text-blue-400', icon: 'GO', bg: 'bg-blue-500/20' },
+  'OpenRouter / OpenAI': { color: 'text-green-400', icon: 'OA', bg: 'bg-green-500/20' },
+  'OpenRouter / Google': { color: 'text-blue-400', icon: 'GO', bg: 'bg-blue-500/20' },
+  'AIML / xAI': { color: 'text-red-400', icon: 'XA', bg: 'bg-red-500/20' },
+  'AIML / Alibaba': { color: 'text-orange-400', icon: 'AL', bg: 'bg-orange-500/20' },
+  'AIML / Meta': { color: 'text-sky-400', icon: 'ME', bg: 'bg-sky-500/20' },
+  'AIML / Baidu': { color: 'text-cyan-400', icon: 'BA', bg: 'bg-cyan-500/20' },
   DeepSeek: { color: 'text-cyan-400', icon: 'DS', bg: 'bg-cyan-500/20' },
   xAI: { color: 'text-red-400', icon: 'XA', bg: 'bg-red-500/20' },
   Alibaba: { color: 'text-orange-400', icon: 'AL', bg: 'bg-orange-500/20' },
@@ -62,11 +68,11 @@ const providerStyles: Record<string, { color: string; icon: string; bg: string }
   aiml_mistral: { color: 'text-amber-400', icon: 'MI', bg: 'bg-amber-500/20' },
 }
 
-// The 8 AI models we use via AIML API (exact model IDs)
+// The AI models exposed in the analysis dashboard
 // ORDERED: Vision-capable models first (for Standard mode which uses only 5)
 const AI_MODELS = [
-  { provider: 'OpenAI', model: 'ChatGPT 5.2', icon: 'OA', vision: true },
-  { provider: 'Google', model: 'Gemini 3 Pro', icon: 'GO', vision: true },
+  { provider: 'OpenAI', model: 'GPT-5.4', icon: 'OA', vision: true },
+  { provider: 'Google', model: 'Gemini 3.1 Flash Lite', icon: 'GO', vision: true },
   { provider: 'xAI', model: 'Grok 4.1 Fast', icon: 'XA', vision: true },
   { provider: 'Alibaba', model: 'Qwen3 VL', icon: 'AL', vision: true },
   { provider: 'DeepSeek', model: 'DeepSeek V3.1', icon: 'DS', vision: false },
@@ -172,11 +178,11 @@ export default function AIAnalysisPage() {
 
       // Provide specific error messages based on the error
       if (errorMessage.includes('No providers available')) {
-        setError('No AI providers configured. Go to Settings > AI Providers and add your AIML API key.')
+        setError('No AI providers configured. Go to Settings > AI Providers and add at least one provider API key.')
       } else if (errorMessage.includes('No broker configured')) {
         setError('Broker not configured. Go to Settings > Broker to connect your trading account.')
       } else if (errorMessage.includes('AIML') || errorMessage.includes('API key')) {
-        setError('AIML API key invalid or missing. Go to Settings > AI Providers to configure.')
+        setError('Provider API key invalid or missing. Go to Settings > AI Providers to configure it.')
       } else if (errorMessage.includes('playwright') || errorMessage.includes('TradingView Agent not available')) {
         setError('TradingView Agent not available. Install playwright on the server.')
       } else {
@@ -556,7 +562,7 @@ export default function AIAnalysisPage() {
             <div>
               <h3 className="font-semibold text-neon-yellow mb-1">Provider AI Non Configurati</h3>
               <p className="text-dark-300 text-sm mb-3">
-                Nessun provider AI e attualmente attivo. Configura la tua chiave API AIML per abilitare l'analisi AI.
+                Nessun provider AI e attualmente attivo. Configura almeno una chiave API in Settings per abilitare l'analisi AI.
               </p>
               <Link
                 href="/dashboard/settings"
@@ -615,7 +621,7 @@ export default function AIAnalysisPage() {
               />
               <h3 className="text-xl font-semibold mb-2">Analizzando il Mercato...</h3>
               <p className="text-dark-400 mb-6">
-                Eseguendo analisi con {aiStatus?.active_providers || 8} modelli AI tramite AIML API
+                Eseguendo analisi con {aiStatus?.active_providers || 8} modelli AI tramite provider configurati
               </p>
               <div className="flex justify-center gap-2">
                 {(aiStatus?.providers

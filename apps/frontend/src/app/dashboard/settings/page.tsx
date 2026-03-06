@@ -109,13 +109,22 @@ function BrokerLogo({
 // AI Provider configurations
 const AI_PROVIDERS = [
   {
+    id: 'openrouter',
+    name: 'OpenRouter',
+    icon: 'OR',
+    models: ['GPT-5.4', 'Gemini 3.1 Flash Lite'],
+    field: { key: 'OPENROUTER_API_KEY', label: 'API Key', placeholder: 'Your OpenRouter API key' },
+    badge: '2 Models',
+    description: 'GPT-5.4 e Gemini 3.1 Flash Lite via openrouter.ai',
+  },
+  {
     id: 'aiml',
     name: 'AIML API',
     icon: 'AI',
-    models: ['ChatGPT 5.2', 'Gemini 3 Pro', 'Grok 4.1 Fast', 'Qwen3 VL', 'Llama 4 Scout', 'ERNIE 4.5 VL'],
+    models: ['Grok 4.1 Fast', 'Qwen3 VL', 'Llama 4 Scout', 'ERNIE 4.5 VL'],
     field: { key: 'AIML_API_KEY', label: 'API Key', placeholder: 'Your AIML API key' },
-    badge: '6 Models',
-    description: 'Single API key for 6 AI models via api.aimlapi.com',
+    badge: '4 Models',
+    description: 'Single API key for 4 AI models via api.aimlapi.com',
   },
   {
     id: 'nvidia',
@@ -165,6 +174,9 @@ export default function SettingsPage() {
 
         // Set AI providers
         const aiSettings: Record<string, { enabled: boolean; key: string }> = {}
+        if (settings.ai.openrouter_api_key) {
+          aiSettings.openrouter = { enabled: true, key: settings.ai.openrouter_api_key }
+        }
         if (settings.ai.aiml_api_key) {
           aiSettings.aiml = { enabled: true, key: settings.ai.aiml_api_key }
         }
@@ -190,6 +202,7 @@ export default function SettingsPage() {
 
       // Map provider IDs to API key names
       const keyMapping: Record<string, string> = {
+        openrouter: 'openrouter_api_key',
         aiml: 'aiml_api_key',
         nvidia: 'nvidia_api_key',
       }
@@ -392,9 +405,10 @@ function AIProvidersSettings({
       <div className="p-4 bg-primary-500/10 border border-primary-500/30 rounded-xl flex items-start gap-3">
         <Info size={20} className="text-primary-400 flex-shrink-0 mt-0.5" />
         <div>
-          <p className="text-sm text-primary-300 font-medium">8 Modelli AI - 2 Provider</p>
+          <p className="text-sm text-primary-300 font-medium">8 Modelli AI - 3 Provider</p>
           <p className="text-xs text-dark-400 mt-1">
-            6 modelli via <a href="https://aimlapi.com" target="_blank" rel="noopener noreferrer" className="text-primary-400 hover:underline">AIML API</a> (ChatGPT 5.2, Gemini 3 Pro, Grok 4.1 Fast, Qwen3 VL, Llama 4 Scout, ERNIE 4.5 VL)
+            2 modelli via <a href="https://openrouter.ai" target="_blank" rel="noopener noreferrer" className="text-primary-400 hover:underline">OpenRouter</a> (GPT-5.4, Gemini 3.1 Flash Lite)
+            + 4 modelli via <a href="https://aimlapi.com" target="_blank" rel="noopener noreferrer" className="text-primary-400 hover:underline">AIML API</a> (Grok 4.1 Fast, Qwen3 VL, Llama 4 Scout, ERNIE 4.5 VL)
             + 2 modelli via <a href="https://build.nvidia.com" target="_blank" rel="noopener noreferrer" className="text-primary-400 hover:underline">NVIDIA API</a> (Kimi K2.5, Mistral Large 3)
           </p>
         </div>
@@ -403,7 +417,7 @@ function AIProvidersSettings({
       <div className="card p-6">
         <h2 className="text-xl font-semibold mb-2">AI Providers</h2>
         <p className="text-dark-400 mb-6">
-          Configura le chiavi API per i modelli di analisi AI (8 modelli totali).
+          Configura le chiavi API per i modelli di analisi AI (8 modelli totali su 3 provider).
         </p>
 
         <div className="space-y-4">
@@ -452,7 +466,7 @@ function AIProvidersSettings({
                   animate={{ opacity: 1, height: 'auto' }}
                   className="mt-3"
                 >
-                  {provider.id === 'aiml' && (
+                  {provider.models.length > 0 && (
                     <p className="text-xs text-dark-400 mb-2">
                       Models: {provider.models.join(', ')}
                     </p>

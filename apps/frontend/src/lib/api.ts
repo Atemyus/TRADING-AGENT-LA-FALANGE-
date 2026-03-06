@@ -614,6 +614,7 @@ export interface BrokerSettingsData {
 }
 
 export interface AISettingsData {
+  openrouter_api_key?: string
   aiml_api_key?: string
   nvidia_api_key?: string
 }

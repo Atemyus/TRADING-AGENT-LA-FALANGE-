@@ -176,6 +176,10 @@ class Settings(BaseSettings):
     AIML_API_KEY: str | None = None
     AIML_BASE_URL: str = "https://api.aimlapi.com/v1"
 
+    # OpenRouter API (OpenAI/Google routing)
+    OPENROUTER_API_KEY: str | None = None
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+
     # NVIDIA API (Kimi K2.5, Mistral Large 3)
     NVIDIA_API_KEY: str | None = None
     NVIDIA_BASE_URL: str = "https://integrate.api.nvidia.com/v1"

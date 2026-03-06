@@ -29,8 +29,8 @@ interface AIConsensusPanelProps {
 // Updated 2026-01-26 - Vision-capable models first
 const providerStyles: Record<string, { color: string; icon: string }> = {
   // The 8 AIML models (vision-capable first, then text-only)
-  'OpenAI': { color: '#10a37f', icon: '💬' },      // ChatGPT 5.2 - Vision: YES
-  'Google': { color: '#4285f4', icon: '💎' },      // Gemini 3 Pro - Vision: YES
+  'OpenAI': { color: '#10a37f', icon: '💬' },      // GPT-5.4 - Vision: YES
+  'Google': { color: '#4285f4', icon: '💎' },      // Gemini 3.1 Flash Lite - Vision: YES
   'xAI': { color: '#ef4444', icon: '⚡' },          // Grok 4.1 Fast - Vision: YES
   'Alibaba': { color: '#f97316', icon: '🌟' },     // Qwen3 VL - Vision: YES
   'DeepSeek': { color: '#0ea5e9', icon: '🔍' },    // DeepSeek V3.1 - Vision: NO

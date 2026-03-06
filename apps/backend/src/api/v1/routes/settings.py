@@ -47,6 +47,7 @@ class BrokerSettings(BaseModel):
 
 
 class AIProviderSettings(BaseModel):
+    openrouter_api_key: str | None = None
     aiml_api_key: str | None = None
     nvidia_api_key: str | None = None
     openai_api_key: str | None = None
@@ -134,6 +135,19 @@ def apply_settings_to_env(settings: AllSettings) -> None:
     risk = settings.risk
     notif = settings.notifications
 
+    # Reset AI provider keys so disabling a provider takes effect immediately.
+    for env_key in [
+        "OPENROUTER_API_KEY",
+        "AIML_API_KEY",
+        "NVIDIA_API_KEY",
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "GOOGLE_API_KEY",
+        "GROQ_API_KEY",
+        "MISTRAL_API_KEY",
+    ]:
+        os.environ.pop(env_key, None)
+
     # Broker settings
     os.environ["BROKER_TYPE"] = broker.broker_type
     # In multi-broker mode METAAPI_ACCOUNT_ID must remain workspace-specific.
@@ -169,6 +183,8 @@ def apply_settings_to_env(settings: AllSettings) -> None:
         os.environ["ALPACA_PAPER"] = str(broker.alpaca_paper).lower()
 
     # AI settings
+    if ai.openrouter_api_key:
+        os.environ["OPENROUTER_API_KEY"] = ai.openrouter_api_key
     if ai.aiml_api_key:
         os.environ["AIML_API_KEY"] = ai.aiml_api_key
     if ai.nvidia_api_key:
@@ -237,6 +253,8 @@ async def get_settings(db: AsyncSession = Depends(get_db)):
         response["broker"]["alpaca_api_key"] = mask_key(response["broker"]["alpaca_api_key"])
     if response["broker"]["alpaca_secret_key"]:
         response["broker"]["alpaca_secret_key"] = mask_key(response["broker"]["alpaca_secret_key"])
+    if response["ai"]["openrouter_api_key"]:
+        response["ai"]["openrouter_api_key"] = mask_key(response["ai"]["openrouter_api_key"])
     if response["ai"]["aiml_api_key"]:
         response["ai"]["aiml_api_key"] = mask_key(response["ai"]["aiml_api_key"])
     if response["ai"]["nvidia_api_key"]:
@@ -284,6 +302,9 @@ async def update_all_settings(
     )
 
     # Preserve masked AI keys
+    new_settings.ai.openrouter_api_key = preserve_if_masked(
+        new_settings.ai.openrouter_api_key, existing.ai.openrouter_api_key
+    )
     new_settings.ai.aiml_api_key = preserve_if_masked(
         new_settings.ai.aiml_api_key, existing.ai.aiml_api_key
     )
@@ -352,6 +373,7 @@ async def update_ai_settings(
     settings = await load_settings_from_db(db)
     existing_ai = settings.ai
 
+    ai.openrouter_api_key = preserve_if_masked(ai.openrouter_api_key, existing_ai.openrouter_api_key)
     ai.aiml_api_key = preserve_if_masked(ai.aiml_api_key, existing_ai.aiml_api_key)
     ai.nvidia_api_key = preserve_if_masked(ai.nvidia_api_key, existing_ai.nvidia_api_key)
     ai.openai_api_key = preserve_if_masked(ai.openai_api_key, existing_ai.openai_api_key)

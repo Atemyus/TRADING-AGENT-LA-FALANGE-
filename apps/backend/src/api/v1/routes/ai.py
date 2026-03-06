@@ -291,14 +291,28 @@ async def get_service_status():
     stats = service.get_provider_stats()
     health = await service.health_check()
 
-    providers = [
-        ProviderStatus(
-            name=name,
-            healthy=health.get(name, False),
-            model=name.split("_", 1)[1] if "_" in name else name,
+    provider_display_map = {
+        "openrouter_chatgpt-5.4": ("OpenRouter / OpenAI", "GPT-5.4"),
+        "openrouter_gemini-3.1-flash-lite": ("OpenRouter / Google", "Gemini 3.1 Flash Lite"),
+        "aiml_xai_grok-4.1-fast": ("AIML / xAI", "Grok 4.1 Fast"),
+        "aiml_alibaba_qwen3-vl": ("AIML / Alibaba", "Qwen3 VL"),
+        "aiml_meta_llama-4-scout": ("AIML / Meta", "Llama 4 Scout"),
+        "aiml_baidu_ernie-4.5-vl": ("AIML / Baidu", "ERNIE 4.5 VL"),
+    }
+
+    providers = []
+    for name in stats["active_providers"]:
+        display_name, display_model = provider_display_map.get(
+            name,
+            (name.split("_", 1)[0] if "_" in name else name, name.split("_", 1)[1] if "_" in name else name),
         )
-        for name in stats["active_providers"]
-    ]
+        providers.append(
+            ProviderStatus(
+                name=display_name,
+                healthy=health.get(name, False),
+                model=display_model,
+            )
+        )
 
     return ServiceStatusResponse(
         total_providers=stats["total_configured"],
@@ -564,7 +578,7 @@ class TradingViewAgentResponse(BaseModel):
 async def _run_fallback_analysis(symbol: str, mode: str) -> TradingViewAgentResponse:
     """
     Run fallback AI analysis using the standard AI service when TradingView Agent is unavailable.
-    This uses the AIML API directly without browser automation.
+    This uses the configured API providers directly without browser automation.
     """
     import logging
 
@@ -585,7 +599,7 @@ async def _run_fallback_analysis(symbol: str, mode: str) -> TradingViewAgentResp
     timeframes = config["timeframes"]
 
     # AI model display names for the response
-    model_names = ["ChatGPT 5.2", "Gemini 3 Pro", "Grok 4.1 Fast", "Qwen3 VL", "Llama 4 Scout", "ERNIE 4.5 VL"]
+    model_names = ["GPT-5.4", "Gemini 3.1 Flash Lite", "Grok 4.1 Fast", "Qwen3 VL", "Llama 4 Scout", "ERNIE 4.5 VL"]
     analysis_styles = ["SMC", "Trend Following", "Volatility", "Hybrid", "Momentum", "Price Action"]
 
     service = get_ai_service()
@@ -612,7 +626,7 @@ async def _run_fallback_analysis(symbol: str, mode: str) -> TradingViewAgentResp
                 fetch_real_data=True,
             )
 
-            # Run analysis (will use all active AIML providers)
+            # Run analysis using all active providers configured in the AI service.
             result = await service.analyze(
                 context,
                 mode="standard",
@@ -920,8 +934,8 @@ async def get_tradingview_agent_status():
             "ultra": {"timeframes": ["5", "15", "60", "240", "D"], "models": 6},
         },
         "ai_models": [
-            {"key": "chatgpt", "name": "ChatGPT 5.2", "style": "SMC", "vision": True},
-            {"key": "gemini", "name": "Gemini 3 Pro", "style": "Trend", "vision": True},
+            {"key": "chatgpt", "name": "GPT-5.4", "style": "SMC", "vision": True},
+            {"key": "gemini", "name": "Gemini 3.1 Flash Lite", "style": "Trend", "vision": True},
             {"key": "grok", "name": "Grok 4.1 Fast", "style": "Volatility", "vision": True},
             {"key": "qwen", "name": "Qwen3 VL", "style": "Hybrid", "vision": True},
             {"key": "llama", "name": "Llama 4 Scout", "style": "Momentum", "vision": False},

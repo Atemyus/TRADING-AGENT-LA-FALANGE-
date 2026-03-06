@@ -11,6 +11,7 @@ This system:
 
 import asyncio
 import json
+import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -33,9 +34,9 @@ from src.services.technical_analysis_service import (
 
 class AIModel(str, Enum):
     """Available AI models for autonomous analysis."""
-    # AIML API model IDs (updated 2026-01-27)
-    CHATGPT_5_2 = "openai/gpt-5-2"
-    GEMINI_3_PRO = "google/gemini-3-pro-preview"
+    # Mixed provider model IDs (updated 2026-03-06)
+    CHATGPT_5_4 = "openai/gpt-5.4"
+    GEMINI_3_1_FLASH_LITE = "google/gemini-3.1-flash-lite-preview"
     GROK_4_1 = "x-ai/grok-4-1-fast-reasoning"
     QWEN3_VL = "alibaba/qwen3-vl-32b-instruct"  # Vision-Language model
     LLAMA_4_SCOUT = "meta-llama/llama-4-scout"  # Text analysis
@@ -43,8 +44,8 @@ class AIModel(str, Enum):
 
 
 MODEL_DISPLAY_NAMES = {
-    AIModel.CHATGPT_5_2: "ChatGPT 5.2",
-    AIModel.GEMINI_3_PRO: "Gemini 3 Pro",
+    AIModel.CHATGPT_5_4: "GPT-5.4",
+    AIModel.GEMINI_3_1_FLASH_LITE: "Gemini 3.1 Flash Lite",
     AIModel.GROK_4_1: "Grok 4.1 Fast",
     AIModel.QWEN3_VL: "Qwen3 VL",
     AIModel.LLAMA_4_SCOUT: "Llama 4 Scout",
@@ -219,12 +220,26 @@ class AutonomousAnalyst:
     def __init__(self):
         self.api_key = settings.AIML_API_KEY
         self.base_url = settings.AIML_BASE_URL
+        self.openrouter_api_key = settings.OPENROUTER_API_KEY
+        self.openrouter_base_url = settings.OPENROUTER_BASE_URL
         self.timeout = 120.0  # Longer timeout for complex analysis
 
         self.chart_generator: ChartGeneratorService = None
         self.market_data: MarketDataService = None
         self.ta_service: TechnicalAnalysisService = None
         self._initialized = False
+
+    def _get_api_config(self, model: AIModel) -> tuple[str, str | None]:
+        """Resolve provider endpoint/key for the selected model."""
+        if model in {AIModel.CHATGPT_5_4, AIModel.GEMINI_3_1_FLASH_LITE}:
+            return (
+                os.environ.get("OPENROUTER_BASE_URL", self.openrouter_base_url),
+                os.environ.get("OPENROUTER_API_KEY") or settings.OPENROUTER_API_KEY,
+            )
+        return (
+            os.environ.get("AIML_BASE_URL", self.base_url),
+            os.environ.get("AIML_API_KEY") or settings.AIML_API_KEY,
+        )
 
     async def initialize(self):
         """Initialize services."""
@@ -257,8 +272,9 @@ class AutonomousAnalyst:
         """
         await self.initialize()
         display_name = MODEL_DISPLAY_NAMES.get(model, model.value)
+        api_url, api_key = self._get_api_config(model)
 
-        if not self.api_key:
+        if not api_key:
             print(f"[AutonomousAnalyst] ⚠️ AIML API KEY NOT SET - No real API call for {model.value}. Set AIML_API_KEY env variable.")
             return AutonomousAnalysisResult(
                 model=model.value,
@@ -322,9 +338,9 @@ class AutonomousAnalyst:
             # 6. Call the AI with vision
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
-                    f"{self.base_url}/chat/completions",
+                    f"{api_url}/chat/completions",
                     headers={
-                        "Authorization": f"Bearer {self.api_key}",
+                        "Authorization": f"Bearer {api_key}",
                         "Content-Type": "application/json"
                     },
                     json={
