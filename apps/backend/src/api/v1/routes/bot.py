@@ -497,8 +497,8 @@ async def update_config(config: BotConfigRequest, db: AsyncSession = Depends(get
             raise HTTPException(status_code=400, detail=f"Invalid analysis mode: {config.analysis_mode}")
 
     if config.analysis_interval_seconds is not None:
-        if config.analysis_interval_seconds < 60:
-            raise HTTPException(status_code=400, detail="Interval must be at least 60 seconds")
+        if config.analysis_interval_seconds < 0:
+            raise HTTPException(status_code=400, detail="Interval cannot be negative")
         current_config.analysis_interval_seconds = config.analysis_interval_seconds
 
     if config.min_confidence is not None:
