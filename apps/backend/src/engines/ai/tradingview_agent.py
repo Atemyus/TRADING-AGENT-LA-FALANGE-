@@ -1033,6 +1033,7 @@ class TradingViewAIAgent:
         self,
         indicators: Any,
         fallback: list[str] | None = None,
+        allow_empty: bool = False,
     ) -> list[str]:
         """Normalize indicator names, deduplicate, and enforce max indicators."""
         max_indicators = max(1, int(self.max_indicators))
@@ -1060,6 +1061,9 @@ class TradingViewAIAgent:
         fallback_normalized = _clean(fallback_list)
         if fallback_normalized:
             return fallback_normalized
+
+        if allow_empty:
+            return []
 
         return ["EMA", "RSI"][:max_indicators]
 
@@ -1386,17 +1390,38 @@ class TradingViewAIAgent:
         model_id: str,
         screenshot: str,
         symbol: str,
-        preferences: dict[str, Any],
+        preferences: dict[str, Any] | None = None,
         timeframe: str | None = None,
+        unconstrained: bool = False,
     ) -> list[str]:
         """Ask AI which indicators to add based on initial chart."""
 
         # Respect TradingView indicator limit
         max_ind = max(1, min(self.max_indicators, 4))  # Cap at 4 for performance
         timeframe_label = timeframe or "15"
+        preferences = preferences or {}
         fallback = self._sanitize_indicators(preferences.get("indicators", ["EMA", "RSI"]))
 
-        prompt = f"""Stai analizzando un grafico {symbol} su TradingView (timeframe {timeframe_label}).
+        if unconstrained:
+            prompt = f"""Stai analizzando un grafico {symbol} su TradingView (timeframe {timeframe_label}).
+
+Sei completamente libero di scegliere il tuo approccio di analisi. Non seguire alcuno schema preimpostato, nessuno stile assegnato e nessun bias operativo.
+
+Guarda questo grafico e decidi autonomamente quali indicatori vuoi aggiungere, se vuoi aggiungerne.
+Puoi scegliere tra QUALSIASI indicatore disponibile su TradingView.
+
+IMPORTANTE:
+- Puoi aggiungere da 0 a {max_ind} indicatori.
+- Se ritieni sufficiente il solo price action, puoi rispondere con [].
+- Scegli solo gli indicatori che ritieni davvero utili per questo mercato e questo timeframe.
+
+Rispondi SOLO con un array JSON di nomi di indicatori (max {max_ind}), ad esempio:
+["RSI", "VWAP"]
+oppure:
+[]
+"""
+        else:
+            prompt = f"""Stai analizzando un grafico {symbol} su TradingView (timeframe {timeframe_label}).
 
 Il tuo stile di analisi preferito: {preferences.get('style', 'mixed')}
 Il tuo focus preferito: {preferences.get('focus', 'analisi generale')}
@@ -1453,13 +1478,17 @@ Rispondi SOLO con un array JSON di nomi di indicatori (max {max_ind}), es.:
                 match = re.search(r'\[.*?\]', text, re.DOTALL)
                 if match:
                     indicators = json.loads(match.group())
-                    return self._sanitize_indicators(indicators, fallback=fallback)[:max_ind]
+                    return self._sanitize_indicators(
+                        indicators,
+                        fallback=[] if unconstrained else fallback,
+                        allow_empty=unconstrained,
+                    )[:max_ind]
                 # Fallback: use preferences but respect limit
-                return fallback[:max_ind]
+                return [] if unconstrained else fallback[:max_ind]
 
         except Exception as e:
             print(f"Error asking AI for indicators: {e}")
-            return fallback[:max_ind]
+            return [] if unconstrained else fallback[:max_ind]
 
     async def _select_indicators_for_model(
         self,
@@ -1489,21 +1518,49 @@ Rispondi SOLO con un array JSON di nomi di indicatori (max {max_ind}), es.:
             model_id=model_id,
             screenshot=screenshot,
             symbol=symbol,
-            preferences=preferences,
+            preferences={},
             timeframe=timeframe,
+            unconstrained=True,
         )
-        return self._sanitize_indicators(indicators, fallback=fallback)
+        return self._sanitize_indicators(indicators, fallback=[], allow_empty=True)
 
     async def _ask_ai_for_drawings(
         self,
         model_id: str,
         screenshot: str,
         symbol: str,
-        preferences: dict[str, Any]
+        preferences: dict[str, Any] | None = None,
+        unconstrained: bool = False,
     ) -> list[dict[str, Any]]:
         """Ask AI what to draw on the chart (trendlines, S/R, zones, fibonacci, pitchfork)."""
 
-        prompt = f"""Stai analizzando un grafico {symbol} con indicatori.
+        preferences = preferences or {}
+
+        if unconstrained:
+            prompt = f"""Stai analizzando un grafico {symbol} con indicatori.
+
+Sei completamente libero di decidere se disegnare oppure no. Non seguire alcuno schema preimpostato, nessuno stile assegnato e nessun bias operativo.
+
+Il grafico Ã¨ 1920x1080 pixel. L'area principale del grafico Ã¨ approssimativamente:
+- X: da 100 a 1800
+- Y: da 100 a 900
+
+Puoi usare liberamente questi strumenti se li ritieni utili:
+- "trendline"
+- "horizontal_line"
+- "rectangle"
+- "fibonacci"
+- "pitchfork"
+
+IMPORTANTE:
+- Disegna solo ciÃ² che ritieni davvero rilevante per questo mercato.
+- Se non vedi alcun disegno utile, rispondi con [].
+- Se disegni, resta essenziale: 0-6 elementi tecnici.
+
+Rispondi SOLO con l'array JSON, nessun altro testo.
+"""
+        else:
+            prompt = f"""Stai analizzando un grafico {symbol} con indicatori.
 
 Il tuo stile di analisi: {preferences.get('style', 'mixed')}
 Il tuo focus: {preferences.get('focus', 'analisi generale')}
@@ -1591,18 +1648,26 @@ Rispondi SOLO con l'array JSON, nessun altro testo.
         timeframe: str,
         indicators_used: list[str],
         drawings_made: list[dict[str, Any]],
-        preferences: dict[str, Any]
+        preferences: dict[str, Any] | None = None,
+        unconstrained: bool = False,
     ) -> dict[str, Any]:
         """Ask AI for final trading analysis."""
 
+        preferences = preferences or {}
         drawings_desc = "\n".join([f"- {d.get('label', d.get('type'))}" for d in drawings_made])
+
+        style_line = (
+            "Sei completamente libero di analizzare il mercato come preferisci. Non seguire alcuno schema preimpostato, nessuno stile assegnato e nessun bias operativo."
+            if unconstrained else
+            f"Il tuo stile di analisi: {preferences.get('style', 'mixed')}"
+        )
 
         prompt = f"""Hai analizzato {symbol} sul timeframe {timeframe} minuti.
 
-Il tuo stile di analisi: {preferences.get('style', 'mixed')}
-Indicatori aggiunti: {', '.join(indicators_used)}
+{style_line}
+Indicatori aggiunti: {', '.join(indicators_used) if indicators_used else 'nessuno'}
 Disegni effettuati:
-{drawings_desc}
+{drawings_desc or '- nessuno'}
 
 Ora fornisci la tua analisi di trading completa basata su TUTTO ciò che hai osservato.
 
@@ -1681,6 +1746,7 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
         timeframe: str,
         indicators_used: list[str] | None = None,
         drawings_made: list[dict[str, Any]] | None = None,
+        mode: str = "standard",
     ) -> TradingViewAnalysisResult:
         """
         Analyze a screenshot with a specific AI model (API call only, no browser interaction).
@@ -1689,11 +1755,12 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
         model_id = self.VISION_MODELS.get(model_key)
         display_name = self.MODEL_DISPLAY_NAMES.get(model_key, model_key)
         preferences = self.MODEL_PREFERENCES.get(model_key, {})
+        unconstrained = mode in ["premium", "ultra"]
 
         result = TradingViewAnalysisResult(
             model=model_id,
             model_display_name=display_name,
-            analysis_style=preferences.get("style", "mixed"),
+            analysis_style="autonomous" if unconstrained else preferences.get("style", "mixed"),
             indicators_used=[],
             drawings_made=[],
             direction="HOLD",
@@ -1708,17 +1775,30 @@ IMPORTANTE: break_even_trigger è OBBLIGATORIO per ogni segnale LONG o SHORT. tr
         focus = preferences.get('focus', 'general technical analysis')
         selected_indicators = self._sanitize_indicators(
             indicators_used if indicators_used is not None else preferences.get('indicators', ['EMA', 'RSI']),
-            fallback=self._default_indicators_for_model(model_key),
+            fallback=[] if unconstrained else self._default_indicators_for_model(model_key),
+            allow_empty=unconstrained,
         )
         result.indicators_used = selected_indicators
         result.drawings_made = drawings_made or []
-        indicators = ', '.join(selected_indicators)
+        indicators = ', '.join(selected_indicators) if selected_indicators else "nessuno"
 
-        prompt_phase1 = f"""Sei un analista di trading senior specializzato in {style.upper()} con oltre 15 anni di esperienza nell'analisi di {symbol} sul timeframe {timeframe} minuti.
+        if unconstrained:
+            prompt_phase1 = f"""Sei un analista di trading senior con piena autonomia decisionale nell'analisi di {symbol} sul timeframe {timeframe} minuti.
+
+## MODALITA DI ANALISI
+Sei completamente libero di analizzare il mercato come preferisci. Non seguire alcuno schema preimpostato, nessuno stile assegnato e nessun bias operativo.
+Usa liberamente price action, struttura, volatilita, momentum, liquidita, contesto multi-timeframe o qualsiasi altro approccio ritieni utile.
+Indicatori attualmente presenti sul grafico: {indicators}
+"""
+        else:
+            prompt_phase1 = f"""Sei un analista di trading senior specializzato in {style.upper()} con oltre 15 anni di esperienza nell'analisi di {symbol} sul timeframe {timeframe} minuti.
 
 ## IL TUO STILE DI ANALISI: {style.upper()}
 Il tuo focus specializzato: {focus}
 I tuoi indicatori preferiti: {indicators}
+"""
+
+        prompt_phase1 += f"""
 
 Guarda il grafico allegato.
 
@@ -2061,9 +2141,13 @@ Rispondi SOLO con un oggetto JSON valido (niente markdown, niente spiegazioni fu
                 choice = indicator_choices[idx]
                 if isinstance(choice, Exception):
                     print(f"  [WARNING] Indicator selection failed for {model_key}: {choice}")
-                    selected = self._default_indicators_for_model(model_key)
+                    selected = [] if mode in ["premium", "ultra"] else self._default_indicators_for_model(model_key)
                 else:
-                    selected = self._sanitize_indicators(choice, fallback=self._default_indicators_for_model(model_key))
+                    selected = self._sanitize_indicators(
+                        choice,
+                        fallback=[] if mode in ["premium", "ultra"] else self._default_indicators_for_model(model_key),
+                        allow_empty=mode in ["premium", "ultra"],
+                    )
 
                 if not self.browser or not self.browser._initialized:
                     model_payloads.append((model_key, base_screenshot, selected))
@@ -2092,7 +2176,8 @@ Rispondi SOLO con un oggetto JSON valido (niente markdown, niente spiegazioni fu
                         model_id=self.VISION_MODELS.get(model_key, ""),
                         screenshot=model_screenshot, # Use the screenshot with indicators already applied
                         symbol=symbol,
-                        preferences=self.MODEL_PREFERENCES.get(model_key, {})
+                        preferences={},
+                        unconstrained=True,
                     )
                     
                     if drawings_requested and self.browser:
@@ -2125,7 +2210,8 @@ Rispondi SOLO con un oggetto JSON valido (niente markdown, niente spiegazioni fu
                     symbol, 
                     tf, 
                     indicators_used=indicators,
-                    drawings_made=drawings
+                    drawings_made=drawings,
+                    mode=mode,
                 )
                 for model_key, screenshot, indicators, drawings in model_payloads
             ]
